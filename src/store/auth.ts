@@ -105,7 +105,8 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       if (!needle) return { ok: false, error: 'Enter your username.' }
       const current = dbRef.current
       const found = current.users.find(
-        (user) => user.role === 'staff' && user.username?.toLowerCase() === needle,
+        (user) => (user.role === 'staff' || user.role === 'manager') &&
+          user.username?.toLowerCase() === needle,
       )
       const failure = pinFailures.current.get(needle)
       if (failure?.lockedUntil && failure.lockedUntil > Date.now()) {

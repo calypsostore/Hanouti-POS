@@ -25,6 +25,7 @@ import { getOutstandingBalance } from '../lib/dashboard'
 import { BrandLogo } from './BrandLogo'
 import { Avatar, Badge } from './ui'
 import { AppIcon } from './AppIcon'
+import { can } from '../lib/permissions'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; tone: DashboardTone; end?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
@@ -46,6 +47,7 @@ export function Sidebar({
 
   const isSuper = user.role === 'super'
   const isStaff = user.role === 'staff'
+  const isManager = user.role === 'manager'
   const groups: NavGroup[] = isSuper
     ? [{ label: 'MAIN', items: [
         { to: '/super', label: 'Overview', icon: LayoutDashboard, tone: 'blue', end: true },
@@ -70,7 +72,10 @@ export function Sidebar({
             { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
             { to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' },
           ] },
-          { label: 'CATALOG', items: [{ to: '/admin/products', label: 'Products', icon: Package, tone: 'blue' }] },
+          { label: 'CATALOG', items: [
+            { to: '/admin/products', label: 'Products', icon: Package, tone: 'blue' },
+            { to: '/admin/inventory', label: 'Inventory', icon: Package, tone: 'green' },
+          ] },
           { label: 'TEAM', items: [{ to: '/admin/staff', label: 'Staff', icon: Users, tone: 'purple' }] },
           { label: 'FINANCE', items: [
             { to: '/admin/reports', label: 'Reports', icon: BarChart3, tone: 'green' },
@@ -82,6 +87,24 @@ export function Sidebar({
             { to: '/admin/settings', label: 'Settings', icon: Settings, tone: 'blue' },
           ] },
         ]
+
+  const visibleGroups = isManager
+    ? groups.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => {
+          if (item.to === '/admin') return can(user, 'viewReports')
+          if (item.to === '/admin/products') return can(user, 'manageProducts')
+          if (item.to === '/admin/inventory') return can(user, 'manageInventory')
+          if (item.to === '/admin/staff') return can(user, 'manageStaff')
+          if (item.to === '/admin/reports' || item.to === '/admin/logs') return can(user, 'viewReports')
+          if (item.to === '/admin/register') return user.permissions.register
+          if (item.to === '/admin/customers') return user.permissions.credit
+          if (item.to === '/admin/settings') return can(user, 'manageSettings')
+          if (item.to === '/admin/expenses') return can(user, 'managePayroll')
+          return true
+        }),
+      })).filter((group) => group.items.length > 0)
+    : groups
 
   const outstanding = store ? getOutstandingBalance(db, store.id) : 0
   const sidebarWidth = collapsed && !mobile ? 'w-[78px]' : 'w-[258px]'
@@ -124,7 +147,7 @@ export function Sidebar({
       </div>
 
       <nav className="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-2.5 py-4 thin-scrollbar">
-        {groups.map((group) => (
+        {visibleGroups.map((group) => (
           <section key={group.label}>
             {(!collapsed || mobile) && <h2 className="mb-1.5 px-2.5 text-[9px] font-bold tracking-[0.16em] text-white/40">{group.label}</h2>}
             <div className="space-y-1">

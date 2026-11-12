@@ -40,9 +40,9 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle accent={store.settings.accent} defaultMode={store.settings.colorMode} />
-          {(user.role === 'admin' || user.role === 'staff') && (
+          {(user.role === 'admin' || user.role === 'manager' || user.role === 'staff') && (
             <Link
-              to={user.role === 'admin' ? '/admin' : '/staff'}
+              to={user.role === 'admin' || user.role === 'manager' ? '/admin' : '/staff'}
               className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
@@ -56,7 +56,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               <Users className="h-3.5 w-3.5" /> Floor
             </Link>
           )}
-          {user.role === 'staff' && (
+          {(user.role === 'staff' || user.role === 'manager') && (
             <>
               <Link
                 to="/admin/customers"

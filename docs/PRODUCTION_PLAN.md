@@ -5,7 +5,7 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-12 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-13 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, and dine-in table setup with
 table-aware immediate orders**. Persistent open table orders remain in progress.
 
@@ -59,7 +59,7 @@ stored; no demo values are presented as production data.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during
   local database normalization; the legacy emoji property is removed. The
-  current schema is `7anouti.db.v16`, with older IndexedDB/local records
+  current schema is `7anouti.db.v18`, with older IndexedDB/local records
   normalized during load. Store logos and product images can be uploaded and
   resized to 256 px client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -97,7 +97,7 @@ stored; no demo values are presented as production data.
   browser-local demo behavior.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
-  settings viewport had no horizontal overflow. The local v13 database contains
+  settings viewport had no horizontal overflow. The   local v16 database contains
   icon keys on every store/category/product and no remaining legacy emoji
   fields.
 - This remains a browser-local demo: image data and business records live in
@@ -106,6 +106,28 @@ stored; no demo values are presented as production data.
   remains a manual release check.
 
 ## Requested feature roadmap
+
+### Manager and inventory rollout (2026-11-13)
+
+- **Manager role and capabilities — implemented demo behavior.** Store owners
+  can create managers with username/PIN login and grant the supported
+  capabilities. Manager route and mutation checks use the same browser-local
+  guards; the demo manager seed account is `nadia.yasmine` / `3456`.
+- **Inventory items and stock ledger — implemented demo behavior.** Managers
+  with inventory access and admins can create/edit items, set base units,
+  package conversions and reorder levels, record one-time opening stock,
+  stock counts, adjustments and waste, and review recent movements. Stock
+  quantities and audit events are persisted locally. Unit-cost fields and
+  weighted-average helpers are present, but inventory costs remain zero until
+  purchase entry is implemented.
+- Schema `7anouti.db.v18` normalizes inventory items and stock movements;
+  earlier local records receive empty inventory collections. New demo seed
+  data includes café ingredients and supplies. All of these flows remain
+  editable browser-local demo data, not a trusted backend or tamper-resistant
+  ledger.
+- **Still planned:** supplier and purchase entry with bill photos; recipe
+  costing and automatic stock consumption; daily close/count reports; and
+  staff consumption and allowances. These phases have not been implemented.
 
 ### Phase 1 — Business types and product options ✅ demo implementation
 
@@ -178,7 +200,7 @@ wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v16`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v18`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is
@@ -262,6 +284,32 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 Current stock is per-product counters only. Plan: ingredient catalogue,
 recipe consumption per product, movement ledger (reason + employee + reference
 on every movement), low-stock alerts, valuation, suppliers + purchases.
+
+### Gérant and inventory rollout from the owner brief (2026-11-13)
+
+#### Phase 1 — Manager role and capabilities ✅ demo implementation
+
+- Added the store-scoped `manager` role, manager capability checks, per-manager
+  capability toggles, PIN login, manager audit badges, and an owner-created
+  demo manager. The default capability preset excludes settings, payroll, and
+  role changes; owner/admin remains fully authorized.
+- Product, staff, schedule, store-setting, report, payroll, and order-void
+  routes and mutations now check the corresponding capability. Manager
+  capability edits and team role changes remain owner-only.
+- Schema `7anouti.db.v17` migrates v16 records with safe manager permission
+  defaults. A browser smoke test created and signed into a manager, verified
+  product access and settings denial, then removed the temporary test account.
+- This remains browser-local demo authorization. A user who can alter
+  IndexedDB or JavaScript can bypass these checks; production needs server-side
+  authorization and audit history.
+
+#### Phases 2–6 — Inventory, purchases, recipes, daily reporting, and staff use
+
+⏳ Not implemented yet. These phases must add trusted store-layer validation,
+append-only stock movements, supplier/purchase records, recipes and costing,
+daily stock counts/reports, and staff-consumption allowances. Bill images and
+business data remain browser-local until production file storage and the Phase
+2 backend exist.
 
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 

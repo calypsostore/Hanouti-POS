@@ -10,7 +10,9 @@ export default function LogDetails({ log, idLabels }: { log: AuditLog; idLabels:
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-ink">{log.userName}</span>
-          <span className="text-muted">({log.role})</span>
+          <Badge tone={log.role === 'admin' ? 'dark' : log.role === 'manager' ? 'accent' : 'neutral'}>
+            {log.role === 'manager' ? 'Manager (gérant)' : log.role}
+          </Badge>
           <Badge tone={auditActionTone(log.action)}>{auditActionLabel(log.action)}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">

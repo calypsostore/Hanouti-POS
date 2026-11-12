@@ -8,6 +8,7 @@ import OverviewTab from './OverviewTab'
 import PaymentsTab from './PaymentsTab'
 import ScheduleTab from './ScheduleTab'
 import StaffLogsTab from './StaffLogsTab'
+import { can } from '../../../lib/permissions'
 
 type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity'
 
@@ -24,8 +25,12 @@ export default function StaffDetail() {
   const navigate = useNavigate()
   const { db, store, user } = useApp()
   const [tab, setTab] = useState<DetailTab>('overview')
-  const canOpen = user?.role === 'admin' ||
+  const canOpen = (user ? can(user, 'manageStaff') : false) ||
     (user?.role === 'staff' && user.permissions.supervisor)
+  const showPayroll = user ? can(user, 'managePayroll') : false
+  const tabs = showPayroll
+    ? TABS
+    : TABS.filter((item) => item.value !== 'payments' && item.value !== 'attendance')
   const logs = useMemo(
     () => canOpen && id ? getStaffActivityLogs(db, id).filter((log) => log.storeId === store?.id) : [],
     [canOpen, db, id, store?.id],
@@ -57,7 +62,7 @@ export default function StaffDetail() {
     >
       <div className="space-y-4 p-4 sm:p-5">
         <div role="tablist" aria-label="Staff details" className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-cream-100/70 p-1">
-          {TABS.map((item) => (
+          {tabs.map((item) => (
             <button
               key={item.value}
               type="button"
@@ -73,7 +78,7 @@ export default function StaffDetail() {
           ))}
         </div>
         <div role="tabpanel">
-          {tab === 'overview' && <OverviewTab member={member} db={db} store={store} />}
+          {tab === 'overview' && <OverviewTab member={member} db={db} store={store} showPayroll={showPayroll} />}
           {tab === 'payments' && <PaymentsTab member={member} db={db} storeId={store.id} />}
           {tab === 'attendance' && <AttendanceTab member={member} db={db} store={store} />}
           {tab === 'schedule' && <ScheduleTab member={member} db={db} store={store} />}

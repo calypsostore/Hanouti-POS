@@ -4,6 +4,19 @@ import { uid } from '../lib/utils'
 import { hashRandomSecret, hashSecret } from '../lib/hash'
 import { isValidUsername, normalizeUsername } from '../lib/staff'
 import { round } from '../lib/pricing-utils'
+import { defaultPermissions } from '../lib/defaults'
+import type { Capability } from '../types'
+
+const CAPABILITIES: Capability[] = [
+  'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
+  'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
+  'manageStaff', 'manageSettings', 'managePayroll',
+]
+const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'register', 'supervisor'] as const
+
+const validPermissions = (permissions: User['permissions']) =>
+  LEGACY_PERMISSION_KEYS.every((key) => typeof permissions[key] === 'boolean') &&
+  CAPABILITIES.every((key) => permissions[key] === undefined || typeof permissions[key] === 'boolean')
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -21,11 +34,18 @@ const staffSnapshot = (user: User): Record<string, AuditJsonValue> => ({
 })
 
 export function useStaffSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireAdmin } = dependencies
+  const { dbRef, commitDb, requireCapability } = dependencies
   const addStaff = useCallback<AppContextValue['addStaff']>(
     async (storeId, data) => {
-      const actorResult = requireAdmin(storeId)
+      const actorResult = requireCapability(storeId, 'manageStaff')
       if (!actorResult.ok) return actorResult
+      if (data.role !== undefined && data.role !== 'staff' && data.role !== 'manager') {
+        return { ok: false, error: 'Choose a valid team member role.' }
+      }
+      if (data.role === 'manager' && actorResult.actor.role !== 'admin') {
+        return { ok: false, error: 'Only the owner can assign the manager role.' }
+      }
+      if (!validPermissions(data.permissions)) return { ok: false, error: 'Choose valid team permissions.' }
       const current = dbRef.current
       const username = normalizeUsername(data.username)
       if (!data.name.trim()) return { ok: false, error: 'Enter the team member’s full name.' }
@@ -49,20 +69,25 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       } catch {
         return { ok: false, error: 'Could not securely save the credentials. Please try again.' }
       }
-      const latestActor = requireAdmin(storeId)
+      const latestActor = requireCapability(storeId, 'manageStaff')
       if (!latestActor.ok) return latestActor
+      if (data.role === 'manager' && latestActor.actor.role !== 'admin') {
+        return { ok: false, error: 'Only the owner can assign the manager role.' }
+      }
       if (dbRef.current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
         return { ok: false, error: 'That username is already in use.' }
       }
       const member: User = {
         ...data,
         name: data.name.trim(),
-        salaryAmount: data.salaryType === 'none' ? 0 : round(data.salaryAmount),
+        salaryType: data.role === 'manager' ? 'none' : data.salaryType,
+        salaryAmount: data.role === 'manager' || data.salaryType === 'none' ? 0 : round(data.salaryAmount),
         username,
         email: '',
         password,
         pin,
-        role: 'staff',
+        role: data.role ?? 'staff',
+        permissions: { ...defaultPermissions(data.role ?? 'staff'), ...data.permissions },
         id: uid('usr'),
         storeId,
         createdAt: new Date().toISOString(),
@@ -80,7 +105,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [commitDb, requireCapability],
   )
 
   const updateStaff = useCallback<AppContextValue['updateStaff']>(async (id, patch) => {
@@ -88,14 +113,27 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     const member = current.users.find((candidate) => candidate.id === id)
     if (!member?.storeId) return { ok: false, error: 'Team member not found.' }
     const storeId = member.storeId
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageStaff')
     if (!actorResult.ok) return actorResult
     if (patch.storeId !== undefined && patch.storeId !== member.storeId) {
       return { ok: false, error: 'A team member cannot be moved to another store.' }
     }
-    if (patch.role !== undefined && patch.role !== member.role) {
-      return { ok: false, error: 'Team member roles cannot be changed here.' }
+    if (patch.permissions !== undefined && !validPermissions(patch.permissions)) {
+      return { ok: false, error: 'Choose valid team permissions.' }
     }
+    if (patch.role !== undefined && patch.role !== member.role && actorResult.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can change team member roles.' }
+    }
+    if (member.role === 'manager' && actorResult.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can edit a manager account.' }
+    }
+    if (member.role === 'admin' && patch.role !== undefined && patch.role !== member.role) {
+      return { ok: false, error: 'Store owner accounts cannot be changed from the team editor.' }
+    }
+    if (patch.role !== undefined && !['staff', 'manager'].includes(patch.role)) {
+      return { ok: false, error: 'Choose a valid team member role.' }
+    }
+    const nextRole = patch.role ?? member.role
     const username = patch.username === undefined ? undefined : normalizeUsername(patch.username)
     if (username !== undefined) {
       if (!isValidUsername(username)) {
@@ -108,11 +146,17 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (patch.pin && !/^\d{4,6}$/.test(patch.pin)) {
       return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
     }
-    if (member.role === 'staff' && patch.password) {
+    if ((member.role === 'staff' || member.role === 'manager') && patch.password) {
       return { ok: false, error: 'Staff accounts use a PIN, not a password.' }
     }
-    if (member.role !== 'staff' && (patch.salaryType !== undefined || patch.salaryAmount !== undefined)) {
+    if (nextRole !== 'staff' &&
+        ((patch.salaryType !== undefined && patch.salaryType !== 'none') ||
+          (patch.salaryAmount !== undefined && patch.salaryAmount !== 0))) {
       return { ok: false, error: 'Salary settings are only available for staff accounts.' }
+    }
+    if ((patch.salaryType !== undefined || patch.salaryAmount !== undefined) &&
+        !requireCapability(storeId, 'managePayroll').ok) {
+      return { ok: false, error: 'You do not have permission to manage payroll.' }
     }
     if (patch.salaryType !== undefined && !['daily', 'monthly', 'none'].includes(patch.salaryType)) {
       return { ok: false, error: 'Choose a valid salary type.' }
@@ -122,7 +166,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
           ((patch.salaryType ?? member.salaryType) !== 'none' && patch.salaryAmount <= 0))) {
       return { ok: false, error: 'Salary amount must be a non-negative number.' }
     }
-    if (member.role === 'staff' && (patch.salaryType ?? member.salaryType) !== 'none' &&
+    if (nextRole === 'staff' && (patch.salaryType ?? member.salaryType) !== 'none' &&
         (patch.salaryAmount ?? member.salaryAmount) <= 0) {
       return { ok: false, error: 'Enter a salary amount greater than zero.' }
     }
@@ -132,7 +176,6 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (!isValidPhoto(patch.photo)) {
       return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
     }
-    const nextRole = patch.role ?? member.role
     const nextActive = patch.active ?? member.active
     const activeChanged = nextActive !== member.active
     const pinReset = Boolean(patch.pin)
@@ -147,20 +190,23 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     delete safePatch.id
     delete safePatch.storeId
     delete safePatch.createdAt
-    if (member.role === 'staff') {
+    if (nextRole === 'staff' || nextRole === 'manager') {
       safePatch.email = ''
       delete safePatch.password
     }
     try {
       if (patch.pin) safePatch.pin = await hashSecret(patch.pin)
       else delete safePatch.pin
-      if (patch.password && member.role !== 'staff') safePatch.password = await hashSecret(patch.password)
+      if (patch.password && member.role !== 'staff' && member.role !== 'manager') safePatch.password = await hashSecret(patch.password)
       else delete safePatch.password
     } catch {
       return { ok: false, error: 'Could not securely save the credentials. Please try again.' }
     }
-    const latestActor = requireAdmin(member.storeId)
+    const latestActor = requireCapability(member.storeId, 'manageStaff')
     if (!latestActor.ok) return latestActor
+    if (patch.role !== undefined && latestActor.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can change team member roles.' }
+    }
     if (username !== undefined && dbRef.current.users.some((user) =>
       user.id !== id && normalizeUsername(user.username ?? '') === username,
     )) return { ok: false, error: 'That username is already in use.' }
@@ -203,16 +249,19 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       return next
     })
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireCapability])
 
   const deleteStaff = useCallback<AppContextValue['deleteStaff']>(
     (id) => {
       const member = dbRef.current.users.find((candidate) => candidate.id === id)
       if (!member?.storeId) return { ok: false, error: 'Team member not found.' }
       const storeId = member.storeId
-      const actorResult = requireAdmin(storeId)
+      const actorResult = requireCapability(storeId, 'manageStaff')
       if (!actorResult.ok) return actorResult
       if (actorResult.actor.id === id) return { ok: false, error: 'You cannot delete your own account.' }
+      if (actorResult.actor.role !== 'admin' && member.role !== 'staff') {
+        return { ok: false, error: 'Only the owner can remove an admin or manager account.' }
+      }
       const remainingAdmins = dbRef.current.users.filter(
         (u) => u.storeId === member.storeId && u.role === 'admin' && u.active,
       )
@@ -232,7 +281,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [commitDb, requireCapability],
   )
 
 

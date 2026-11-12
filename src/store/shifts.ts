@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import type { AuditJsonValue, Shift } from '../types'
 import { dateKey, uid } from '../lib/utils'
 import { addLog } from './audit'
+import { can } from '../lib/permissions'
 import type { AppContextValue, ShiftInput } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -24,9 +25,9 @@ const shiftSnapshot = (shift: Shift): Record<string, AuditJsonValue> => ({
 const authorizeManager = (storeId: string, requireActor: StoreSliceDependencies['requireActor']) => {
   const result = requireActor(storeId)
   if (!result.ok) return result
-  if (result.actor.role !== 'admin' &&
+  if (!can(result.actor, 'manageStaff') &&
       !(result.actor.role === 'staff' && result.actor.permissions.supervisor)) {
-    return { ok: false as const, error: 'Only a store admin or shift manager can manage schedules.' }
+    return { ok: false as const, error: 'You do not have permission to manage schedules.' }
   }
   return result
 }

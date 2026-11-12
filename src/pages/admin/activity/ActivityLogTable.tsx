@@ -165,7 +165,11 @@ export default function ActivityLogTable({
                         {staffIdSet.has(log.userId)
                           ? <Link to={`/admin/staff/${encodeURIComponent(log.userId)}`} className="font-semibold text-ink hover:text-brand-navy hover:underline">{log.userName}</Link>
                           : <div className="font-semibold text-ink">{log.userName}</div>}
-                        <div className="mt-0.5 text-[10px] capitalize text-muted">{log.role}</div>
+                        <div className="mt-1">
+                          <Badge tone={log.role === 'admin' ? 'dark' : log.role === 'manager' ? 'accent' : 'neutral'}>
+                            {log.role === 'manager' ? 'Manager (gérant)' : log.role}
+                          </Badge>
+                        </div>
                       </td>
                       <td className="px-4 py-3"><Badge tone={auditActionTone(log.action)}>{auditActionLabel(log.action)}</Badge></td>
                       <td className="px-4 py-3">

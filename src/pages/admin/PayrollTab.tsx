@@ -6,6 +6,7 @@ import { estimatePayroll, summarizeAttendanceDay } from '../../lib/payroll'
 import { dateKey, money } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
 import type { AttendanceStatus, User } from '../../types'
+import { can } from '../../lib/permissions'
 
 const monthToday = () => dateKey(new Date()).slice(0, 7)
 const monthDates = (month: string) => {
@@ -21,6 +22,7 @@ export default function PayrollTab() {
     db, store, user, addAdvance, paySalary, saveManualAttendance,
   } = useApp()
   const { push } = useToast()
+  const canManagePayroll = user ? can(user, 'managePayroll') : false
   const [today] = useState(() => dateKey(new Date()))
   const [month, setMonth] = useState(monthToday)
   const [selected, setSelected] = useState<User | null>(null)
@@ -139,9 +141,9 @@ export default function PayrollTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="text-[16px] font-bold">{user.role === 'admin' ? 'Team payroll' : 'My pay & attendance'}</h3>
+          <h3 className="text-[16px] font-bold">{canManagePayroll ? 'Team payroll' : 'My pay & attendance'}</h3>
           <p className="mt-1 text-[12px] text-muted">
-            {user.role === 'admin' ? 'Attendance, advances and monthly salary settlement.' : 'Your attendance and open salary advances.'}
+            {canManagePayroll ? 'Attendance, advances and monthly salary settlement.' : 'Your attendance and open salary advances.'}
           </p>
         </div>
         <Field label="Payroll month">
@@ -178,7 +180,7 @@ export default function PayrollTab() {
                 <Metric label={paid ? 'Net paid' : 'Net due'} value={money(payrollRecord?.netPaid ?? estimate.netDue)} />
               </div>
               <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-line/60 pt-3">
-                {user.role === 'admin' && (
+                {canManagePayroll && (
                   <>
                     <Button size="sm" variant="secondary" onClick={() => giveAdvance(member)}>
                       <Plus className="h-3.5 w-3.5" /> Give advance
@@ -221,7 +223,7 @@ export default function PayrollTab() {
         </div>
       )}
 
-      {selected && user.role === 'admin' && !advanceOpen && (
+      {selected && canManagePayroll && !advanceOpen && (
         <div
           role="dialog"
           aria-modal="true"
@@ -284,7 +286,7 @@ export default function PayrollTab() {
         </div>
       )}
 
-      {advanceOpen && selected && user.role === 'admin' && (
+      {advanceOpen && selected && canManagePayroll && (
         <Modal
           open
           onClose={() => {
@@ -307,7 +309,7 @@ export default function PayrollTab() {
         </Modal>
       )}
 
-      {editDay && selected && user.role === 'admin' && (
+      {editDay && selected && canManagePayroll && (
         <Modal
           open
           onClose={() => setEditDay(null)}
@@ -335,7 +337,7 @@ export default function PayrollTab() {
         </Modal>
       )}
 
-      {user.role === 'admin' && (
+      {canManagePayroll && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted">
           <Clock3 className="h-3.5 w-3.5" /> Staff clock in on sign-in, clock out on logout, and refresh activity every minute.
         </p>

@@ -5,6 +5,7 @@ import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
+import { can } from '../lib/permissions'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -246,7 +247,8 @@ export function useOpenOrdersSlice(
       if (!actorResult.ok) return actorResult
       if (!managerPin.trim()) return { ok: false, error: 'An active store admin PIN is required to cancel this order.' }
       const admins = dbRef.current.users.filter((candidate) =>
-        candidate.storeId === initial.storeId && candidate.role === 'admin' && candidate.active,
+        candidate.storeId === initial.storeId && candidate.active &&
+        (candidate.role === 'admin' || can(candidate, 'approveOverrides')),
       )
       let verifiedAdminId: string | null = null
       for (const admin of admins) {
@@ -262,7 +264,7 @@ export function useOpenOrdersSlice(
       if (!latestActor.ok) return latestActor
       const authorizer = dbRef.current.users.find((candidate) =>
         candidate.id === verifiedAdminId && candidate.storeId === order.storeId &&
-        candidate.role === 'admin' && candidate.active,
+        candidate.active && (candidate.role === 'admin' || can(candidate, 'approveOverrides')),
       )
       if (!authorizer) return { ok: false, error: 'Manager authorization failed.' }
       commitDb((prev) => addLog({

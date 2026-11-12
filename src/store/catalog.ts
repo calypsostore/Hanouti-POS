@@ -74,9 +74,9 @@ const productSnapshot = (product: Product): Record<string, AuditJsonValue> => ({
 })
 
 export function useCatalogSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireAdmin } = dependencies
+  const { dbRef, commitDb, requireCapability } = dependencies
   const addCategory = useCallback<AppContextValue['addCategory']>((storeId, data) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     if (!data.name.trim()) return { ok: false, error: 'Enter a category name.' }
     const category: Category = {
@@ -99,12 +99,12 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       after: categorySnapshot(category),
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const updateCategory = useCallback<AppContextValue['updateCategory']>((id, patch) => {
     const category = dbRef.current.categories.find((candidate) => candidate.id === id)
     if (!category) return { ok: false, error: 'Category not found.' }
-    const actorResult = requireAdmin(category.storeId)
+    const actorResult = requireCapability(category.storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     if (patch.storeId !== undefined && patch.storeId !== category.storeId) {
       return { ok: false, error: 'A category cannot be moved to another store.' }
@@ -127,13 +127,13 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       after: changes.after,
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireCapability])
 
   const deleteCategory = useCallback<AppContextValue['deleteCategory']>(
     (id) => {
       const category = dbRef.current.categories.find((candidate) => candidate.id === id)
       if (!category) return { ok: false, error: 'Category not found.' }
-      const actorResult = requireAdmin(category.storeId)
+      const actorResult = requireCapability(category.storeId, 'manageProducts')
       if (!actorResult.ok) return actorResult
       const products = dbRef.current.products.filter((p) => p.storeId === category.storeId && p.categoryId === id)
       if (products.length) {
@@ -152,11 +152,11 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [commitDb, requireCapability],
   )
 
   const addProduct = useCallback<AppContextValue['addProduct']>((storeId, data) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     const category = dbRef.current.categories.find((candidate) =>
       candidate.id === data.categoryId && candidate.storeId === storeId,
@@ -180,12 +180,12 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       after: productSnapshot(product),
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireCapability])
 
   const updateProduct = useCallback<AppContextValue['updateProduct']>((id, patch) => {
     const product = dbRef.current.products.find((candidate) => candidate.id === id)
     if (!product) return { ok: false, error: 'Product not found.' }
-    const actorResult = requireAdmin(product.storeId)
+    const actorResult = requireCapability(product.storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     if (patch.storeId !== undefined && patch.storeId !== product.storeId) {
       return { ok: false, error: 'A product cannot be moved to another store.' }
@@ -226,12 +226,12 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       after: changes.after,
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireCapability])
 
   const deleteProduct = useCallback<AppContextValue['deleteProduct']>((id) => {
     const product = dbRef.current.products.find((candidate) => candidate.id === id)
     if (!product) return { ok: false, error: 'Product not found.' }
-    const actorResult = requireAdmin(product.storeId)
+    const actorResult = requireCapability(product.storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     commitDb((prev) => addLog({
       ...prev,
@@ -245,7 +245,7 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       before: productSnapshot(product),
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireCapability])
 
 
   return { addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct }

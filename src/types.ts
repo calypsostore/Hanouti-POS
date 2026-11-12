@@ -1,4 +1,35 @@
-export type Role = 'super' | 'admin' | 'staff'
+export type Role = 'super' | 'admin' | 'manager' | 'staff'
+export type Capability =
+  | 'manageInventory'
+  | 'recordPurchases'
+  | 'viewCosts'
+  | 'manageStaffAllowances'
+  | 'approveOverrides'
+  | 'viewReports'
+  | 'manageProducts'
+  | 'voidOrders'
+  | 'manageStaff'
+  | 'manageSettings'
+  | 'managePayroll'
+export type InventoryUnit = 'g' | 'ml' | 'piece'
+export type StockMovementType =
+  | 'opening'
+  | 'purchase'
+  | 'sale_use'
+  | 'staff_use'
+  | 'waste'
+  | 'adjustment'
+  | 'count_correction'
+  | 'void_return'
+export type InventoryCategory =
+  | 'coffee'
+  | 'soft_drinks'
+  | 'water'
+  | 'dairy'
+  | 'pastry'
+  | 'packaging'
+  | 'other'
+  | (string & {})
 export type AuditRole = Role | 'unknown'
 export type AuditEntity =
   | 'order'
@@ -13,6 +44,7 @@ export type AuditEntity =
   | 'payroll'
   | 'shift'
   | 'table'
+  | 'inventory'
 export type AuditAction =
   | 'created'
   | 'edited'
@@ -31,6 +63,10 @@ export type AuditAction =
   | 'login_failure'
   | 'logout'
   | 'demo_reset'
+  | 'inventory_opening'
+  | 'stock_adjusted'
+  | 'waste_recorded'
+  | 'stock_counted'
 export type AuditJsonValue =
   | string
   | number
@@ -149,6 +185,17 @@ export interface User {
     register: boolean
     /** Shift supervisor: sees every register session and the whole team's sales. */
     supervisor: boolean
+    manageInventory?: boolean
+    recordPurchases?: boolean
+    viewCosts?: boolean
+    manageStaffAllowances?: boolean
+    approveOverrides?: boolean
+    viewReports?: boolean
+    manageProducts?: boolean
+    voidOrders?: boolean
+    manageStaff?: boolean
+    manageSettings?: boolean
+    managePayroll?: boolean
   }
 }
 
@@ -169,6 +216,42 @@ export interface DiningTable {
   zone?: string
   active: boolean
   sort: number
+}
+
+export interface InventoryPackage {
+  id: string
+  label: string
+  baseQtyPerPackage: number
+}
+
+export interface InventoryItem {
+  id: string
+  storeId: string
+  name: string
+  category: InventoryCategory
+  baseUnit: InventoryUnit
+  packages: InventoryPackage[]
+  onHand: number
+  reorderLevel: number
+  avgCostPerBaseUnit: number
+  lastCostPerBaseUnit: number
+  supplierId?: string
+  active: boolean
+}
+
+export interface StockMovement {
+  id: string
+  storeId: string
+  itemId: string
+  type: StockMovementType
+  qtyDelta: number
+  unitCostSnapshot: number
+  reason?: string
+  userId: string
+  userName: string
+  refType?: string
+  refId?: string
+  createdAt: string
 }
 
 export interface Product {
@@ -428,6 +511,8 @@ export interface Database {
   users: User[]
   categories: Category[]
   tables: DiningTable[]
+  inventoryItems: InventoryItem[]
+  stockMovements: StockMovement[]
   products: Product[]
   customers: Customer[]
   orders: Order[]

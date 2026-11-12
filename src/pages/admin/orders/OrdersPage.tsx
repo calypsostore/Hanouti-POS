@@ -12,6 +12,7 @@ import type { Order } from '../../../types'
 import { Button } from '../../../components/ui'
 import { PrintModal, type PrintJob } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
+import { can } from '../../../lib/permissions'
 import { buildReceiptLines, linesToEscpos } from '../../../lib/escpos'
 import { balanceFor } from '../../../lib/selectors'
 import { csvDownload, dateKey, fmtDate, fmtTime, money, sum } from '../../../lib/utils'
@@ -127,7 +128,8 @@ export default function OrdersPage() {
 
   const confirmVoid = async () => {
     if (!voidTarget) return
-    const result = await voidOrder(voidTarget.id, user.role === 'admin' ? undefined : voidPin, voidReason)
+    const canVoidWithoutPin = can(user, 'voidOrders')
+    const result = await voidOrder(voidTarget.id, canVoidWithoutPin ? undefined : voidPin, voidReason)
     if (!result.ok) {
       push(result.error, 'error')
       return
@@ -194,7 +196,7 @@ export default function OrdersPage() {
         store={store}
         customerName={customerName}
         balanceForCustomer={(customerId) => balanceFor(db.ledger, customerId)}
-        isAdmin={user.role === 'admin'}
+        isAdmin={can(user, 'voidOrders')}
         onClose={() => setSelected(null)}
         onVoid={() => {
           if (!selected) return
@@ -207,7 +209,7 @@ export default function OrdersPage() {
 
       <VoidOrderModal
         order={voidTarget}
-        isAdmin={user.role === 'admin'}
+        isAdmin={can(user, 'voidOrders')}
         pin={voidPin}
         reason={voidReason}
         onPinChange={setVoidPin}

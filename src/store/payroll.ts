@@ -38,9 +38,9 @@ const attendanceSnapshot = (records: Attendance[], settings: PayrollSettings, da
     : { date, status: 'absent', hours: 0, sessions: 0, source: 'none', note: '' }
 }
 
-export function usePayrollSlice({ dbRef, commitDb, requireAdmin }: StoreSliceDependencies) {
+export function usePayrollSlice({ dbRef, commitDb, requireCapability }: StoreSliceDependencies) {
   const addAdvance = useCallback<AppContextValue['addAdvance']>((storeId, userId, data: AddAdvanceInput) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'managePayroll')
     if (!actorResult.ok) return actorResult
     const staff = dbRef.current.users.find((candidate) =>
       candidate.id === userId && candidate.storeId === storeId && candidate.role === 'staff',
@@ -96,10 +96,10 @@ export function usePayrollSlice({ dbRef, commitDb, requireAdmin }: StoreSliceDep
       })
     })
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const paySalary = useCallback<AppContextValue['paySalary']>((storeId, userId, month) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'managePayroll')
     if (!actorResult.ok) return actorResult
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { ok: false, error: 'Choose a valid payroll month.' }
     const current = dbRef.current
@@ -129,7 +129,7 @@ export function usePayrollSlice({ dbRef, commitDb, requireAdmin }: StoreSliceDep
     if (estimate.openAdvances > estimate.earned) {
       return { ok: false, error: 'Open advances exceed earned salary; this payroll cannot be settled yet.' }
     }
-    const latestActor = requireAdmin(storeId)
+    const latestActor = requireCapability(storeId, 'managePayroll')
     if (!latestActor.ok) return latestActor
     const paidAt = new Date()
     const payrollId = uid('pay')
@@ -197,14 +197,14 @@ export function usePayrollSlice({ dbRef, commitDb, requireAdmin }: StoreSliceDep
       })
     })
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const saveManualAttendance = useCallback<AppContextValue['saveManualAttendance']>((
     storeId,
     userId,
     data: ManualAttendanceInput,
   ) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'managePayroll')
     if (!actorResult.ok) return actorResult
     const staff = dbRef.current.users.find((candidate) =>
       candidate.id === userId && candidate.storeId === storeId && candidate.role === 'staff',
@@ -277,7 +277,7 @@ export function usePayrollSlice({ dbRef, commitDb, requireAdmin }: StoreSliceDep
       })
     })
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const heartbeat = useCallback((userId: string) => {
     commitDb((prev) => heartbeatAttendance(prev, userId))

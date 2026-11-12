@@ -4,6 +4,8 @@ import { buildSeed } from '../data/seed'
 import { useToast } from '../components/toast'
 import { writeIndexedValue } from '../lib/storage'
 import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
+import { can } from '../lib/permissions'
+import type { Capability } from '../types'
 import type { ActorResult } from './types'
 
 type DatabaseRuntime = {
@@ -89,5 +91,14 @@ export function useActorGuards({
     return result
   }, [requireActor])
 
-  return { requireActor, requireAdmin }
+  const requireCapability = useCallback((storeId: string, capability: Capability): ActorResult => {
+    const result = requireActor(storeId)
+    if (!result.ok) return result
+    if (!can(result.actor, capability)) {
+      return { ok: false, error: 'You do not have permission to perform this action.' }
+    }
+    return result
+  }, [requireActor])
+
+  return { requireActor, requireAdmin, requireCapability }
 }

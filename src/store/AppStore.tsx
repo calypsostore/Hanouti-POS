@@ -11,6 +11,7 @@ import { useStaffSlice } from './staff'
 import { usePayrollSlice } from './payroll'
 import { useShiftsSlice } from './shifts'
 import { useTablesSlice } from './tables'
+import { useInventorySlice } from './inventory'
 import { useOpenOrdersSlice } from './openOrders'
 import { useDatabase, useActorGuards } from './runtime'
 import type { AppContextValue } from './types'
@@ -41,6 +42,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const payroll = usePayrollSlice(dependencies)
   const shifts = useShiftsSlice(dependencies)
   const tables = useTablesSlice(dependencies)
+  const inventory = useInventorySlice(dependencies)
   const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
   const { db } = database
@@ -93,6 +95,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...payroll,
     ...shifts,
     ...tables,
+    ...inventory,
     ...settings,
   }
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

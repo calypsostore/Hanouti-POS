@@ -6,6 +6,7 @@ import type {
   DiningTable,
   Expense,
   IconName,
+  InventoryItem,
   LedgerEntry,
   Order,
   Plan,
@@ -14,6 +15,7 @@ import type {
   RegisterSnapshot,
   SettlementCycle,
   Shift,
+  StockMovement,
   Store,
   StoreSettings,
   User,
@@ -292,6 +294,36 @@ const users = ([
     },
   },
   {
+    id: 'u_manager_yasmine',
+    storeId: 'st_yasmine',
+    name: 'Nadia Mansour',
+    username: 'nadia.yasmine',
+    password: '',
+    pin: '3456',
+    role: 'manager',
+    active: true,
+    createdAt: '2026-11-12T09:00:00.000Z',
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+      manageInventory: true,
+      recordPurchases: true,
+      viewCosts: true,
+      manageStaffAllowances: true,
+      approveOverrides: true,
+      viewReports: true,
+      manageProducts: true,
+      voidOrders: true,
+      manageStaff: true,
+      manageSettings: false,
+      managePayroll: false,
+    },
+  },
+  {
     id: 'u_salma',
     storeId: 'st_yasmine',
     name: 'Salma Riahi',
@@ -507,6 +539,18 @@ export function buildSeed(): Database {
   const orders: Order[] = []
   const ledger: LedgerEntry[] = []
   const expenses: Expense[] = []
+  const inventoryItems: InventoryItem[] = [
+    { id: 'inv_coffee_beans', storeId: 'st_yasmine', name: 'Coffee beans', category: 'coffee', baseUnit: 'g', packages: [{ id: 'pkg_coffee_1kg', label: 'Bag 1 kg', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 2000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_sugar', storeId: 'st_yasmine', name: 'Sugar', category: 'other', baseUnit: 'g', packages: [{ id: 'pkg_sugar_1kg', label: 'Bag 1 kg', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 1000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_milk', storeId: 'st_yasmine', name: 'Whole milk', category: 'dairy', baseUnit: 'ml', packages: [{ id: 'pkg_milk_1l', label: 'Bottle 1 L', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 3000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_water_05', storeId: 'st_yasmine', name: 'Water 0.5 L', category: 'water', baseUnit: 'piece', packages: [{ id: 'pkg_water_05_6', label: 'Pack of 6', baseQtyPerPackage: 6 }], onHand: 0, reorderLevel: 12, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_water_15', storeId: 'st_yasmine', name: 'Water 1.5 L', category: 'water', baseUnit: 'piece', packages: [{ id: 'pkg_water_15_6', label: 'Pack of 6', baseQtyPerPackage: 6 }], onHand: 0, reorderLevel: 12, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_soft_drink', storeId: 'st_yasmine', name: 'Soft drinks', category: 'soft_drinks', baseUnit: 'piece', packages: [{ id: 'pkg_soft_drink_24', label: 'Crate of 24', baseQtyPerPackage: 24 }], onHand: 0, reorderLevel: 24, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_paper_cups', storeId: 'st_yasmine', name: 'Paper cups', category: 'packaging', baseUnit: 'piece', packages: [{ id: 'pkg_cups_50', label: 'Pack of 50', baseQtyPerPackage: 50 }], onHand: 0, reorderLevel: 100, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_lids', storeId: 'st_yasmine', name: 'Cup lids', category: 'packaging', baseUnit: 'piece', packages: [{ id: 'pkg_lids_50', label: 'Pack of 50', baseQtyPerPackage: 50 }], onHand: 0, reorderLevel: 100, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_cakes', storeId: 'st_yasmine', name: 'Cakes', category: 'pastry', baseUnit: 'piece', packages: [{ id: 'pkg_cakes_1', label: 'Single cake', baseQtyPerPackage: 1 }], onHand: 0, reorderLevel: 6, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+  ]
+  const stockMovements: StockMovement[] = []
   const registerSessions: RegisterSession[] = []
   const tables: DiningTable[] = Array.from({ length: 8 }, (_, index) => ({
     id: `tbl_darchai_${index + 1}`,
@@ -870,6 +914,8 @@ export function buildSeed(): Database {
     users,
     categories,
     tables,
+    inventoryItems,
+    stockMovements,
     products,
     customers,
     orders,

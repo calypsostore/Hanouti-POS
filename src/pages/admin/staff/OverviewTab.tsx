@@ -6,7 +6,9 @@ import { getStaffOverviewStats } from '../../../lib/staffDetails'
 import { dateKey, fmtDate, money } from '../../../lib/utils'
 import { summarizeAttendanceDay } from '../../../lib/payroll'
 
-export default function OverviewTab({ member, db, store }: { member: User; db: Database; store: Store }) {
+export default function OverviewTab({
+  member, db, store, showPayroll = true,
+}: { member: User; db: Database; store: Store; showPayroll?: boolean }) {
   const stats = getStaffOverviewStats(db, store.id, member.id)
   const [today, setToday] = useState(() => dateKey(new Date()))
   useEffect(() => {
@@ -38,16 +40,18 @@ export default function OverviewTab({ member, db, store }: { member: User; db: D
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[17px] font-bold text-ink">{member.name}</h3>
             <Badge tone={member.active ? 'success' : 'danger'}>{member.active ? 'Active' : 'Inactive'}</Badge>
-            <Badge tone="neutral">{member.role === 'staff' && member.permissions.supervisor ? 'Shift manager' : 'Staff'}</Badge>
+            <Badge tone="neutral">{member.role === 'manager' ? 'Manager (gérant)' : member.permissions.supervisor ? 'Shift manager' : 'Staff'}</Badge>
           </div>
           <p className="mt-1 text-[12px] text-muted">@{member.username ?? '—'}</p>
         </div>
-        <div className="min-w-[150px] rounded-xl bg-cream-100/70 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">Salary</div>
-          <div className="mt-1 text-[13px] font-semibold text-ink">
-            {member.salaryType === 'none' ? 'Not set' : `${member.salaryType} · ${money(member.salaryAmount)}`}
+        {showPayroll && (
+          <div className="min-w-[150px] rounded-xl bg-cream-100/70 p-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted">Salary</div>
+            <div className="mt-1 text-[13px] font-semibold text-ink">
+              {member.salaryType === 'none' ? 'Not set' : `${member.salaryType} · ${money(member.salaryAmount)}`}
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -16,6 +16,8 @@ import {
 import { useToast } from '../../components/toast'
 import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
 import PayrollTab from './PayrollTab'
+import { can } from '../../lib/permissions'
+import { Navigate } from 'react-router-dom'
 
 const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Salary advance', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
@@ -43,6 +45,7 @@ export default function Expenses() {
 
   if (!store || !user) return null
   if (user.role === 'staff') return <PayrollTab />
+  if (user.role === 'manager' && !can(user, 'managePayroll')) return <Navigate to="/admin" replace />
 
   const expenses = db.expenses.filter((e) => e.storeId === store.id)
 

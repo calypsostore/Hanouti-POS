@@ -7,6 +7,7 @@ import { restorePrinter } from '../../lib/printer'
 import { balanceFor } from '../../lib/selectors'
 import type { Order, OrderChannel } from '../../types'
 import { useToast } from '../../components/toast'
+import { can } from '../../lib/permissions'
 import { CustomerPicker } from './CustomerPicker'
 import { PaymentModal } from './PaymentModal'
 import { POSHeader } from './POSHeader'
@@ -265,7 +266,7 @@ export default function POS() {
           setCustomerOpen(false)
         }}
         allowCredit={canUseCredit}
-        isAdmin={user.role === 'admin'}
+        isAdmin={can(user, 'voidOrders')}
       />
 
       <ProductOptionsModal

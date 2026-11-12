@@ -1,6 +1,7 @@
 import type {
-  AttendanceStatus, BusinessType, Category, Customer, Database, Order, OrderChannel, OrderItem,
-  OpenOrder, PaymentMethod, Product, SalaryType, Store, StoreSettings, StoreStatus, User,
+  AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
+  Order, OrderChannel, OrderItem, OpenOrder, PaymentMethod, Product, SalaryType, Store,
+  StoreSettings, StoreStatus, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -32,6 +33,7 @@ export interface CreateStoreInput {
 }
 
 export interface AddStaffInput {
+  role?: 'staff' | 'manager'
   name: string
   username: string
   pin: string
@@ -41,6 +43,16 @@ export interface AddStaffInput {
   photo?: string
   permissions: User['permissions']
 }
+
+export interface InventoryItemInput {
+  name: string
+  category: InventoryCategory
+  baseUnit: InventoryUnit
+  packages: Array<{ label: string; baseQtyPerPackage: number }>
+  reorderLevel: number
+}
+
+export type InventoryItemPatch = Partial<InventoryItemInput> & { active?: boolean }
 
 export interface ManualAttendanceInput {
   date: string
@@ -127,6 +139,12 @@ export interface AppContextValue {
   addProduct: (storeId: string, data: Omit<Product, 'id' | 'storeId'>) => Result
   updateProduct: (id: string, patch: Partial<Product>) => Result
   deleteProduct: (id: string) => Result
+  addInventoryItem: (storeId: string, data: InventoryItemInput) => Result
+  updateInventoryItem: (id: string, patch: InventoryItemPatch) => Result
+  recordOpeningStock: (itemId: string, quantity: number, reason?: string) => Result
+  recordWaste: (itemId: string, quantity: number, reason: string) => Result
+  adjustStock: (itemId: string, quantityDelta: number, reason: string) => Result
+  recordStockCount: (itemId: string, actualQuantity: number, reason: string) => Result
   addStaff: (storeId: string, data: AddStaffInput) => Promise<Result>
   updateStaff: (id: string, patch: Partial<User>) => Promise<Result>
   deleteStaff: (id: string) => Result

@@ -19,6 +19,7 @@ import { AppIcon } from './AppIcon'
 import { BrandLogo } from './BrandLogo'
 import { ThemeToggle } from './ThemeToggle'
 import { Avatar, Badge } from './ui'
+import { can } from '../lib/permissions'
 
 const titles: Record<string, string> = {
   '/admin': 'Overview',
@@ -56,10 +57,10 @@ export function TopBar({
   if (!user) return null
 
   const isSuper = user.role === 'super'
-  const notices = store && user.role === 'admin' ? getDashboardNotices(db, store) : []
+  const notices = store && can(user, 'viewReports') ? getDashboardNotices(db, store) : []
   const noticeCount = notices.reduce((total, notice) => total + notice.count, 0)
   const title = titles[location.pathname] ?? BRAND_NAME
-  const profilePath = isSuper ? '/super' : user.role === 'admin' ? '/admin/settings' : '/staff'
+  const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
   const onSignOut = () => { logout(); navigate('/login') }
 
@@ -100,7 +101,7 @@ export function TopBar({
           <span>{fmtDate(now.toISOString())}</span><span>{fmtTime(now.toISOString())}</span>
         </div>
         <ThemeToggle accent={store?.settings.accent} defaultMode={store?.settings.colorMode} />
-        {user.role === 'admin' && (
+        {can(user, 'viewReports') && (
           <div className="relative">
             <button type="button" onClick={() => setNoticesOpen(!noticesOpen)} className="relative rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800" aria-label="Notifications" aria-expanded={noticesOpen}>
               <Bell className="h-4 w-4" />
@@ -123,7 +124,7 @@ export function TopBar({
             )}
           </div>
         )}
-        {user.role === 'admin' && (
+        {can(user, 'manageSettings') && (
           <Link to="/admin/settings" aria-label="Settings" title="Settings" className="rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800"><Settings className="h-4 w-4" /></Link>
         )}
         <div className="relative">

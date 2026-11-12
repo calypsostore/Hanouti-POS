@@ -12,6 +12,7 @@ import Orders from './pages/admin/Orders'
 import Customers from './pages/admin/Customers'
 import Register from './pages/admin/Register'
 import Products from './pages/admin/Products'
+import Inventory from './pages/admin/Inventory'
 import Staff from './pages/admin/Staff'
 import StaffDetail from './pages/admin/staff/StaffDetail'
 import Reports from './pages/admin/Reports'
@@ -22,6 +23,8 @@ import SetupWizard from './pages/admin/SetupWizard'
 import SuperOverview from './pages/super/Overview'
 import SuperStores from './pages/super/Stores'
 import type { Role } from './types'
+import type { Capability } from './types'
+import { can } from './lib/permissions'
 
 function homeFor(role: Role) {
   if (role === 'super') return '/super'
@@ -53,6 +56,13 @@ function RoleGate({ roles, children }: { roles: Role[]; children: React.ReactNod
   return <>{children}</>
 }
 
+function CapabilityGate({ capability, children }: { capability: Capability; children: React.ReactNode }) {
+  const { user } = useApp()
+  if (!user) return <Navigate to="/login" replace />
+  if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user.role)} replace />
+  return <>{children}</>
+}
+
 function LoginRoute() {
   const { user } = useApp()
   if (user) return <Navigate to={homeFor(user.role)} replace />
@@ -60,8 +70,11 @@ function LoginRoute() {
 }
 
 function AdminShell() {
-  const { store } = useApp()
-  if (store && !store.setupComplete) return <SetupWizard />
+  const { store, user } = useApp()
+  if (store && !store.setupComplete) {
+    if (user?.role === 'admin') return <SetupWizard />
+    return <div className="p-6 text-sm text-muted">The store owner must finish setup before the team can continue.</div>
+  }
   return <AppShell />
 }
 
@@ -109,7 +122,7 @@ export default function App() {
               path="/pos"
               element={
                 <Protected>
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
                       <POSPage />
                     </StoreSetupGate>
@@ -121,7 +134,7 @@ export default function App() {
               path="/pos/floor"
               element={
                 <Protected>
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
                       <TableFloor />
                     </StoreSetupGate>
@@ -134,7 +147,7 @@ export default function App() {
               path="/admin"
               element={
                 <Protected>
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <AdminShell />
                   </RoleGate>
                 </Protected>
@@ -143,26 +156,34 @@ export default function App() {
               <Route
                 index
                 element={
-                  <RoleGate roles={['admin']}>
+                  <CapabilityGate capability="viewReports">
                     <AdminOverview />
-                  </RoleGate>
+                  </CapabilityGate>
                 }
               />
-              <Route path="orders" element={<Orders />} />
+              <Route path="orders" element={<RoleGate roles={['admin', 'manager', 'staff']}><Orders /></RoleGate>} />
               <Route path="customers" element={<Customers />} />
               <Route path="register" element={<Register />} />
               <Route
                 path="products"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <CapabilityGate capability="manageProducts">
                     <Products />
-                  </RoleGate>
+                  </CapabilityGate>
+                }
+              />
+              <Route
+                path="inventory"
+                element={
+                  <CapabilityGate capability="manageInventory">
+                    <Inventory />
+                  </CapabilityGate>
                 }
               />
               <Route
                 path="staff"
                 element={
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <Staff />
                   </RoleGate>
                 }
@@ -170,7 +191,7 @@ export default function App() {
               <Route
                 path="staff/:id"
                 element={
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StaffDetail />
                   </RoleGate>
                 }
@@ -178,15 +199,15 @@ export default function App() {
               <Route
                 path="reports"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <CapabilityGate capability="viewReports">
                     <Reports />
-                  </RoleGate>
+                  </CapabilityGate>
                 }
               />
               <Route
                 path="expenses"
                 element={
-                  <RoleGate roles={['admin', 'staff']}>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
                     <Expenses />
                   </RoleGate>
                 }
@@ -194,17 +215,17 @@ export default function App() {
               <Route
                 path="settings"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <CapabilityGate capability="manageSettings">
                     <Settings />
-                  </RoleGate>
+                  </CapabilityGate>
                 }
               />
               <Route
                 path="logs"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <CapabilityGate capability="viewReports">
                     <ActivityLog />
-                  </RoleGate>
+                  </CapabilityGate>
                 }
               />
             </Route>

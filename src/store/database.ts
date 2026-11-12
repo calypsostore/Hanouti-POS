@@ -1,8 +1,8 @@
 import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
-  Category, Customer, Database, DiningTable, Expense, IconColor, IconName, Order,
-  OpenOrder, OrderModifier, Payroll, Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit,
-  Shift, Store, StoreSettings, User,
+  Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
+  InventoryUnit, Order, OpenOrder, OrderModifier, Payroll, Product, ProductModifierGroup,
+  ProductVariant, RegisterSession, SaleUnit, Shift, StockMovement, Store, StoreSettings, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
@@ -13,10 +13,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v16'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v18'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -61,12 +61,13 @@ const auditActions: AuditAction[] = [
   'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
   'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
   'register_closed', 'settings_updated', 'login_success', 'login_failure', 'logout', 'demo_reset',
+  'inventory_opening', 'stock_adjusted', 'waste_recorded', 'stock_counted',
 ]
 const auditEntities: AuditEntity[] = [
   'order', 'product', 'category', 'customer', 'staff', 'expense',
-  'register', 'settings', 'auth', 'payroll', 'shift', 'table',
+  'register', 'settings', 'auth', 'payroll', 'shift', 'table', 'inventory',
 ]
-const auditRoles: AuditRole[] = ['super', 'admin', 'staff', 'unknown']
+const auditRoles: AuditRole[] = ['super', 'admin', 'manager', 'staff', 'unknown']
 const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
   if (value === null || typeof value === 'boolean' || isFiniteNumber(value)) return value
   if (typeof value === 'string') return value.slice(0, 500)
@@ -101,6 +102,8 @@ const isBusinessType = (value: unknown): value is BusinessType =>
   value === 'snack' || value === 'retail' || value === 'salon'
 const isSaleUnit = (value: unknown): value is SaleUnit =>
   value === 'kg' || value === 'g' || value === 'piece'
+const isInventoryUnit = (value: unknown): value is InventoryUnit =>
+  value === 'g' || value === 'ml' || value === 'piece'
 const normalizeModifierGroup = (value: unknown): ProductModifierGroup | null => {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string' ||
       (value.selection !== 'single' && value.selection !== 'multiple') || !Array.isArray(value.options)) return null
@@ -207,12 +210,12 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
   const normalizedUsers = Array.isArray(value.users)
     ? value.users.filter((u): u is User =>
         isRecord(u) && typeof u.id === 'string' && typeof u.name === 'string' &&
-        (typeof u.email === 'string' || (u.role === 'staff' && u.email === undefined)) &&
+        (typeof u.email === 'string' || ((u.role === 'staff' || u.role === 'manager') && u.email === undefined)) &&
         typeof u.password === 'string' &&
         typeof u.pin === 'string' && typeof u.active === 'boolean' &&
         typeof u.createdAt === 'string' &&
         (u.storeId === null || typeof u.storeId === 'string') &&
-        (u.role === 'super' || u.role === 'admin' || u.role === 'staff'),
+        (u.role === 'super' || u.role === 'admin' || u.role === 'manager' || u.role === 'staff'),
       ).map((user) => {
         const seedUsername = seed.users.find((seedUser) => seedUser.id === user.id)?.username
         return normalizeUser({
@@ -292,6 +295,51 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
       other.id === table.id ||
       (other.storeId === table.storeId && other.name.toLowerCase() === table.name.toLowerCase()),
     ) === index,
+  )
+  const inventoryItems = collection<InventoryItem>('inventoryItems', (item): item is InventoryItem =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    isRecord(item) && isInventoryUnit(item.baseUnit) && typeof item.category === 'string' &&
+    isFiniteNumber(item.onHand) && item.onHand >= 0 &&
+    isFiniteNumber(item.reorderLevel) && item.reorderLevel >= 0 &&
+    isFiniteNumber(item.avgCostPerBaseUnit) && item.avgCostPerBaseUnit >= 0 &&
+    isFiniteNumber(item.lastCostPerBaseUnit) && item.lastCostPerBaseUnit >= 0 &&
+    typeof item.active === 'boolean' && Array.isArray(item.packages),
+  ).map((item) => ({
+    ...item,
+    name: item.name.trim().slice(0, 100),
+    category: item.category.trim().slice(0, 60) || 'other',
+    packages: item.packages.filter((pkg): pkg is InventoryItem['packages'][number] =>
+      isRecord(pkg) && typeof pkg.id === 'string' && typeof pkg.label === 'string' &&
+      pkg.label.trim().length > 0 && isFiniteNumber(pkg.baseQtyPerPackage) && pkg.baseQtyPerPackage > 0,
+    ).map((pkg) => ({
+      id: pkg.id,
+      label: pkg.label.trim().slice(0, 100),
+      baseQtyPerPackage: pkg.baseQtyPerPackage,
+    })),
+  })).filter((item) =>
+    stores.some((store) => store.id === item.storeId) && Boolean(item.name),
+  )
+  const movementTypes: StockMovement['type'][] = [
+    'opening', 'purchase', 'sale_use', 'staff_use', 'waste', 'adjustment',
+    'count_correction', 'void_return',
+  ]
+  const stockMovements = collection<StockMovement>('stockMovements', (item): item is StockMovement =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.itemId === 'string' &&
+    movementTypes.includes(item.type as StockMovement['type']) &&
+    isFiniteNumber(item.qtyDelta) &&
+    (item.qtyDelta !== 0 || item.type === 'count_correction') &&
+    isFiniteNumber(item.unitCostSnapshot) && item.unitCostSnapshot >= 0 &&
+    typeof item.userId === 'string' && typeof item.userName === 'string' &&
+    typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) &&
+    (item.reason === undefined || typeof item.reason === 'string') &&
+    (item.refType === undefined || typeof item.refType === 'string') &&
+    (item.refId === undefined || typeof item.refId === 'string'),
+  ).map((movement) => ({
+    ...movement,
+    unitCostSnapshot: Math.max(0, movement.unitCostSnapshot),
+    reason: typeof movement.reason === 'string' ? movement.reason.trim().slice(0, 240) || undefined : undefined,
+  })).filter((movement) =>
+    inventoryItems.some((item) => item.id === movement.itemId && item.storeId === movement.storeId),
   )
   const usedOpenTables = new Set<string>()
   const openOrders = collection<OpenOrder>('openOrders', (item): item is OpenOrder =>
@@ -424,6 +472,8 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
     tables,
+    inventoryItems,
+    stockMovements,
     openOrders,
     products: collection<Product>('products', (item): item is Product =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.categoryId === 'string' &&
@@ -532,8 +582,8 @@ export const loadDb = async (
   const source = db ?? seed
   const users = await Promise.all(source.users.map(async (user) => ({
     ...user,
-    email: user.role === 'staff' ? '' : user.email ?? '',
-    password: user.role === 'staff'
+    email: user.role === 'staff' || user.role === 'manager' ? '' : user.email ?? '',
+    password: user.role === 'staff' || user.role === 'manager'
       ? await hashRandomSecret()
       : user.password
         ? isSecretHash(user.password) ? user.password : await hashSecret(user.password)

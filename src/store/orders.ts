@@ -6,6 +6,7 @@ import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
+import { can } from '../lib/permissions'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -303,10 +304,11 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (initialOrder.status === 'void') return { ok: false, error: 'This order is already void.' }
       let authorizer: User | null = actor
       let verifiedAdminId: string | null = null
-      if (actor.role !== 'admin') {
+      if (actor.role !== 'admin' && !can(actor, 'voidOrders')) {
         if (!managerPin?.trim()) return { ok: false, error: 'An active store admin PIN is required to void this order.' }
         const admins = current.users.filter((candidate) =>
-          candidate.storeId === initialOrder.storeId && candidate.role === 'admin' && candidate.active,
+          candidate.storeId === initialOrder.storeId && candidate.active &&
+          (candidate.role === 'admin' || can(candidate, 'voidOrders')),
         )
         authorizer = null
         for (const admin of admins) {
@@ -324,7 +326,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (verifiedAdminId) {
         authorizer = dbRef.current.users.find((candidate) =>
           candidate.id === verifiedAdminId && candidate.storeId === latestOrder.storeId &&
-          candidate.role === 'admin' && candidate.active,
+          candidate.active && (candidate.role === 'admin' || can(candidate, 'voidOrders')),
         ) ?? null
       } else {
         authorizer = latestActor.actor

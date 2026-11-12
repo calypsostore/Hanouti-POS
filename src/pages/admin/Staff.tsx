@@ -15,6 +15,9 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import type { User } from '../../types'
+import type { Capability } from '../../types'
+import { can, MANAGER_DEFAULT_PERMISSIONS } from '../../lib/permissions'
+import { defaultPermissions } from '../../lib/defaults'
 import {
   Avatar,
   Badge,
@@ -34,6 +37,7 @@ import { isValidUsername, suggestStaffUsername } from '../../lib/staff'
 import { getStaffSalesThisMonth } from '../../lib/staffDetails'
 
 type StaffForm = {
+  role: 'staff' | 'manager'
   name: string
   username: string
   pin: string
@@ -53,7 +57,9 @@ export default function Staff() {
   const [loginDetails, setLoginDetails] = useState<{ name: string; username: string; pin: string } | null>(null)
 
   if (!user) return null
-  const canManageStaff = user.role === 'admin'
+  const canManageStaff = can(user, 'manageStaff')
+  const canManagePayroll = can(user, 'managePayroll')
+  const canChangeRoles = user.role === 'admin'
   const canOpenStaffDetails = canManageStaff || (user.role === 'staff' && user.permissions.supervisor)
   if (!canOpenStaffDetails) return <Navigate to="/staff" replace />
   if (!store) return null
@@ -169,6 +175,8 @@ export default function Staff() {
                         <Badge tone="dark">
                           <Crown className="h-2.5 w-2.5" /> Admin
                         </Badge>
+                      ) : m.role === 'manager' ? (
+                        <Badge tone="accent">Manager (gérant)</Badge>
                       ) : (
                         <Badge tone="neutral">Staff</Badge>
                       )}
@@ -192,7 +200,9 @@ export default function Staff() {
                       Salary
                     </div>
                     <div className="text-[13px] font-bold tabular">
-                      {m.role !== 'staff' || m.salaryType === 'none'
+                      {m.role !== 'staff' || (user.role === 'manager' && !canManagePayroll)
+                        ? user.role === 'manager' && m.role === 'staff' ? 'Restricted' : 'Not set'
+                        : m.salaryType === 'none'
                         ? 'Not set'
                         : `${m.salaryType} · ${money(m.salaryAmount)}`}
                     </div>
@@ -266,26 +276,36 @@ export default function Staff() {
           isSelf={editor.member?.id === user.id}
           storeSlug={store.slug}
           users={db.users}
+          canChangeRoles={canChangeRoles && editor.member?.role !== 'admin'}
+          canManagePayroll={canManagePayroll}
           onClose={() => setEditor({ open: false })}
           onSave={async (data) => {
             if (editor.member) {
-              const patch = editor.member.role === 'staff'
-                ? data
-                : {
-                    name: data.name,
-                    username: data.username,
-                    pin: data.pin,
-                    photo: data.photo,
-                    active: data.active,
-                    permissions: data.permissions,
-                  }
+              const patch = {
+                ...(editor.member.role === 'admin'
+                  ? {
+                      name: data.name,
+                      username: data.username,
+                      pin: data.pin,
+                      photo: data.photo,
+                      active: data.active,
+                      permissions: data.permissions,
+                    }
+                  : {
+                      ...data,
+                      ...(canChangeRoles ? { role: data.role } : {}),
+                      ...(data.role === 'manager'
+                        ? { salaryType: 'none' as const, salaryAmount: 0 }
+                        : {}),
+                    }),
+              }
               const result = await updateStaff(editor.member.id, patch)
               if (!result.ok) {
                 push(result.error, 'error')
                 return
               }
               push('Team member updated')
-              if (data.pin && editor.member.role === 'staff') {
+              if (data.pin && (editor.member.role === 'staff' || editor.member.role === 'manager')) {
                 setLoginDetails({ name: data.name, username: data.username, pin: data.pin })
               }
             } else {
@@ -344,6 +364,8 @@ function StaffEditor({
   isSelf,
   storeSlug,
   users,
+  canChangeRoles,
+  canManagePayroll,
   onClose,
   onSave,
 }: {
@@ -351,6 +373,8 @@ function StaffEditor({
   isSelf?: boolean
   storeSlug: string
   users: User[]
+  canChangeRoles: boolean
+  canManagePayroll: boolean
   onClose: () => void
   onSave: (data: StaffForm) => void
 }) {
@@ -361,21 +385,15 @@ function StaffEditor({
   const [pin, setPin] = useState('')
   const [photo, setPhoto] = useState(member?.photo)
   const [active, setActive] = useState(member?.active ?? true)
+  const [role, setRole] = useState<'staff' | 'manager'>(member?.role === 'manager' ? 'manager' : 'staff')
   const [salaryType, setSalaryType] = useState<User['salaryType']>(member?.salaryType ?? 'none')
   const [salaryAmount, setSalaryAmount] = useState(String(member?.salaryAmount ?? 0))
-  const [permissions, setPermissions] = useState(member?.permissions ?? {
-    discount: false,
-    credit: true,
-    settle: false,
-    reports: false,
-    register: false,
-    supervisor: false,
-  })
+  const [permissions, setPermissions] = useState(member?.permissions ?? defaultPermissions('staff'))
 
   const valid =
     !!name.trim() &&
     isValidUsername(username) &&
-    (salaryType === 'none' || (Number.isFinite(Number(salaryAmount)) && Number(salaryAmount) > 0)) &&
+    (role === 'manager' || salaryType === 'none' || (Number.isFinite(Number(salaryAmount)) && Number(salaryAmount) > 0)) &&
     (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin))
 
   return (
@@ -394,12 +412,13 @@ function StaffEditor({
             onClick={() =>
               onSave({
                 name: name.trim(),
+                role,
                 username,
                 pin,
                 photo,
                 active,
-                salaryType,
-                salaryAmount: salaryType === 'none' ? 0 : Number(salaryAmount),
+                salaryType: role === 'manager' ? 'none' : salaryType,
+                salaryAmount: role === 'manager' || salaryType === 'none' ? 0 : Number(salaryAmount),
                 permissions,
               })
             }
@@ -414,6 +433,36 @@ function StaffEditor({
           <Field label="Full name" className="sm:col-span-2">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amine Jebali" autoFocus />
           </Field>
+          {canChangeRoles && (
+            <Field label="Role">
+              <Select
+                value={role}
+                onChange={(event) => {
+                  const nextRole = event.target.value === 'manager' ? 'manager' : 'staff'
+                  setRole(nextRole)
+                  setPermissions((current) => nextRole === 'manager'
+                    ? { ...current, ...MANAGER_DEFAULT_PERMISSIONS }
+                    : {
+                        ...current,
+                        manageInventory: false,
+                        recordPurchases: false,
+                        viewCosts: false,
+                        manageStaffAllowances: false,
+                        approveOverrides: false,
+                        viewReports: false,
+                        manageProducts: false,
+                        voidOrders: false,
+                        manageStaff: false,
+                        manageSettings: false,
+                        managePayroll: false,
+                      })
+                }}
+              >
+                <option value="staff">Staff</option>
+                <option value="manager">Manager (gérant)</option>
+              </Select>
+            </Field>
+          )}
           <Field label="Username" hint="3–24 lowercase letters, digits, dots, underscores or hyphens">
             <div className="flex gap-2">
               <Input
@@ -452,7 +501,7 @@ function StaffEditor({
 
         <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
 
-        {(!member || member.role === 'staff') && (
+        {role === 'staff' && canManagePayroll && (
           <div className="grid gap-3.5 sm:grid-cols-2">
             <Field label="Salary type">
               <Select value={salaryType} onChange={(event) => setSalaryType(event.target.value as User['salaryType'])}>
@@ -476,7 +525,9 @@ function StaffEditor({
         )}
 
         <div className="rounded-xl border border-line bg-white p-3.5">
-          <div className="mb-2 text-[12.5px] font-semibold text-ink">Permissions</div>
+          <div className="mb-2 text-[12.5px] font-semibold text-ink">
+            {role === 'manager' ? 'Manager capabilities' : 'Permissions'}
+          </div>
           <div className="space-y-3">
             <Toggle
               checked={permissions.discount}
@@ -514,6 +565,26 @@ function StaffEditor({
               label="Shift supervisor"
               description="Trusted with the team: sees every register session and the whole team's sales, and can close sessions opened by others."
             />
+            {role === 'manager' && ([
+              ['manageInventory', 'Manage inventory'],
+              ['recordPurchases', 'Record purchases'],
+              ['viewCosts', 'View costs'],
+              ['manageStaffAllowances', 'Manage staff allowances'],
+              ['approveOverrides', 'Approve allowance overrides'],
+              ['viewReports', 'View reports'],
+              ['manageProducts', 'Manage products'],
+              ['voidOrders', 'Void orders'],
+              ['manageStaff', 'Manage staff'],
+              ['manageSettings', 'Manage store settings'],
+              ['managePayroll', 'Manage payroll'],
+            ] as Array<[Capability, string]>).map(([capability, label]) => (
+              <Toggle
+                key={capability}
+                checked={permissions[capability] === true}
+                onChange={(enabled) => setPermissions((current) => ({ ...current, [capability]: enabled }))}
+                label={label}
+              />
+            ))}
           </div>
         </div>
 

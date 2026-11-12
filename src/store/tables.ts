@@ -26,10 +26,10 @@ const validateTable = (input: DiningTableInput): { ok: true; name: string } | { 
 }
 
 export function useTablesSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireAdmin } = dependencies
+  const { dbRef, commitDb, requireCapability } = dependencies
 
   const addTable = useCallback<AppContextValue['addTable']>((storeId, data) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
     const validated = validateTable(data)
     if (!validated.ok) return validated
@@ -59,13 +59,13 @@ export function useTablesSlice(dependencies: StoreSliceDependencies) {
       after: tableSnapshot(table),
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const updateTable = useCallback<AppContextValue['updateTable']>((id, patch) => {
     const current = dbRef.current
     const table = current.tables.find((candidate) => candidate.id === id)
     if (!table) return { ok: false, error: 'Table not found.' }
-    const actorResult = requireAdmin(table.storeId)
+    const actorResult = requireCapability(table.storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
     const validated = validateTable({
       name: patch.name ?? table.name,
@@ -124,13 +124,13 @@ export function useTablesSlice(dependencies: StoreSliceDependencies) {
       after: tableSnapshot(updated),
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const deleteTable = useCallback<AppContextValue['deleteTable']>((id) => {
     const current = dbRef.current
     const table = current.tables.find((candidate) => candidate.id === id)
     if (!table) return { ok: false, error: 'Table not found.' }
-    const actorResult = requireAdmin(table.storeId)
+    const actorResult = requireCapability(table.storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
     if (current.openOrders.some((order) => order.storeId === table.storeId && order.tableId === table.id)) {
       return { ok: false, error: 'Move or close the open order before removing this table.' }
@@ -152,7 +152,7 @@ export function useTablesSlice(dependencies: StoreSliceDependencies) {
       after: hasOrders ? tableSnapshot(updated) : undefined,
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   return { addTable, updateTable, deleteTable }
 }

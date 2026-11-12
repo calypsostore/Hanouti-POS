@@ -1,4 +1,5 @@
-import type { PayrollSettings, PrinterSettings, Role, User } from '../types'
+import type { Capability, PayrollSettings, PrinterSettings, Role, User } from '../types'
+import { MANAGER_DEFAULT_PERMISSIONS } from './permissions'
 import { round } from './pricing-utils'
 import { isValidUsername, normalizeUsername } from './staff'
 
@@ -50,12 +51,16 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   reports: role !== 'staff',
   register: role !== 'staff',
   supervisor: role !== 'staff',
+  ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
 
 /** Fill in fields that were added after a database version was released. */
 export const normalizeUser = (u: User): User => {
   const base = defaultPermissions(u.role)
   const p = u.permissions ?? base
+  const capability = (name: Capability) => typeof p[name] === 'boolean'
+    ? p[name]
+    : u.role === 'manager' && MANAGER_DEFAULT_PERMISSIONS[name]
   const enteredUsername = typeof u.username === 'string' ? normalizeUsername(u.username) : ''
   const emailName = u.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '-') ?? ''
   const fallbackName = `user-${u.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 19)}`
@@ -66,7 +71,7 @@ export const normalizeUser = (u: User): User => {
       : fallbackName
   return {
     ...u,
-    email: u.role === 'staff' ? '' : u.email ?? '',
+    email: u.role === 'staff' || u.role === 'manager' ? '' : u.email ?? '',
     username,
     salaryType: u.salaryType === 'daily' || u.salaryType === 'monthly' ? u.salaryType : 'none',
     salaryAmount: typeof u.salaryAmount === 'number' && Number.isFinite(u.salaryAmount)
@@ -82,6 +87,17 @@ export const normalizeUser = (u: User): User => {
       reports: typeof p.reports === 'boolean' ? p.reports : base.reports,
       register: typeof p.register === 'boolean' ? p.register : base.register,
       supervisor: typeof p.supervisor === 'boolean' ? p.supervisor : base.supervisor,
+      manageInventory: capability('manageInventory'),
+      recordPurchases: capability('recordPurchases'),
+      viewCosts: capability('viewCosts'),
+      manageStaffAllowances: capability('manageStaffAllowances'),
+      approveOverrides: capability('approveOverrides'),
+      viewReports: capability('viewReports'),
+      manageProducts: capability('manageProducts'),
+      voidOrders: capability('voidOrders'),
+      manageStaff: capability('manageStaff'),
+      manageSettings: capability('manageSettings'),
+      managePayroll: capability('managePayroll'),
     },
   }
 }

@@ -47,7 +47,7 @@ const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => (
 })
 
 export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
-  const { dbRef, commitDb, requireActor, requireAdmin, userIdRef, setUserId } = dependencies
+  const { dbRef, commitDb, requireActor, requireAdmin, requireCapability, userIdRef, setUserId } = dependencies
   const addExpense = useCallback<AppContextValue['addExpense']>((storeId, data) => {
     const actorResult = requireAdmin(storeId)
     if (!actorResult.ok) return actorResult
@@ -141,7 +141,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
   }, [commitDb, requireAdmin])
 
   const updateSettings = useCallback<AppContextValue['updateSettings']>((storeId, patch) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
     if (patch.features) {
       const featureValues = Object.values(patch.features)
@@ -177,10 +177,10 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       after: changes.after,
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const completeBusinessSetup = useCallback<AppContextValue['completeBusinessSetup']>((storeId, businessType) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireCapability(storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
     if (!['cafe', 'restaurant', 'bakery', 'snack', 'retail', 'salon'].includes(businessType)) {
       return { ok: false, error: 'Choose a supported business type.' }
@@ -255,7 +255,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       return logged
     })
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireCapability])
 
   const createStore = useCallback<AppContextValue['createStore']>(async (data: CreateStoreInput) => {
     const actorResult = requireActor()

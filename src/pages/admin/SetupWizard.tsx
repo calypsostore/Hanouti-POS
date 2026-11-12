@@ -33,7 +33,7 @@ export default function SetupWizard() {
       return
     }
     push('Business setup saved')
-    navigate('/admin', { replace: true })
+    navigate('/admin/inventory', { replace: true })
   }
 
   return (
@@ -90,7 +90,7 @@ export default function SetupWizard() {
           </div>
         </Card>
         <div className="mt-4 flex items-center justify-center gap-1 text-[11px] text-muted">
-          <Check className="h-3 w-3 text-emerald-600" /> You can adjust features and receipt branding later in Settings.
+          <Check className="h-3 w-3 text-emerald-600" /> After setup, add ingredients and opening stock in Inventory; features and branding stay editable in Settings.
         </div>
       </div>
     </div>
