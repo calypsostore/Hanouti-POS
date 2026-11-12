@@ -1,6 +1,6 @@
 import type {
-  BusinessType, Category, Customer, Database, Order, OrderChannel, OrderItem,
-  PaymentMethod, Product, Store, StoreSettings, StoreStatus, User,
+  AttendanceStatus, BusinessType, Category, Customer, Database, Order, OrderChannel, OrderItem,
+  PaymentMethod, Product, SalaryType, Store, StoreSettings, StoreStatus, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -34,8 +34,24 @@ export interface AddStaffInput {
   username: string
   pin: string
   active: boolean
+  salaryType: SalaryType
+  salaryAmount: number
   photo?: string
   permissions: User['permissions']
+}
+
+export interface ManualAttendanceInput {
+  date: string
+  status: AttendanceStatus
+  clockIn?: string
+  clockOut?: string
+  note?: string
+}
+
+export interface AddAdvanceInput {
+  amount: number
+  date: string
+  note: string
 }
 
 export interface AppContextValue {
@@ -70,6 +86,9 @@ export interface AppContextValue {
   addExpense: (storeId: string, data: { category: string; note: string; amount: number; date: string }) => Result
   updateExpense: (id: string, data: { category: string; note: string; amount: number; date: string }) => Result
   deleteExpense: (id: string) => Result
+  addAdvance: (storeId: string, userId: string, data: AddAdvanceInput) => Result
+  paySalary: (storeId: string, userId: string, month: string) => Result
+  saveManualAttendance: (storeId: string, userId: string, data: ManualAttendanceInput) => Result
   updateSettings: (storeId: string, patch: Partial<StoreSettings>) => Result
   completeBusinessSetup: (storeId: string, businessType: BusinessType) => Result
   createStore: (data: CreateStoreInput) => Promise<Result>

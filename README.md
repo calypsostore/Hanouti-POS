@@ -62,11 +62,16 @@ The login screen has one-click demo buttons for the first three.
   orders and take payments; only admins can edit profiles or remove customers.
 - Products and categories: emoji icons, pricing, cost/margin, stock tracking,
   active toggles
-- Team: email/password + 4-digit PIN, roles, granular permissions (discounts,
-  tabs, settlements, register, reports, shift supervisor), activation
+- Team: staff username + PIN logins, salary type/amount, roles, granular
+  permissions (discounts, tabs, settlements, register, reports, shift supervisor),
+  activation; administrators keep email/password sign-in
 - Reports: today / week / month / year, sales chart, payment split, top
   products, categories, staff performance, tab charges vs settlements, expenses
 - Expenses: add/edit/delete, monthly totals, category breakdown, CSV export
+- Payroll: daily or monthly staff salary, automatic login/logout attendance,
+  manual attendance corrections, open salary advances and net salary payments.
+  Advances and salary payouts create separate expenses; staff can view only
+  their own attendance and advances. Records are browser-local demo data.
 - **Cash register (X/Z)**: X report any time without closing; Z closing with
   counted cash and cash-difference; sessions are unique and become immutable
   once closed; full Z history can be viewed and re-printed exactly as closed.

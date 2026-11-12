@@ -5,7 +5,7 @@ import type { Store, StoreSettings } from '../../../types'
 import { Button, Card, Modal, Segmented } from '../../../components/ui'
 import { PrintModal } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
-import { DEFAULT_PRINTER } from '../../../lib/defaults'
+import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../../../lib/defaults'
 import { buildTestLines, linesToEscpos } from '../../../lib/escpos'
 import { connectPrinter, disconnectPrinter, onPrinterState, printerState as readPrinterState } from '../../../lib/printer'
 import type { PrinterState } from '../../../lib/printer'
@@ -49,6 +49,7 @@ export default function SettingsPage() {
         colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
         features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
+        payroll: { ...DEFAULT_PAYROLL_SETTINGS },
       },
   )
   const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)

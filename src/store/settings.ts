@@ -4,7 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
+import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
@@ -148,6 +148,15 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       if (featureValues.length !== 4 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
         return { ok: false, error: 'Business feature settings must be enabled or disabled.' }
       }
+    }
+    if (patch.payroll) {
+      const { workingDaysPerMonth, fullDayHours, halfDayHours, autoCloseHours } = patch.payroll
+      if (
+        !Number.isFinite(workingDaysPerMonth) || workingDaysPerMonth < 1 || workingDaysPerMonth > 31 ||
+        !Number.isFinite(fullDayHours) || fullDayHours < 0.25 || fullDayHours > 24 ||
+        !Number.isFinite(halfDayHours) || halfDayHours < 0.25 || halfDayHours > fullDayHours ||
+        !Number.isFinite(autoCloseHours) || autoCloseHours < 0.25 || autoCloseHours > 168
+      ) return { ok: false, error: 'Enter valid payroll day and hour settings.' }
     }
     const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
     if (!store) return { ok: false, error: 'Store not found.' }
@@ -296,6 +305,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       pin,
       role: 'admin',
       active: true,
+      salaryType: 'none',
+      salaryAmount: 0,
       createdAt: new Date().toISOString(),
       permissions: defaultPermissions('admin'),
     }
@@ -330,6 +341,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
         features: template.features,
+        payroll: { ...DEFAULT_PAYROLL_SETTINGS },
       },
     }
     commitDb((prev) => addLog({

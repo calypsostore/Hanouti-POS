@@ -1,19 +1,22 @@
 import type {
-  AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, Category, Customer, Database, Expense, IconColor, IconName, Order, OrderModifier,
-  Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit, Store, StoreSettings, User,
+  Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
+  Category, Customer, Database, Expense, IconColor, IconName, Order,
+  OrderModifier, Payroll, Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit,
+  Store, StoreSettings, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { normalizePrinter, normalizeUser } from '../lib/defaults'
+import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
 import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
+import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v12'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v13'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -188,6 +191,9 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
               ? s.settings.printer as StoreSettings['printer']
               : undefined,
           ),
+          payroll: normalizePayrollSettings(
+            isRecord(s.settings.payroll) ? s.settings.payroll as Partial<StoreSettings['payroll']> : undefined,
+          ),
         },
       })})
     : []
@@ -269,6 +275,44 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     typeof item.date === 'string' && typeof item.category === 'string' &&
     typeof item.createdBy === 'string',
   )
+  const attendance = collection<Attendance>('attendance', (item): item is Attendance =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.userId === 'string' &&
+    typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date) &&
+    typeof item.clockIn === 'string' && Number.isFinite(Date.parse(item.clockIn)) &&
+    typeof item.lastSeen === 'string' && Number.isFinite(Date.parse(item.lastSeen)) &&
+    (item.clockOut === undefined || (typeof item.clockOut === 'string' && Number.isFinite(Date.parse(item.clockOut)))) &&
+    (item.status === 'present' || item.status === 'half' || item.status === 'absent') &&
+    (item.source === 'auto' || item.source === 'manual'),
+  ).map((item) => ({
+    ...item,
+    note: typeof item.note === 'string' ? item.note.slice(0, 500) : undefined,
+  }))
+  const advances = collection<Advance>('advances', (item): item is Advance =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.userId === 'string' &&
+    isFiniteNumber(item.amount) && item.amount > 0 && typeof item.date === 'string' &&
+    Number.isFinite(Date.parse(item.date)) && (item.status === 'open' || item.status === 'deducted') &&
+    (item.payrollId === undefined || typeof item.payrollId === 'string'),
+  ).map((item) => ({
+    ...item,
+    amount: round(item.amount),
+    note: typeof item.note === 'string' ? item.note.slice(0, 500) : '',
+  }))
+  const payrolls = collection<Payroll>('payrolls', (item): item is Payroll =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.userId === 'string' &&
+    typeof item.month === 'string' && /^\d{4}-\d{2}$/.test(item.month) &&
+    isFiniteNumber(item.daysWorked) && item.daysWorked >= 0 &&
+    isFiniteNumber(item.earned) && item.earned >= 0 &&
+    isFiniteNumber(item.advancesDeducted) && item.advancesDeducted >= 0 &&
+    isFiniteNumber(item.netPaid) && item.netPaid >= 0 &&
+    typeof item.paidAt === 'string' && Number.isFinite(Date.parse(item.paidAt)) &&
+    typeof item.paidBy === 'string',
+  ).map((item) => ({
+    ...item,
+    daysWorked: round(item.daysWorked),
+    earned: round(item.earned),
+    advancesDeducted: round(item.advancesDeducted),
+    netPaid: round(item.netPaid),
+  }))
   const auditCounts = new Map<string, number>()
   const auditLogs = collection<AuditLog>('auditLogs', isAuditLog).map((log) => ({
     ...log,
@@ -325,6 +369,9 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     orders,
     ledger,
     expenses,
+    attendance,
+    advances,
+    payrolls,
     registerSessions: collection<RegisterSession>('registerSessions', (item): item is RegisterSession =>
       hasId(item) && typeof item.storeId === 'string' &&
       (item.status === 'open' || item.status === 'closed') && typeof item.openedAt === 'string' &&

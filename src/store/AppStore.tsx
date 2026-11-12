@@ -8,6 +8,7 @@ import { useOrdersSlice } from './orders'
 import { useRegisterSlice } from './register'
 import { useSettingsSlice } from './settings'
 import { useStaffSlice } from './staff'
+import { usePayrollSlice } from './payroll'
 import { useDatabase, useActorGuards } from './runtime'
 import type { AppContextValue } from './types'
 
@@ -33,6 +34,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const catalog = useCatalogSlice(dependencies)
   const customers = useCustomersSlice(dependencies)
   const staff = useStaffSlice(dependencies)
+  const payroll = usePayrollSlice(dependencies)
+  const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
   const { db } = database
   const { userId } = auth
@@ -44,6 +47,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => (user?.storeId ? db.stores.find((candidate) => candidate.id === user.storeId) ?? null : null),
     [db.stores, user],
   )
+  useEffect(() => {
+    if (!database.ready || database.loadError) return
+    const updateAttendance = () => {
+      if (user?.role === 'staff') heartbeatAttendance(user.id)
+      else reconcileAttendance()
+    }
+    updateAttendance()
+    const interval = window.setInterval(updateAttendance, 60_000)
+    return () => window.clearInterval(interval)
+  }, [
+    database.loadError,
+    database.ready,
+    heartbeatAttendance,
+    reconcileAttendance,
+    user?.id,
+    user?.role,
+  ])
   useEffect(() => {
     applyColorMode(store?.settings.colorMode ?? 'light')
     applyAccent(store?.settings.accent ?? '7anouti')
@@ -63,6 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...catalog,
     ...customers,
     ...staff,
+    ...payroll,
     ...settings,
   }
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

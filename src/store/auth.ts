@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../types'
 import { verifySecret } from '../lib/hash'
+import { clockInAttendance, clockOutAttendance } from '../lib/payroll'
 import { addLog } from './audit'
 import type { Result } from './types'
 import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
@@ -152,13 +153,16 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         recordFailure(needle, found)
         return { ok: false, error: 'This store is suspended. Contact your manager.' }
       }
-      commitDb((prev) => addLog(prev, found, {
-        storeId: store.id,
-        action: 'login_success',
-        entity: 'auth',
-        entityId: found.id,
-        summary: `Signed in with username ${needle.slice(0, 254)}`,
-      }))
+      commitDb((prev) => {
+        const logged = addLog(prev, found, {
+          storeId: store.id,
+          action: 'login_success',
+          entity: 'auth',
+          entityId: found.id,
+          summary: `Signed in with username ${needle.slice(0, 254)}`,
+        })
+        return found.role === 'staff' ? clockInAttendance(logged, found) : logged
+      })
       userIdRef.current = found.id
       setSessionUserId(found.id)
       return { ok: true }
@@ -169,13 +173,16 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
   const logout = useCallback(() => {
     const actor = dbRef.current.users.find((candidate) => candidate.id === userIdRef.current)
     if (actor) {
-      commitDb((prev) => addLog(prev, actor, {
-        storeId: actor.storeId ?? 'system',
-        action: 'logout',
-        entity: 'auth',
-        entityId: actor.id,
-        summary: 'Logged out',
-      }))
+      commitDb((prev) => {
+        const logged = addLog(prev, actor, {
+          storeId: actor.storeId ?? 'system',
+          action: 'logout',
+          entity: 'auth',
+          entityId: actor.id,
+          summary: 'Logged out',
+        })
+        return actor.role === 'staff' ? clockOutAttendance(logged, actor) : logged
+      })
     }
     userIdRef.current = null
     setSessionUserId(null)

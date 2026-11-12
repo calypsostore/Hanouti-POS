@@ -164,7 +164,7 @@ export default function App() {
               <Route
                 path="expenses"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <RoleGate roles={['admin', 'staff']}>
                     <Expenses />
                   </RoleGate>
                 }

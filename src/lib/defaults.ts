@@ -1,4 +1,5 @@
-import type { PrinterSettings, Role, User } from '../types'
+import type { PayrollSettings, PrinterSettings, Role, User } from '../types'
+import { round } from './pricing-utils'
 import { isValidUsername, normalizeUsername } from './staff'
 
 export const DEFAULT_PRINTER: PrinterSettings = {
@@ -8,6 +9,38 @@ export const DEFAULT_PRINTER: PrinterSettings = {
   connection: 'webserial',
   baudRate: 9600,
   kitchenTicket: false,
+}
+
+export const DEFAULT_PAYROLL_SETTINGS = {
+  workingDaysPerMonth: 26,
+  fullDayHours: 6,
+  halfDayHours: 3,
+  autoCloseHours: 14,
+}
+
+export const normalizePayrollSettings = (value?: Partial<PayrollSettings>): PayrollSettings => {
+  const workingDaysPerMonth = value?.workingDaysPerMonth
+  const fullDayHours = value?.fullDayHours
+  const halfDayHours = value?.halfDayHours
+  const autoCloseHours = value?.autoCloseHours
+  const validNumber = (n: unknown, min: number, max: number): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max
+  const normalizedFullDay = validNumber(fullDayHours, 0.25, 24)
+    ? fullDayHours
+    : DEFAULT_PAYROLL_SETTINGS.fullDayHours
+  const normalizedHalfDay = validNumber(halfDayHours, 0.25, normalizedFullDay)
+    ? halfDayHours
+    : Math.min(DEFAULT_PAYROLL_SETTINGS.halfDayHours, normalizedFullDay)
+  return {
+    workingDaysPerMonth: validNumber(workingDaysPerMonth, 1, 31)
+      ? workingDaysPerMonth
+      : DEFAULT_PAYROLL_SETTINGS.workingDaysPerMonth,
+    fullDayHours: normalizedFullDay,
+    halfDayHours: normalizedHalfDay,
+    autoCloseHours: validNumber(autoCloseHours, 0.25, 168)
+      ? autoCloseHours
+      : DEFAULT_PAYROLL_SETTINGS.autoCloseHours,
+  }
 }
 
 export const defaultPermissions = (role: Role): User['permissions'] => ({
@@ -35,6 +68,10 @@ export const normalizeUser = (u: User): User => {
     ...u,
     email: u.role === 'staff' ? '' : u.email ?? '',
     username,
+    salaryType: u.salaryType === 'daily' || u.salaryType === 'monthly' ? u.salaryType : 'none',
+    salaryAmount: typeof u.salaryAmount === 'number' && Number.isFinite(u.salaryAmount)
+      ? round(Math.max(0, u.salaryAmount))
+      : 0,
     photo: typeof u.photo === 'string' && u.photo.startsWith('data:image/') && u.photo.length <= 307200
       ? u.photo
       : undefined,

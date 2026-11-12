@@ -17,7 +17,7 @@ import type {
   User,
 } from '../types'
 import { isoDaysAgo, uid } from '../lib/utils'
-import { DEFAULT_PRINTER } from '../lib/defaults'
+import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
@@ -43,6 +43,7 @@ const defaultSettings = (
   colorMode: 'light',
   printer: { ...DEFAULT_PRINTER },
   features: businessTemplate(businessType).features,
+  payroll: { ...DEFAULT_PAYROLL_SETTINGS },
   ...over,
 })
 
@@ -230,7 +231,7 @@ const stores: Store[] = [
   },
 ]
 
-const users: User[] = [
+const users = ([
   {
     id: 'u_super',
     storeId: null,
@@ -442,7 +443,11 @@ const users: User[] = [
       supervisor: true,
     },
   },
-]
+] satisfies Omit<User, 'salaryType' | 'salaryAmount'>[]).map((user) => ({
+  ...user,
+  salaryType: 'none' as const,
+  salaryAmount: 0,
+}))
 
 const customerSeed: Record<
   string,
@@ -824,5 +829,19 @@ export function buildSeed(): Database {
     }
   }
 
-  return { stores, users, categories, products, customers, orders, ledger, expenses, registerSessions, auditLogs: [] }
+  return {
+    stores,
+    users,
+    categories,
+    products,
+    customers,
+    orders,
+    ledger,
+    expenses,
+    attendance: [],
+    advances: [],
+    payrolls: [],
+    registerSessions,
+    auditLogs: [],
+  }
 }

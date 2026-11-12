@@ -44,6 +44,9 @@ export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
 export type PaymentMethod = 'cash' | 'card' | 'credit'
 export type OrderStatus = 'completed' | 'void'
 export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
+export type SalaryType = 'daily' | 'monthly' | 'none'
+export type AttendanceStatus = 'present' | 'half' | 'absent'
+export type AttendanceSource = 'auto' | 'manual'
 export type PrinterWidth = 58 | 80
 export type PrintMode = 'auto' | 'manual'
 export type PrinterConnection = 'webserial' | 'browser'
@@ -76,6 +79,13 @@ export interface PrinterSettings {
   kitchenTicket: boolean
 }
 
+export interface PayrollSettings {
+  workingDaysPerMonth: number
+  fullDayHours: number
+  halfDayHours: number
+  autoCloseHours: number
+}
+
 export interface StoreSettings {
   posMode: PosMode
   currency: string
@@ -90,6 +100,7 @@ export interface StoreSettings {
   colorMode: 'light' | 'dark'
   printer: PrinterSettings
   features: StoreFeatures
+  payroll: PayrollSettings
 }
 
 export interface Store {
@@ -124,6 +135,8 @@ export interface User {
   role: Role
   active: boolean
   photo?: string
+  salaryType: SalaryType
+  salaryAmount: number
   createdAt: string
   permissions: {
     discount: boolean
@@ -272,6 +285,43 @@ export interface Expense {
   createdBy: string
 }
 
+export interface Attendance {
+  id: string
+  storeId: string
+  userId: string
+  date: string
+  clockIn: string
+  clockOut?: string
+  lastSeen: string
+  status: AttendanceStatus
+  source: AttendanceSource
+  note?: string
+}
+
+export interface Advance {
+  id: string
+  storeId: string
+  userId: string
+  amount: number
+  date: string
+  note: string
+  status: 'open' | 'deducted'
+  payrollId?: string
+}
+
+export interface Payroll {
+  id: string
+  storeId: string
+  userId: string
+  month: string
+  daysWorked: number
+  earned: number
+  advancesDeducted: number
+  netPaid: number
+  paidAt: string
+  paidBy: string
+}
+
 export interface RegisterSnapshot {
   salesTotal: number
   cashSales: number
@@ -332,6 +382,9 @@ export interface Database {
   orders: Order[]
   ledger: LedgerEntry[]
   expenses: Expense[]
+  attendance: Attendance[]
+  advances: Advance[]
+  payrolls: Payroll[]
   registerSessions: RegisterSession[]
   auditLogs: AuditLog[]
 }

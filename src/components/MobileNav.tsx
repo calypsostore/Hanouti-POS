@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, Plus, ReceiptText, Settings, ShoppingBag, Store, Users } from 'lucide-react'
+import { BarChart3, LayoutDashboard, Plus, ReceiptText, Settings, ShoppingBag, Store, Users, Wallet } from 'lucide-react'
 import { Link, NavLink } from 'react-router-dom'
 import { useApp } from '../store/AppStore'
 import { cn } from '../lib/utils'
@@ -14,9 +14,11 @@ export function MobileNav() {
           { to: '/staff', label: 'Home', icon: LayoutDashboard, end: true },
           { to: '/pos', label: 'POS', icon: ShoppingBag },
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
-          { to: '/admin/customers', label: 'Tabs', icon: Users },
-          ...(user.permissions.register ? [{ to: '/admin/register', label: 'Register', icon: BarChart3 }] : []),
-        ].slice(0, 5)
+          { to: '/admin/expenses', label: 'Attendance', icon: Wallet },
+          ...(user.permissions.register
+            ? [{ to: '/admin/register', label: 'Register', icon: BarChart3 }]
+            : [{ to: '/admin/customers', label: 'Tabs', icon: Users }]),
+        ]
       : [
           { to: '/admin', label: 'Home', icon: LayoutDashboard, end: true },
           { to: '/pos', label: 'POS', icon: ShoppingBag },

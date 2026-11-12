@@ -3,6 +3,7 @@ import type { AuditJsonValue, User } from '../types'
 import { uid } from '../lib/utils'
 import { hashRandomSecret, hashSecret } from '../lib/hash'
 import { isValidUsername, normalizeUsername } from '../lib/staff'
+import { round } from '../lib/pricing-utils'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -14,6 +15,8 @@ const staffSnapshot = (user: User): Record<string, AuditJsonValue> => ({
   name: user.name,
   username: user.username ?? '',
   active: user.active,
+  salaryType: user.salaryType,
+  salaryAmount: user.salaryAmount,
   permissions: { ...user.permissions },
 })
 
@@ -34,6 +37,11 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       }
       if (!/^\d{4,6}$/.test(data.pin)) return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
       if (!isValidPhoto(data.photo)) return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
+      if (!['daily', 'monthly', 'none'].includes(data.salaryType) ||
+          !Number.isFinite(data.salaryAmount) || data.salaryAmount < 0 ||
+          (data.salaryType !== 'none' && data.salaryAmount <= 0)) {
+        return { ok: false, error: 'Enter a valid salary type and non-negative amount.' }
+      }
       let password: string
       let pin: string
       try {
@@ -49,6 +57,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       const member: User = {
         ...data,
         name: data.name.trim(),
+        salaryAmount: data.salaryType === 'none' ? 0 : round(data.salaryAmount),
         username,
         email: '',
         password,
@@ -102,6 +111,21 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (member.role === 'staff' && patch.password) {
       return { ok: false, error: 'Staff accounts use a PIN, not a password.' }
     }
+    if (member.role !== 'staff' && (patch.salaryType !== undefined || patch.salaryAmount !== undefined)) {
+      return { ok: false, error: 'Salary settings are only available for staff accounts.' }
+    }
+    if (patch.salaryType !== undefined && !['daily', 'monthly', 'none'].includes(patch.salaryType)) {
+      return { ok: false, error: 'Choose a valid salary type.' }
+    }
+    if (patch.salaryAmount !== undefined &&
+        (!Number.isFinite(patch.salaryAmount) || patch.salaryAmount < 0 ||
+          ((patch.salaryType ?? member.salaryType) !== 'none' && patch.salaryAmount <= 0))) {
+      return { ok: false, error: 'Salary amount must be a non-negative number.' }
+    }
+    if (member.role === 'staff' && (patch.salaryType ?? member.salaryType) !== 'none' &&
+        (patch.salaryAmount ?? member.salaryAmount) <= 0) {
+      return { ok: false, error: 'Enter a salary amount greater than zero.' }
+    }
     if (patch.password && patch.password.length < 4) {
       return { ok: false, error: 'Password must be at least 4 characters.' }
     }
@@ -118,6 +142,8 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     }
     const safePatch: Partial<User> = { ...patch }
     if (username !== undefined) safePatch.username = username
+    if (patch.salaryAmount !== undefined) safePatch.salaryAmount = round(patch.salaryAmount)
+    if (patch.salaryType === 'none') safePatch.salaryAmount = 0
     delete safePatch.id
     delete safePatch.storeId
     delete safePatch.createdAt

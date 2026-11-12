@@ -23,6 +23,7 @@ import {
   Field,
   Input,
   Modal,
+  Select,
   Toggle,
 } from '../../components/ui'
 import { ImageUpload } from '../../components/ImageUpload'
@@ -36,6 +37,8 @@ type StaffForm = {
   pin: string
   photo?: string
   active: boolean
+  salaryType: User['salaryType']
+  salaryAmount: number
   permissions: User['permissions']
 }
 
@@ -170,12 +173,17 @@ export default function Staff() {
                   </div>
                   <div>
                     <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
-                      This month
+                      Salary
                     </div>
                     <div className="text-[13px] font-bold tabular">
-                      {money(sales.reduce((a, o) => a + o.total, 0))}
+                      {m.role !== 'staff' || m.salaryType === 'none'
+                        ? 'Not set'
+                        : `${m.salaryType} · ${money(m.salaryAmount)}`}
                     </div>
                   </div>
+                </div>
+                <div className="mt-1 text-[10px] text-muted">
+                  Sales this month: {money(sales.reduce((a, o) => a + o.total, 0))}
                 </div>
 
                 <div className="mt-2.5 flex flex-wrap gap-1">
@@ -243,7 +251,17 @@ export default function Staff() {
           onClose={() => setEditor({ open: false })}
           onSave={async (data) => {
             if (editor.member) {
-              const result = await updateStaff(editor.member.id, data)
+              const patch = editor.member.role === 'staff'
+                ? data
+                : {
+                    name: data.name,
+                    username: data.username,
+                    pin: data.pin,
+                    photo: data.photo,
+                    active: data.active,
+                    permissions: data.permissions,
+                  }
+              const result = await updateStaff(editor.member.id, patch)
               if (!result.ok) {
                 push(result.error, 'error')
                 return
@@ -325,6 +343,8 @@ function StaffEditor({
   const [pin, setPin] = useState('')
   const [photo, setPhoto] = useState(member?.photo)
   const [active, setActive] = useState(member?.active ?? true)
+  const [salaryType, setSalaryType] = useState<User['salaryType']>(member?.salaryType ?? 'none')
+  const [salaryAmount, setSalaryAmount] = useState(String(member?.salaryAmount ?? 0))
   const [permissions, setPermissions] = useState(member?.permissions ?? {
     discount: false,
     credit: true,
@@ -337,6 +357,7 @@ function StaffEditor({
   const valid =
     !!name.trim() &&
     isValidUsername(username) &&
+    (salaryType === 'none' || (Number.isFinite(Number(salaryAmount)) && Number(salaryAmount) > 0)) &&
     (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin))
 
   return (
@@ -359,6 +380,8 @@ function StaffEditor({
                 pin,
                 photo,
                 active,
+                salaryType,
+                salaryAmount: salaryType === 'none' ? 0 : Number(salaryAmount),
                 permissions,
               })
             }
@@ -410,6 +433,29 @@ function StaffEditor({
         </div>
 
         <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
+
+        {(!member || member.role === 'staff') && (
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="Salary type">
+              <Select value={salaryType} onChange={(event) => setSalaryType(event.target.value as User['salaryType'])}>
+                <option value="none">Not set</option>
+                <option value="daily">Daily</option>
+                <option value="monthly">Monthly</option>
+              </Select>
+            </Field>
+            <Field label="Salary amount (DT)" hint={salaryType === 'daily' ? 'Per full day' : 'Per month'}>
+              <Input
+                type="number"
+                min={0}
+                step="0.001"
+                value={salaryAmount}
+                onChange={(event) => setSalaryAmount(event.target.value)}
+                disabled={salaryType === 'none'}
+                placeholder="0.000"
+              />
+            </Field>
+          </div>
+        )}
 
         <div className="rounded-xl border border-line bg-white p-3.5">
           <div className="mb-2 text-[12.5px] font-semibold text-ink">Permissions</div>

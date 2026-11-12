@@ -57,7 +57,7 @@ stored; no demo values are presented as production data.
   legends.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during the
-  `7anouti.db.v12` local database normalization; the legacy emoji property is
+  `7anouti.db.v13` local database normalization; the legacy emoji property is
   removed. Store logos and product images can be uploaded and resized to 256 px
   client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -81,9 +81,17 @@ stored; no demo values are presented as production data.
   admin page supports filters, before/after details, CSV export, and
   50-entry pagination. Entries are capped at 3,000 per store and remain
   browser-local demo data, not tamper-resistant audit history.
+- Payroll is available from the Expenses page: owners set staff salary type
+  and amount, review full/half/absent attendance, manually correct attendance,
+  issue advances, and pay each staff member once per month. Staff clock in on
+  login, clock out on logout, and refresh `lastSeen` each minute; stale or
+  prior-day sessions are auto-closed. Advances and net salary payouts appear
+  separately as expenses, with payroll and manual attendance changes logged.
+  Staff can view only their own attendance and advances. The workflow and
+  records remain browser-local demo behavior.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
-  settings viewport had no horizontal overflow. The local v12 database contains
+  settings viewport had no horizontal overflow. The local v13 database contains
   icon keys on every store/category/product and no remaining legacy emoji
   fields.
 - This remains a browser-local demo: image data and business records live in
@@ -107,7 +115,7 @@ stored; no demo values are presented as production data.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v12` in IndexedDB migrates the previous v11/v10 IndexedDB/localStorage
+- `7anouti.db.v13` in IndexedDB migrates the previous v12/v11/v10 IndexedDB/localStorage
   data and legacy `7anouti.db.v9`, v8, `cafepos.db.v8`, v7 and v6 databases with
   safe defaults for new fields, including staff usernames. Seed data includes
   realistic sample stores for all six business types.
@@ -115,12 +123,13 @@ stored; no demo values are presented as production data.
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
 
-### Requested feature phases 2–9 ⏳ not started
+### Requested feature phases 2–9 ⏳ partially implemented
 
 Restaurant open orders and tables; returns and labels; Tunisia VAT/fiscal
-compliance; ingredients and inventory; shifts, payroll, and trusted server-side
-activity history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
-polish remain planned work.
+compliance; ingredients and inventory; trusted server-side activity and payroll
+history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
+polish remain planned work. Browser-local payroll and attendance are implemented
+as a demo workflow, not an authoritative wage or timekeeping system.
 
 ---
 
@@ -135,12 +144,13 @@ polish remain planned work.
 | Reports | Daily/monthly charts, CSV export | + X/Z register reports (new page) |
 | Register | **None** — no session concept | X report, Z close with counted cash + difference, immutable history |
 | Activity log | Derived dashboard notices only | Append-only browser-local log, admin filters, details, CSV and pagination |
+| Payroll | None | Browser-local attendance, salary estimates, advances, and monthly salary expenses |
 | Printing | Browser print dialog only | + real ESC/POS over WebSerial (58/80 mm), test print, kitchen tickets |
 | Inventory | Product stock counters only | Unchanged (Phase 5) |
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v12`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v13`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is

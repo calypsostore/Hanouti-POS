@@ -15,14 +15,16 @@ import {
 } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
+import PayrollTab from './PayrollTab'
 
-const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Internet', 'Maintenance', 'Marketing', 'Other']
+const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Salary advance', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
 const categoryColor: Record<string, string> = {
   Rent: 'bg-accent-foreground',
   Supplies: 'bg-emerald-500',
   Utilities: 'bg-sky-500',
   Salaries: 'bg-violet-500',
+  'Salary advance': 'bg-indigo-500',
   Internet: 'bg-cyan-500',
   Maintenance: 'bg-brand-amber',
   Marketing: 'bg-rose-500',
@@ -32,6 +34,7 @@ const categoryColor: Record<string, string> = {
 export default function Expenses() {
   const { db, store, user, addExpense, updateExpense, deleteExpense } = useApp()
   const { push } = useToast()
+  const [tab, setTab] = useState<'expenses' | 'payroll'>('expenses')
   const [open, setOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Expense | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
@@ -39,6 +42,7 @@ export default function Expenses() {
   const [category, setCategory] = useState('all')
 
   if (!store || !user) return null
+  if (user.role === 'staff') return <PayrollTab />
 
   const expenses = db.expenses.filter((e) => e.storeId === store.id)
 
@@ -96,21 +100,26 @@ export default function Expenses() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-[20px] font-extrabold tracking-tight">Expenses</h2>
+          <h2 className="text-[20px] font-extrabold tracking-tight">{tab === 'expenses' ? 'Expenses' : 'Payroll'}</h2>
           <p className="mt-1 text-[13px] text-muted">
-            Rent, supplies, salaries — keep everything in one place.
+            {tab === 'expenses' ? 'Rent, supplies, salaries — keep everything in one place.' : 'Track attendance, advances and salary payments.'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={exportCsv}>
-            <Download className="h-4 w-4" /> Export
-          </Button>
-          <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
-            <Plus className="h-4 w-4" /> Add expense
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={tab === 'expenses' ? 'primary' : 'secondary'} onClick={() => setTab('expenses')}>Expenses</Button>
+          <Button size="sm" variant={tab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>
+          {tab === 'expenses' && <>
+            <Button variant="secondary" onClick={exportCsv}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
+              <Plus className="h-4 w-4" /> Add expense
+            </Button>
+          </>}
         </div>
       </div>
 
+      {tab === 'payroll' ? <PayrollTab /> : <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Month total</div>
@@ -319,6 +328,7 @@ export default function Expenses() {
           {deleteTarget ? `${deleteTarget.category} · ${money(deleteTarget.amount)}` : ''}
         </p>
       </Modal>
+      </>}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { InfoCard } from '../../../components/dashboard/InfoCard'
 import { PlanCard } from '../../../components/dashboard/PlanCard'
 import { RegisterCard } from './RegisterCard'
 import { ActivityCard } from './ActivityCard'
+import { OnDutyCard } from '../../../components/dashboard/OnDutyCard'
 
 export function DashboardRail({ now }: { now: Date }) {
   const { db, store, user } = useApp()
@@ -24,6 +25,7 @@ export function DashboardRail({ now }: { now: Date }) {
         onUpgrade={() => push('Plan changes are managed by the platform owner in this demo.', 'info')}
       />
       {canRegister && <RegisterCard db={db} store={store} now={now} />}
+      <OnDutyCard db={db} storeId={store.id} />
       <SectionCard icon={Plus} tone="amber" title="Quick actions" subtitle="Shortcuts for your workspace" bodyClassName="grid grid-cols-2 gap-2 px-4 pb-4 sm:px-5">
         <QuickActionTile icon={Plus} tone="amber" label="New sale" href="/pos" />
         <QuickActionTile icon={Package} tone="blue" label="Add product" href="/admin/products" />

@@ -60,6 +60,7 @@ export function Sidebar({
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
           { to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' },
           ...(user.permissions.register ? [{ to: '/admin/register', label: 'Register', icon: Calculator, tone: 'green' as const }] : []),
+          { to: '/admin/expenses', label: 'My attendance', icon: Wallet, tone: 'rose' },
         ] }]
       : [
           { label: 'MAIN', items: [{ to: '/admin', label: 'Overview', icon: LayoutDashboard, tone: 'blue', end: true }] },
