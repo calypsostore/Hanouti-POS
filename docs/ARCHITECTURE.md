@@ -1,4 +1,4 @@
-# Kawa POS architecture
+# 7anouti-POS architecture
 
 ## Folder map
 

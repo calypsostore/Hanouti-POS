@@ -139,7 +139,7 @@ export default function AdminOverview() {
           </Link>
           <Link
             to="/pos"
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-accent-600 px-4 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-brand-amber px-4 text-[13px] font-semibold text-brand-navy shadow-sm transition hover:bg-brand-amber-hover active:bg-brand-amber-pressed"
           >
             <Plus className="h-4 w-4" /> New sale
           </Link>
@@ -147,9 +147,9 @@ export default function AdminOverview() {
       </div>
 
       {store.status === 'trial' && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent-500/25 bg-accent-50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent-foreground/25 bg-accent-50 px-4 py-3">
           <Badge tone="accent">Trial</Badge>
-          <p className="text-[12.5px] text-accent-700">
+          <p className="text-[12.5px] text-accent-foreground">
             Your trial ends {store.trialEndsAt ? fmtDate(store.trialEndsAt) : 'soon'} — everything is
             unlocked until then.
           </p>
@@ -221,19 +221,19 @@ export default function AdminOverview() {
               <AreaChart data={trend} margin={{ top: 6, right: 4, left: -18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#B4652F" stopOpacity={0.26} />
-                    <stop offset="100%" stopColor="#B4652F" stopOpacity={0.01} />
+                    <stop offset="0%" stopColor="var(--color-brand-navy)" stopOpacity={0.26} />
+                    <stop offset="100%" stopColor="var(--color-brand-navy)" stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eee6d9" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-brand-tint)" vertical={false} />
                 <XAxis dataKey="day" {...axisProps} interval={1} />
                 <YAxis {...axisProps} width={54} tickFormatter={(v) => `${v}`} />
-                <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ stroke: '#d9c9b4' }} />
+                <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ stroke: 'var(--color-brand-amber)' }} />
                 <Area
                   type="monotone"
                   dataKey="revenue"
                   name="Revenue"
-                  stroke="#B4652F"
+                  stroke="var(--color-brand-navy)"
                   strokeWidth={2.2}
                   fill="url(#rev)"
                   dot={false}
@@ -252,7 +252,7 @@ export default function AdminOverview() {
               const meta = {
                 cash: { label: 'Cash', icon: Banknote, color: 'bg-emerald-500' },
                 card: { label: 'Card', icon: CreditCard, color: 'bg-sky-500' },
-                credit: { label: 'On tab', icon: Wallet, color: 'bg-accent-500' },
+                credit: { label: 'On tab', icon: Wallet, color: 'bg-accent-foreground' },
               }[p.method]
               return (
                 <div key={p.method}>
@@ -305,7 +305,7 @@ export default function AdminOverview() {
             </div>
             <Link
               to="/admin/orders"
-              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent-700 hover:text-accent-600"
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent-foreground hover:text-accent-foreground"
             >
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -372,7 +372,7 @@ export default function AdminOverview() {
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between px-5 pb-3 pt-5">
             <div className="flex items-center gap-2">
-              <PackageX className="h-4 w-4 text-amber-600" />
+              <PackageX className="h-4 w-4 text-accent-foreground" />
               <div>
                 <h3 className="text-[15px] font-semibold tracking-tight text-ink">Low stock</h3>
                 <p className="mt-0.5 text-[12px] text-muted">
@@ -382,7 +382,7 @@ export default function AdminOverview() {
             </div>
             <Link
               to="/admin/products"
-              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent-700 hover:text-accent-600"
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent-foreground hover:text-accent-foreground"
             >
               Manage <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -402,7 +402,7 @@ export default function AdminOverview() {
                   <span
                     className={cn(
                       'rounded-full px-2 py-0.5 text-[10.5px] font-bold',
-                      p.stock === 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700',
+                      p.stock === 0 ? 'bg-red-50 text-red-700' : 'bg-brand-amber-soft text-brand-navy',
                     )}
                   >
                     {p.stock} left

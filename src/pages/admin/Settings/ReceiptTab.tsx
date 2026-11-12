@@ -31,7 +31,7 @@ export default function ReceiptTab({
       <div className="space-y-5 lg:col-span-2">
         <Card className="p-5">
           <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-accent-600" />
+            <Palette className="h-4 w-4 text-accent-foreground" />
             <h3 className="text-[15px] font-semibold tracking-tight">Accent colour</h3>
           </div>
           <p className="mt-0.5 text-[12px] text-muted">
@@ -63,7 +63,7 @@ export default function ReceiptTab({
 
         <Card className="p-5">
           <div className="flex items-center gap-2">
-            <ReceiptText className="h-4 w-4 text-accent-600" />
+            <ReceiptText className="h-4 w-4 text-accent-foreground" />
             <h3 className="text-[15px] font-semibold tracking-tight">Receipt</h3>
           </div>
           <div className="mt-4">

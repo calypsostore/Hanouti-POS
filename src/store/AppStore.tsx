@@ -43,7 +43,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => (user?.storeId ? db.stores.find((candidate) => candidate.id === user.storeId) ?? null : null),
     [db.stores, user],
   )
-  useEffect(() => { applyAccent(store?.settings.accent ?? 'caramel') }, [store?.settings.accent])
+  useEffect(() => { applyAccent(store?.settings.accent ?? '7anouti') }, [store?.settings.accent])
 
   const value: AppContextValue = {
     db,

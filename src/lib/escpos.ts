@@ -1,6 +1,7 @@
 import type { Order, PrinterWidth, RegisterSession, RegisterSnapshot, Store } from '../types'
 import { fmtDate, fmtDateTime, fmtTime } from './utils'
 import { round } from './pricing-utils'
+import { BRAND_NAME } from './brand'
 
 /**
  * ESC/POS receipt builder.
@@ -129,6 +130,7 @@ export const buildReceiptLines = (
   const cols = columnsFor(store.settings.printer.width)
   const lines: ReceiptLine[] = []
 
+  lines.push({ text: BRAND_NAME, align: 'center', bold: true })
   lines.push({ text: store.name, align: 'center', bold: true, size: 'double' })
   lines.push({ text: store.address, align: 'center' })
   lines.push({ text: `${store.city} · ${store.phone}`, align: 'center' })
@@ -166,8 +168,8 @@ export const buildReceiptLines = (
   })
   if (order.note) lines.push({ text: `Note: ${order.note}` })
   lines.push({ text: divider(cols) })
-  lines.push({ text: store.settings.receiptFooter || 'Thank you for your visit!', align: 'center' })
-  lines.push({ text: 'Powered by Kawa POS · kawa.tn', align: 'center' })
+  lines.push({ text: store.settings.receiptFooter || `Thank you for your visit! · ${BRAND_NAME}`, align: 'center' })
+  lines.push({ text: `Powered by ${BRAND_NAME}`, align: 'center' })
   return lines
 }
 
@@ -309,7 +311,7 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
   lines.push({ text: twoCol(`${data.kind} report`, fmtDateTime(data.generatedAt), cols) })
   lines.push({ text: data.generatedBy, align: 'right' })
   lines.push({ text: '' })
-  lines.push({ text: 'Powered by Kawa POS', align: 'center' })
+  lines.push({ text: `Powered by ${BRAND_NAME}`, align: 'center' })
   return lines
 }
 
@@ -328,6 +330,6 @@ export const buildTestLines = (store: Store): ReceiptLine[] => {
     { text: 'cut below happened, the printer', align: 'left' },
     { text: 'is configured correctly.', align: 'left' },
     { text: '' },
-    { text: 'Kawa POS', align: 'center' },
+    { text: BRAND_NAME, align: 'center' },
   ]
 }

@@ -42,7 +42,7 @@ export default function SettingsPage() {
         requireCustomerForCredit: true,
         receiptFooter: '',
         lowStockThreshold: 10,
-        accent: 'caramel',
+        accent: '7anouti',
         printer: { ...DEFAULT_PRINTER },
         features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
       },

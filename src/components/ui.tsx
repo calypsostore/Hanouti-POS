@@ -9,11 +9,11 @@ type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent-600 text-white shadow-sm hover:bg-accent-700 active:translate-y-px disabled:bg-accent-600/50',
+    'bg-brand-amber text-brand-navy shadow-sm hover:bg-brand-amber-hover active:bg-brand-amber-pressed active:translate-y-px disabled:opacity-50',
   secondary:
-    'bg-white text-ink border border-line shadow-sm hover:bg-cream-100 active:translate-y-px disabled:opacity-50',
+    'border border-brand-navy bg-white text-ink shadow-sm hover:bg-brand-tint active:translate-y-px disabled:opacity-50',
   ghost: 'text-muted hover:bg-cream-200/70 hover:text-ink disabled:opacity-40',
-  danger: 'bg-danger text-white shadow-sm hover:bg-danger/90 active:translate-y-px disabled:opacity-50',
+  danger: 'bg-danger-strong text-white shadow-sm hover:brightness-90 active:translate-y-px disabled:opacity-50',
   dark: 'bg-espresso-900 text-cream-50 shadow-sm hover:bg-espresso-800 active:translate-y-px disabled:opacity-50',
   outline: 'border border-white/25 text-white hover:bg-white/10 disabled:opacity-40',
 }
@@ -41,7 +41,7 @@ export function Button({
     <button
       className={cn(
         'inline-flex items-center justify-center font-medium transition-colors duration-150 disabled:cursor-not-allowed',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 focus-visible:ring-offset-2',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber-focus focus-visible:ring-offset-2',
         buttonVariants[variant],
         buttonSizes[size],
         className,
@@ -63,7 +63,7 @@ export function Card({
 }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-2xl border border-line/80 bg-white shadow-[0_1px_2px_rgba(36,30,25,0.04)]', className)}
+      className={cn('rounded-2xl border border-line/80 bg-white shadow-[0_2px_8px_rgba(17,27,48,0.06)]', className)}
       {...rest}
     >
       {children}
@@ -97,11 +97,11 @@ type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'accent' | 'info
 
 const badgeTones: Record<BadgeTone, string> = {
   neutral: 'bg-cream-200 text-muted',
-  success: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/15',
-  warning: 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
-  danger: 'bg-red-50 text-red-700 ring-1 ring-red-600/15',
-  accent: 'bg-accent-50 text-accent-700 ring-1 ring-accent-600/15',
-  info: 'bg-sky-50 text-sky-700 ring-1 ring-sky-600/15',
+  success: 'bg-emerald-50 text-success-strong ring-1 ring-success/20',
+  warning: 'bg-brand-amber-soft text-brand-navy ring-1 ring-brand-amber/40',
+  danger: 'bg-red-50 text-danger-text ring-1 ring-danger/20',
+  accent: 'bg-accent-50 text-accent-foreground ring-1 ring-accent-foreground/25',
+  info: 'bg-sky-50 text-info-strong ring-1 ring-info/20',
   dark: 'bg-espresso-900 text-cream-50',
 }
 
@@ -134,7 +134,7 @@ export function Dot({ className }: { className?: string }) {
 /* ---------------------------------- Inputs --------------------------------- */
 
 export const inputClass =
-  'h-10 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-accent-500/60 focus:ring-4 focus:ring-accent-500/10 disabled:bg-cream-100'
+  'h-10 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-brand-amber-focus focus:ring-4 focus:ring-brand-amber-focus/20 disabled:bg-cream-100'
 
 export function Field({
   label,
@@ -216,13 +216,13 @@ export function Toggle({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative mt-0.5 h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40',
-          checked ? 'bg-accent-600' : 'bg-espresso-900/15',
+          'relative mt-0.5 h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-foreground/40',
+          checked ? 'bg-brand-amber' : 'bg-espresso-900/15',
         )}
       >
         <span
           className={cn(
-            'absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-200',
+            cn('absolute top-[3px] h-4 w-4 rounded-full shadow-sm transition-all duration-200', checked ? 'bg-brand-navy' : 'bg-white'),
             checked ? 'left-[19px]' : 'left-[3px]',
           )}
         />
@@ -240,11 +240,11 @@ export function Toggle({
 /* ---------------------------------- Avatar --------------------------------- */
 
 const avatarPalette = [
-  'bg-accent-100 text-accent-700',
+  'bg-accent-100 text-accent-foreground',
   'bg-emerald-100 text-emerald-700',
   'bg-sky-100 text-sky-700',
   'bg-violet-100 text-violet-700',
-  'bg-amber-100 text-amber-700',
+  'bg-brand-amber-soft text-brand-navy',
   'bg-rose-100 text-rose-700',
 ]
 
@@ -476,8 +476,8 @@ export function StatCard({
   className?: string
 }) {
   const tones = {
-    neutral: 'bg-cream-200 text-espresso-800',
-    accent: 'bg-accent-50 text-accent-600',
+    neutral: 'bg-cream-200 text-ink',
+    accent: 'bg-accent-50 text-accent-foreground',
     success: 'bg-emerald-50 text-emerald-600',
     danger: 'bg-red-50 text-red-500',
   }

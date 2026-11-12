@@ -143,7 +143,7 @@ export default function SuperStores() {
             <button
               key={store.id}
               onClick={() => setSelected(store.id)}
-              className="group rounded-2xl border border-line/80 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-accent-500/40 hover:shadow-[0_8px_24px_rgba(36,30,25,0.07)]"
+              className="group rounded-2xl border border-line/80 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-accent-foreground/40 hover:shadow-[0_8px_24px_rgba(17,27,48,0.08)]"
             >
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cream-100 text-2xl">
@@ -152,7 +152,7 @@ export default function SuperStores() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-[14px] font-bold text-ink">{store.name}</span>
-                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted/40 transition group-hover:text-accent-600" />
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted/40 transition group-hover:text-accent-foreground" />
                   </div>
                   <div className="truncate text-[11px] text-muted">
                     {store.city} · {store.ownerName}

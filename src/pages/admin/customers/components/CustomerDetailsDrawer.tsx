@@ -114,7 +114,7 @@ export default function CustomerDetailsDrawer({
                 <div
                   className={cn(
                     'h-full rounded-full',
-                    balance > customer.limit ? 'bg-red-400' : 'bg-accent-500',
+                    balance > customer.limit ? 'bg-red-400' : 'bg-accent-foreground',
                   )}
                   style={{ width: `${Math.min(100, (balance / customer.limit) * 100)}%` }}
                 />
@@ -153,7 +153,7 @@ export default function CustomerDetailsDrawer({
           </div>
 
           {customer.notes && (
-            <div className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-900">
+            <div className="rounded-xl bg-brand-amber-soft px-3.5 py-2.5 text-[12px] text-brand-navy">
               {customer.notes}
             </div>
           )}
@@ -181,7 +181,7 @@ export default function CustomerDetailsDrawer({
                           'flex h-8 w-8 items-center justify-center rounded-lg',
                           entry.type === 'payment'
                             ? 'bg-emerald-50 text-emerald-600'
-                            : 'bg-cream-100 text-accent-600',
+                            : 'bg-cream-100 text-accent-foreground',
                         )}
                       >
                         {entry.type === 'payment' ? (

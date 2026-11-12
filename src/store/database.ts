@@ -7,9 +7,10 @@ import { normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 
-export const DB_KEY = 'cafepos.db.v8'
-const LEGACY_DB_KEYS = ['cafepos.db.v7', 'cafepos.db.v6']
-export const SESSION_KEY = 'cafepos.session.v2'
+export const DB_KEY = '7anouti.db.v8'
+const LEGACY_DB_KEYS = ['cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
+export const SESSION_KEY = '7anouti.session.v2'
+export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -107,7 +108,9 @@ const normalizeDb = (value: unknown): Database | null => {
             : true,
           receiptFooter: typeof s.settings.receiptFooter === 'string' ? s.settings.receiptFooter : '',
           lowStockThreshold: isFiniteNumber(s.settings.lowStockThreshold) ? s.settings.lowStockThreshold : 10,
-          accent: typeof s.settings.accent === 'string' ? s.settings.accent : 'caramel',
+          accent: typeof s.settings.accent === 'string' && s.settings.accent !== 'caramel'
+            ? s.settings.accent
+            : '7anouti',
           printer: normalizePrinter(
             isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
@@ -227,20 +230,22 @@ const normalizeDb = (value: unknown): Database | null => {
 }
 
 export const loadDb = async (): Promise<Database> => {
-  let parsed: unknown = null
-  try {
-    const raw = localStorage.getItem(DB_KEY) ?? LEGACY_DB_KEYS
-      .map((key) => localStorage.getItem(key))
-      .find((value): value is string => value !== null)
-    if (raw) parsed = JSON.parse(raw)
-  } catch { /* Corrupted local data is replaced with the demo seed. */ }
-  const db = normalizeDb(parsed) ?? buildSeed()
-  const users = await Promise.all(db.users.map(async (user) => ({
+  let db: Database | null = null
+  for (const key of [DB_KEY, ...LEGACY_DB_KEYS]) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw) db = normalizeDb(JSON.parse(raw))
+    } catch { /* Try the next key when local data is corrupted. */ }
+    if (db) break
+  }
+  const source = db ?? buildSeed()
+  const users = await Promise.all(source.users.map(async (user) => ({
     ...user,
     password: isSecretHash(user.password) ? user.password : await hashSecret(user.password),
     pin: isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin),
   })))
-  const migrated = { ...db, users }
+  const migrated = { ...source, users }
   localStorage.setItem(DB_KEY, JSON.stringify(migrated))
+  for (const key of LEGACY_DB_KEYS) localStorage.removeItem(key)
   return migrated
 }

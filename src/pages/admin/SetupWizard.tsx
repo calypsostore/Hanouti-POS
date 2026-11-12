@@ -7,6 +7,7 @@ import { businessTemplate } from '../../lib/businessTemplates'
 import { useApp } from '../../store/AppStore'
 import type { BusinessType } from '../../types'
 import { cn } from '../../lib/utils'
+import { BrandLogo } from '../../components/BrandLogo'
 
 const businessTypes: Array<{ value: BusinessType; label: string; emoji: string; description: string }> = [
   { value: 'cafe', label: 'Cafe', emoji: '☕', description: 'Coffee, tea, pastries and counter service.' },
@@ -39,7 +40,7 @@ export default function SetupWizard() {
     <div className="min-h-screen bg-cream-100 px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 text-center">
-          <div className="text-sm font-bold uppercase tracking-[0.16em] text-accent-700">Welcome to Kawa POS</div>
+          <BrandLogo size="md" className="mx-auto justify-center" />
           <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-ink">Set up {store.name}</h1>
           <p className="mt-2 text-sm text-muted">Choose your business type to apply a practical starting template.</p>
         </div>
@@ -52,8 +53,8 @@ export default function SetupWizard() {
               className={cn(
                 'rounded-2xl border bg-white p-4 text-left transition',
                 businessType === option.value
-                  ? 'border-accent-500 ring-2 ring-accent-500/15'
-                  : 'border-line hover:border-accent-500/40',
+                  ? 'border-accent-foreground ring-2 ring-accent-foreground/20'
+                  : 'border-line hover:border-accent-foreground/40',
               )}
             >
               <span className="text-2xl">{option.emoji}</span>

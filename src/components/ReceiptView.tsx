@@ -1,12 +1,15 @@
 import type { Order, Store } from '../types'
 import { fmtDateTime } from '../lib/utils'
 import { round } from '../lib/pricing-utils'
+import { BRAND_NAME } from '../lib/brand'
+import { BrandLogo } from './BrandLogo'
 
 export function ReceiptView({ order, store }: { order: Order; store: Store }) {
   const settings = store.settings
   return (
     <div className="receipt mx-auto shadow-sm">
       <div className="text-center">
+        <BrandLogo size="sm" variant="light" className="mb-2 justify-center" />
         <div className="text-[20px]">{store.emoji}</div>
         <div className="mt-1 text-[16px] font-extrabold tracking-tight">{store.name}</div>
         <div className="mt-1 text-[10.5px] leading-relaxed text-neutral-600">
@@ -79,10 +82,10 @@ export function ReceiptView({ order, store }: { order: Order; store: Store }) {
       </div>
       <hr />
       <div className="text-center text-[10.5px] leading-relaxed text-neutral-600">
-        {settings.receiptFooter || 'Thank you for your visit!'}
+        {settings.receiptFooter || `Thank you for your visit! · ${BRAND_NAME}`}
       </div>
       <div className="mt-2 text-center text-[9px] text-neutral-400">
-        Powered by Kawa POS · kawa.tn
+        Powered by {BRAND_NAME}
       </div>
     </div>
   )

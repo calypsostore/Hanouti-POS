@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, LogOut, ReceiptText, Users, Zap } from 'lucide-react'
 import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
+import { ThemeToggle } from '../../components/ThemeToggle'
 
 type POSHeaderProps = {
   store: Store
@@ -37,6 +38,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle accent={store.settings.accent} />
           {user.role === 'admin' && (
             <Link
               to="/admin"
@@ -78,12 +80,12 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
       </header>
 
       {!registerOpen && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-900 sm:px-5">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-brand-amber/40 bg-brand-amber-soft px-4 py-2.5 text-[12.5px] text-brand-navy sm:px-5">
           <span>{canOpenRegister ? 'Open the register before taking orders.' : 'The register is closed. Ask a manager to open it before taking orders.'}</span>
           {canOpenRegister && (
             <Link
               to="/admin/register"
-              className="shrink-0 rounded-lg bg-amber-800 px-3 py-1.5 font-semibold text-white hover:bg-amber-900"
+              className="shrink-0 rounded-lg bg-brand-amber px-3 py-1.5 font-semibold text-brand-navy hover:bg-brand-amber-hover"
             >
               Open register
             </Link>

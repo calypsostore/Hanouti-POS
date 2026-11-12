@@ -193,7 +193,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         requireCustomerForCredit: true,
         receiptFooter: template.receiptFooter,
         lowStockThreshold: 10,
-        accent: 'caramel',
+        accent: '7anouti',
         printer: { ...DEFAULT_PRINTER },
         features: template.features,
       },

@@ -1,6 +1,6 @@
-# Kawa POS — Production Plan
+# 7anouti-POS — Production Plan
 
-Status document for turning the Kawa POS frontend into a production-ready POS
+Status document for turning the 7anouti-POS frontend into a production-ready POS
 platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
@@ -23,6 +23,21 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the folder map and extension
 guidance. The line-count audit also found other existing large files outside
 this refactor's page/store scope; those remain follow-up structure work.
 
+The app is now branded 7anouti-POS. Existing `cafepos.db.*` and
+`cafepos.session.*` local data is copied to the `7anouti.*` keys before the old
+keys are removed.
+The default platform palette now follows the logo: navy surfaces, cool light
+backgrounds, amber highlights, and accessible navy-on-amber actions. The
+sidebar, shared controls, POS, reports, and receipt branding use the shared
+brand tokens. Light/dark appearance can be toggled and is saved as a local UI
+preference; custom store accent palettes remain available and their foreground
+colors are selected for readable text. This presentation preference and all
+local data remain browser-local demo behavior, not a production security boundary.
+The shared logo and browser-tab favicon use the complete supplied
+`logo/logo1.png` image; the PWA SVG icon uses matching navy-and-amber colors.
+Existing stores using the former default caramel palette are migrated to the
+7anouti palette; custom accent selections remain unchanged.
+
 ## Requested feature roadmap
 
 ### Phase 1 — Business types and product options ✅ demo implementation
@@ -39,8 +54,8 @@ this refactor's page/store scope; those remain follow-up structure work.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `cafepos.db.v8` migrates the v7/v6 local database with safe defaults for the
-  new fields. Seed data includes realistic sample stores for all six business
+- `7anouti.db.v8` migrates the legacy `cafepos.db.v8`, v7 and v6 local databases
+  with safe defaults for the new fields. Seed data includes realistic sample stores for all six business
   types.
 - All of this remains browser-local demo behavior. It is not authoritative or
   tamper-resistant; production authorization, inventory and receipt numbering
@@ -70,8 +85,8 @@ polish remain planned work.
 | Offline | None (localStorage demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in `localStorage` under `cafepos.db.v8` (with v7/v6 migrations). **This is a demo backend,
-not production storage** — it exists so the UX can be reviewed without
+Data lives in `localStorage` under `7anouti.db.v8` (with migrations from legacy
+`cafepos.db.*` keys). **This is a demo backend, not production storage** — it exists so the UX can be reviewed without
 infrastructure, and every mutation is funnelled through `AppStore` so a real API
 can replace it one-for-one.
 
@@ -206,7 +221,8 @@ amounts are fully supported.
 
 Executed in-browser (Chrome, dev build) against the seeded demo data:
 
-- DB migrates to `cafepos.db.v8` from v7/v6, hashing legacy credentials and retaining
+- DB migrates to `7anouti.db.v8` from legacy `cafepos.db.v8`, v7 and v6 keys,
+  hashing legacy credentials and retaining
   2 closed Z sessions + 1 open session per store; register nav visible for admin; staff without `register` permission
   redirected from `/admin/register`; staff with permission can access.
 - X report matches on-screen expected cash (opening + cash sales + tab

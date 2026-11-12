@@ -1,0 +1,16 @@
+{
+  "name": "7anouti-POS",
+  "short_name": "7anouti",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F7FE",
+  "theme_color": "#111B30",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

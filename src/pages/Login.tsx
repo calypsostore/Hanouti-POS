@@ -4,20 +4,21 @@ import {
   ArrowRight,
   BarChart3,
   Check,
-  Coffee,
   CreditCard,
   Eye,
   EyeOff,
   KeyRound,
   Mail,
   ShieldCheck,
-  Sparkles,
   Store as StoreIcon,
   Users,
 } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { Button, Field, Input, Segmented } from '../components/ui'
 import { cn, money } from '../lib/utils'
+import { BRAND_NAME } from '../lib/brand'
+import { BrandLogo } from '../components/BrandLogo'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 const demoAccounts = [
   {
@@ -85,32 +86,20 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen bg-cream-100">
+    <div className="relative flex min-h-screen bg-cream-100">
+      <ThemeToggle accent="7anouti" className="absolute right-5 top-5 z-20 sm:right-8 sm:top-8" />
       {/* Brand panel */}
       <div className="relative hidden w-[52%] flex-col justify-between overflow-hidden bg-espresso-900 p-10 text-cream-50 brand-gradient grain lg:flex xl:p-14">
         <div className="relative flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-600 shadow-lg shadow-black/30">
-            <Coffee className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <div className="text-[19px] font-extrabold leading-none tracking-tight">
-              kawa<span className="text-accent-500">.</span>
-            </div>
-            <div className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.2em] text-white/40">
-              Point of sale
-            </div>
-          </div>
+          <BrandLogo size="md" variant="dark" />
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.2em] text-white/40">Point of sale</span>
         </div>
 
         <div className="relative max-w-lg">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/70">
-            <Sparkles className="h-3.5 w-3.5 text-accent-500" />
-            Built for Tunisian cafés
-          </div>
           <h1 className="text-[42px] font-extrabold leading-[1.05] tracking-[-0.03em] xl:text-[50px]">
-            Every café runs
+            Every shop runs
             <br />
-            better on <span className="text-accent-500">kawa.</span>
+            better on <span className="text-brand-amber">{BRAND_NAME}</span>
           </h1>
           <p className="mt-5 max-w-md text-[14.5px] leading-relaxed text-white/55">
             Take orders, track tabs, print receipts and see exactly how your business is doing —
@@ -126,7 +115,7 @@ export default function Login() {
             ].map((f) => (
               <div key={f.text} className="flex items-center gap-2.5 text-[12.5px] text-white/60">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.07]">
-                  <f.icon className="h-3.5 w-3.5 text-accent-500" />
+                  <f.icon className="h-3.5 w-3.5 text-brand-amber" />
                 </div>
                 {f.text}
               </div>
@@ -153,7 +142,7 @@ export default function Login() {
               {[38, 55, 30, 62, 48, 75, 58, 82, 66, 92, 71, 88, 60, 78, 52, 68, 84, 96].map((h, i) => (
                 <div
                   key={i}
-                  className="flex-1 rounded-sm bg-accent-600/70"
+                  className="flex-1 rounded-sm bg-brand-amber/80"
                   style={{ height: `${h}%`, opacity: 0.35 + (i / 18) * 0.65 }}
                 />
               ))}
@@ -165,7 +154,7 @@ export default function Login() {
             </div>
           </div>
           <p className="mt-4 text-[11px] text-white/30">
-            © 2026 Kawa POS · Made for cafés, snacks & salons de thé
+            © 2026 {BRAND_NAME} · One POS for every kind of shop
           </p>
         </div>
       </div>
@@ -174,12 +163,7 @@ export default function Login() {
       <div className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-[420px]">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-600">
-              <Coffee className="h-5 w-5 text-white" />
-            </div>
-            <div className="text-[18px] font-extrabold tracking-tight">
-              kawa<span className="text-accent-500">.</span>
-            </div>
+            <BrandLogo size="md" />
           </div>
 
           <h2 className="text-[26px] font-extrabold tracking-tight text-ink">Welcome back</h2>
@@ -297,10 +281,10 @@ export default function Login() {
                 onClick={() => quickLogin(a.email, a.role)}
                 className={cn(
                   'group flex w-full items-center gap-3 rounded-xl border border-line bg-white px-3 py-2.5 text-left transition',
-                  'hover:border-accent-500/40 hover:shadow-sm',
+                  'hover:border-accent-foreground/40 hover:shadow-sm',
                 )}
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cream-200 text-muted transition group-hover:bg-accent-50 group-hover:text-accent-600">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cream-200 text-muted transition group-hover:bg-accent-50 group-hover:text-accent-foreground">
                   <a.icon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -312,7 +296,7 @@ export default function Login() {
                   </div>
                   <div className="truncate text-[11px] text-muted">{a.desc}</div>
                 </div>
-                <Check className="h-4 w-4 text-line opacity-0 transition group-hover:text-accent-500 group-hover:opacity-100" />
+                <Check className="h-4 w-4 text-line opacity-0 transition group-hover:text-accent-foreground group-hover:opacity-100" />
               </button>
             ))}
           </div>

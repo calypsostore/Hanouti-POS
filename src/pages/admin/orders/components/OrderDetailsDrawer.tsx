@@ -150,7 +150,7 @@ export default function OrderDetailsDrawer({
           </div>
 
           {order.note && (
-            <div className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-900">
+            <div className="rounded-xl bg-brand-amber-soft px-3.5 py-2.5 text-[12px] text-brand-navy">
               <span className="font-semibold">Note: </span>
               {order.note}
             </div>

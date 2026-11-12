@@ -17,7 +17,7 @@ export function Tile({
       <div
         className={cn(
           'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
-          accent ? 'bg-accent-50 text-accent-600' : 'bg-cream-100 text-muted',
+          accent ? 'bg-accent-50 text-accent-foreground' : 'bg-cream-100 text-muted',
         )}
       >
         {icon}

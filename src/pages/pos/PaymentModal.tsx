@@ -122,7 +122,7 @@ export function PaymentModal({
               <button
                 key={v}
                 onClick={() => setReceived(String(v))}
-                className="h-9 rounded-lg border border-line bg-white text-[12px] font-semibold tabular transition hover:border-accent-500/50 hover:bg-cream-100"
+                className="h-9 rounded-lg border border-line bg-white text-[12px] font-semibold tabular transition hover:border-accent-foreground/50 hover:bg-cream-100"
               >
                 {v === Math.ceil(total) ? 'Exact' : v}
               </button>
@@ -144,7 +144,7 @@ export function PaymentModal({
 
       {method === 'card' && (
         <div className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-cream-50 p-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-accent-600 ring-1 ring-line">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-accent-foreground ring-1 ring-line">
             <CreditCard className="h-4 w-4" />
           </div>
           <div>
@@ -184,7 +184,7 @@ export function PaymentModal({
               </div>
               <div className="mt-2 flex items-center justify-between border-t border-dashed border-line pt-2 text-[13px]">
                 <span className="font-bold">New balance</span>
-                <span className="font-extrabold text-accent-700 tabular">
+                <span className="font-extrabold text-accent-foreground tabular">
                   {money(balance + total)}
                 </span>
               </div>
@@ -193,7 +193,7 @@ export function PaymentModal({
                 <span className="tabular">{money(customer.limit)}</span>
               </div>
               {overLimit && (
-                <div className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] font-medium text-amber-800">
+                <div className="mt-2 rounded-lg bg-brand-amber-soft px-2.5 py-2 text-[11px] font-medium text-brand-navy">
                   This exceeds the customer&apos;s credit limit by {money(balance + total - customer.limit)}.
                 </div>
               )}

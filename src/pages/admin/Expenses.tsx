@@ -19,12 +19,12 @@ import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
 const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
 const categoryColor: Record<string, string> = {
-  Rent: 'bg-accent-500',
+  Rent: 'bg-accent-foreground',
   Supplies: 'bg-emerald-500',
   Utilities: 'bg-sky-500',
   Salaries: 'bg-violet-500',
   Internet: 'bg-cyan-500',
-  Maintenance: 'bg-amber-500',
+  Maintenance: 'bg-brand-amber',
   Marketing: 'bg-rose-500',
   Other: 'bg-stone-400',
 }

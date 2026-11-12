@@ -67,8 +67,8 @@ export function CustomerPicker({
               className={cn(
                 'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition',
                 selectedId === c.id
-                  ? 'border-accent-500/50 bg-accent-50'
-                  : 'border-line bg-white hover:border-accent-500/40',
+                  ? 'border-accent-foreground/50 bg-accent-50'
+                  : 'border-line bg-white hover:border-accent-foreground/40',
               )}
             >
               <Avatar name={c.name} size="sm" />
@@ -80,7 +80,7 @@ export function CustomerPicker({
                 <div
                   className={cn(
                     'text-[12.5px] font-bold tabular',
-                    bal > 0 ? 'text-accent-700' : 'text-muted',
+                    bal > 0 ? 'text-accent-foreground' : 'text-muted',
                   )}
                 >
                   {money(bal)}

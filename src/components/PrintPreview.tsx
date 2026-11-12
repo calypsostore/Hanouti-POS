@@ -97,7 +97,7 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
       <div className="rounded-xl bg-neutral-200/70 p-3">
         <div className="receipt-print max-h-[52vh] overflow-auto">
           <pre
-            className="mx-auto bg-white px-4 py-3 font-mono text-[11px] leading-[1.45] text-neutral-900"
+            className="receipt-preview mx-auto bg-white px-4 py-3 font-mono text-[11px] leading-[1.45] text-neutral-900"
             style={{ width: cfg.width === 58 ? 302 : 340 }}
           >
             {text}

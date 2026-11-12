@@ -16,9 +16,9 @@ import { money } from '../../../lib/utils'
 import type { Period } from './reportData'
 
 const methodColors: Record<string, string> = {
-  cash: '#10b981',
-  card: '#0ea5e9',
-  credit: '#B4652F',
+  cash: 'var(--color-brand-navy)',
+  card: 'var(--color-accent-foreground)',
+  credit: 'var(--color-brand-blue)',
 }
 
 export function ReportCharts({
@@ -52,11 +52,11 @@ export function ReportCharts({
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={series} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eee6d9" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-brand-tint)" vertical={false} />
               <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" />
               <YAxis {...axisProps} width={54} />
-              <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ fill: '#f6efe4' }} />
-              <Bar dataKey="value" name="Sales" fill="#B4652F" radius={[5, 5, 0, 0]} maxBarSize={34} />
+              <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ fill: 'var(--color-brand-tint)' }} />
+              <Bar dataKey="value" name="Sales" fill="var(--color-brand-navy)" radius={[5, 5, 0, 0]} maxBarSize={34} />
             </BarChart>
           </ResponsiveContainer>
         </div>

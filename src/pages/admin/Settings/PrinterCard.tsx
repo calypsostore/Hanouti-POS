@@ -25,7 +25,7 @@ export default function PrinterCard({
     <Card className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Printer className="h-4 w-4 text-accent-600" />
+          <Printer className="h-4 w-4 text-accent-foreground" />
           <h3 className="text-[15px] font-semibold tracking-tight">Thermal printer</h3>
         </div>
         <Badge tone={printer.connected ? 'success' : 'neutral'}>

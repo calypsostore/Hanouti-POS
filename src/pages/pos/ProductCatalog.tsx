@@ -111,22 +111,27 @@ export function ProductCatalog({
                       disabled={out}
                       className={cn(
                         'group relative flex flex-col rounded-2xl border bg-white p-3 text-left transition-all duration-150',
-                        'hover:-translate-y-0.5 hover:border-accent-500/40 hover:shadow-[0_6px_20px_rgba(36,30,25,0.07)]',
-                        qty > 0 ? 'border-accent-500/60 ring-2 ring-accent-500/10' : 'border-line/80',
-                        out && 'cursor-not-allowed opacity-50 hover:translate-y-0',
+                        'hover:-translate-y-0.5 hover:border-accent-foreground/80 hover:shadow-[0_6px_20px_rgba(17,27,48,0.09)]',
+                        qty > 0 ? 'border-accent-foreground ring-2 ring-accent-foreground/30' : 'border-line/80',
+                        out && 'cursor-not-allowed hover:translate-y-0',
                       )}
                     >
                       <div className="mb-2 flex w-full items-start justify-between">
                         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cream-100 text-[24px]">
                           {p.emoji}
                         </span>
+                        {out && (
+                          <span className="rounded-md bg-danger-strong px-1.5 py-0.5 text-[9px] font-bold text-white">
+                            Out of stock
+                          </span>
+                        )}
                         {qty > 0 && (
-                          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent-600 px-1.5 text-[11px] font-bold text-white">
+                          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-amber px-1.5 text-[11px] font-bold text-brand-navy">
                             {qty}
                           </span>
                         )}
                         {low && !out && (
-                          <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                          <span className="rounded-md bg-brand-amber-soft px-1.5 py-0.5 text-[9px] font-bold text-brand-navy">
                             {p.stock} left
                           </span>
                         )}
@@ -134,7 +139,7 @@ export function ProductCatalog({
                       <span className="line-clamp-2 text-[13px] font-semibold leading-tight text-ink">
                         {p.name}
                       </span>
-                      <span className="mt-1.5 text-[13px] font-bold text-accent-700 tabular">
+                      <span className="mt-1.5 text-[13px] font-bold text-accent-foreground tabular">
                         {money(p.price)}
                       </span>
                       <span className="pointer-events-none absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-cream-100 text-muted opacity-0 transition group-hover:opacity-100">

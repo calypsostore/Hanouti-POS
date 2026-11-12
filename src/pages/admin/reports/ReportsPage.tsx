@@ -3,6 +3,7 @@ import { Download } from 'lucide-react'
 import { Button, Segmented } from '../../../components/ui'
 import { useApp } from '../../../store/AppStore'
 import { csvDownload } from '../../../lib/utils'
+import { BRAND_NAME } from '../../../lib/brand'
 import { ReportCharts } from './ReportCharts'
 import { ReportDetails } from './ReportDetails'
 import { createReportData, type Period } from './reportData'
@@ -16,7 +17,7 @@ export default function ReportsPage() {
   const data = createReportData(db, store, period, new Date())
   const exportSummary = () => {
     csvDownload(`report-${store.slug}-${period}.csv`, [
-      ['Kawa POS report', `${store.name} — ${data.label}`],
+      [`${BRAND_NAME} report`, `${store.name} — ${data.label}`],
       [],
       ['Sales', data.sales.toFixed(3)],
       ['Orders', data.orders.length],

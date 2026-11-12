@@ -73,7 +73,7 @@ export default function Staff() {
           </div>
         </Card>
         <Card className="flex items-center gap-3 p-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-50 text-accent-foreground">
             <KeyRound className="h-4 w-4" />
           </div>
           <div>
@@ -181,9 +181,9 @@ export default function Staff() {
         </div>
       )}
 
-      <Card className="flex items-start gap-3 border-accent-500/20 bg-accent-50/60 p-4">
-        <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-600" />
-        <div className="text-[12px] leading-relaxed text-accent-700">
+      <Card className="flex items-start gap-3 border-accent-foreground/20 bg-accent-50/60 p-4">
+        <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-foreground" />
+        <div className="text-[12px] leading-relaxed text-accent-foreground">
           <span className="font-semibold">How staff access works:</span> each person gets their own
           email + password, plus a 4–6 digit PIN for fast register login using the store code{' '}
           <span className="rounded bg-white/70 px-1 font-mono font-bold">{store.slug}</span>. Data is
@@ -417,7 +417,7 @@ function StaffEditor({
         />
 
         {role === 'admin' && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+          <p className="rounded-lg bg-brand-amber-soft px-3 py-2 text-[11.5px] text-brand-navy">
             Admins get full access to settings, products, staff and finances.
           </p>
         )}

@@ -3,25 +3,84 @@
 @theme {
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --color-cream-50: #fdfcfa;
-  --color-cream-100: #f8f5ef;
-  --color-cream-200: #f1ece2;
-  --color-sand-200: #e9e0d1;
-  --color-line: #e5dccd;
-  --color-ink: #241e19;
-  --color-muted: #7c7167;
+  --color-cream-50: #ffffff;
+  --color-cream-100: #f6f7fe;
+  --color-cream-200: #eaf0fc;
+  --color-sand-200: #e6ebf7;
+  --color-line: #e6ebf7;
+  --color-ink: #111b30;
+  --color-muted: #5b6784;
+  --color-disabled: #9aa3ba;
 
-  --color-espresso-900: #1f1915;
-  --color-espresso-800: #2a221c;
-  --color-espresso-700: #3a2f26;
+  --color-espresso-900: #111b30;
+  --color-espresso-800: #1c2842;
+  --color-espresso-700: #293752;
+  --color-brand-navy: #111b30;
+  --color-brand-navy-dark: #0b1222;
+  --color-brand-navy-light: #1c2842;
 
-  --color-accent-50: #fbf3ec;
-  --color-accent-100: #f6e4d3;
-  --color-accent-500: #b4652f;
-  --color-accent-600: #a0541f;
-  --color-accent-700: #86451a;
+  --color-brand-amber: #f8a81a;
+  --color-brand-amber-hover: #e39508;
+  --color-brand-amber-pressed: #c97f00;
+  --color-brand-amber-soft: #fff4db;
+  --color-brand-amber-focus: #8a5900;
+  --color-brand-blue: #3b82f6;
+  --color-brand-tint: #eaf0fc;
+  --color-success: #12a150;
+  --color-success-strong: #08703a;
+  --color-warning: #f8a81a;
+  --color-danger: #e5484d;
+  --color-danger-strong: #b4232d;
+  --color-danger-text: #b4232d;
+  --color-info: #3b82f6;
+  --color-info-strong: #1d4ed8;
 
-  --color-danger: #b4423a;
+  --color-accent-50: #fff4db;
+  --color-accent-100: #ffecb5;
+  --color-accent-500: #f8a81a;
+  --color-accent-600: #e39508;
+  --color-accent-700: #c97f00;
+  --color-accent-foreground: #754a00;
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-ink: #f6f7fe;
+  --color-muted: #9aa3ba;
+  --color-disabled: #717d98;
+  --color-line: #1c2842;
+  --color-sand-200: #1c2842;
+  --color-brand-tint: #1c2842;
+  --color-espresso-900: #0b1222;
+  --color-espresso-800: #111b30;
+  --color-espresso-700: #1c2842;
+  --color-accent-50: #1c2842;
+  --color-accent-100: #273957;
+  --color-accent-500: #ffdc9a;
+  --color-accent-600: #ffd078;
+  --color-accent-700: #ffc14d;
+  --color-accent-foreground: #ffd078;
+  --color-brand-amber-focus: #f8a81a;
+
+  --color-amber-50: #1c2842;
+  --color-amber-100: #273957;
+  --color-amber-700: #ffd078;
+  --color-emerald-50: #123326;
+  --color-emerald-600: #60d394;
+  --color-emerald-700: #60d394;
+  --color-emerald-800: #75dda4;
+  --color-success-strong: #60d394;
+  --color-red-50: #3c202a;
+  --color-red-500: #ff9298;
+  --color-red-600: #ff7880;
+  --color-red-700: #ff9298;
+  --color-red-800: #ffadb2;
+  --color-danger-text: #ff9298;
+  --color-sky-50: #142e4a;
+  --color-sky-600: #8bc7ff;
+  --color-sky-700: #8bc7ff;
+  --color-info-strong: #8bc7ff;
+  --color-neutral-200: #1c2842;
 }
 
 @layer base {
@@ -70,22 +129,66 @@
 
   .thin-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: #e0d6c6 transparent;
+    scrollbar-color: #b8c5d9 transparent;
   }
   .thin-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   .thin-scrollbar::-webkit-scrollbar-thumb {
-    background: #e0d6c6;
+    background: #b8c5d9;
     border-radius: 999px;
   }
 
   .brand-gradient {
     background-image:
-      radial-gradient(120% 90% at 100% 0%, rgba(180, 101, 47, 0.35) 0%, transparent 55%),
-      radial-gradient(100% 80% at 0% 100%, rgba(180, 101, 47, 0.18) 0%, transparent 60%),
-      linear-gradient(160deg, #241d18 0%, #1f1915 55%, #171210 100%);
+      radial-gradient(120% 90% at 100% 0%, rgba(28, 40, 66, 0.8) 0%, transparent 55%),
+      radial-gradient(100% 80% at 0% 100%, rgba(248, 168, 26, 0.1) 0%, transparent 60%),
+      linear-gradient(160deg, #1c2842 0%, #111b30 55%, #0b1222 100%);
+  }
+
+  html.dark body {
+    background-color: #0b1222;
+    color: #f6f7fe;
+  }
+
+  html.dark .bg-white {
+    background-color: #111b30;
+  }
+
+  html.dark .receipt-preview {
+    background-color: #ffffff;
+    color: #111b30;
+  }
+
+  html.dark .bg-cream-50 {
+    background-color: #111b30;
+  }
+
+  html.dark .bg-cream-100 {
+    background-color: #0b1222;
+  }
+
+  html.dark [class*='bg-cream-100/'] {
+    background-color: rgb(11 18 34 / 85%);
+  }
+
+  html.dark .bg-cream-200,
+  html.dark .bg-brand-tint {
+    background-color: #1c2842;
+  }
+
+  html.dark .brand-logo-auto {
+    color: #fff;
+  }
+
+  html.dark .bg-brand-amber-soft {
+    background-color: #3a2f1e;
+    color: #ffd078;
+  }
+
+  html.dark .border-brand-navy {
+    border-color: #5b6784;
   }
 
   .grain::before {
@@ -145,19 +248,19 @@
 .receipt {
   width: 320px;
   background: #fff;
-  color: #111;
+  color: #111b30;
   font-family: 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
   font-size: 12px;
   line-height: 1.5;
   padding: 22px 20px;
   margin-inline: auto;
   border-radius: 12px;
-  border: 1px solid #eee;
+  border: 1px solid #e6ebf7;
 }
 
 .receipt hr {
   border: 0;
-  border-top: 1px dashed #c9c9c9;
+  border-top: 1px dashed #b8c5d9;
   margin: 10px 0;
 }
 

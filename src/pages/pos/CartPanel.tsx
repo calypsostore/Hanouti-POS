@@ -20,7 +20,7 @@ export function CategoryChip({
         'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition',
         active
           ? 'border-espresso-900 bg-espresso-900 text-cream-50'
-          : 'border-line bg-white text-muted hover:border-accent-500/40 hover:text-ink',
+          : 'border-line bg-white text-muted hover:border-accent-foreground/40 hover:text-ink',
       )}
     >
       {children}
@@ -78,12 +78,12 @@ export function CartPanel({
 }) {
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col', embedded && 'min-h-[50vh]')}>
-      <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-brand-navy-light bg-brand-navy px-4 py-3 text-white">
         <div className="flex items-center gap-2">
-          <ShoppingBag className="h-4 w-4 text-accent-600" />
+          <ShoppingBag className="h-4 w-4 text-brand-amber" />
           <span className="text-[13.5px] font-bold">Current order</span>
           {count > 0 && (
-            <span className="rounded-full bg-cream-200 px-1.5 py-0.5 text-[10px] font-bold text-muted">
+            <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white">
               {count}
             </span>
           )}
@@ -113,17 +113,17 @@ export function CartPanel({
 
       <div className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-3 thin-scrollbar', embedded && 'max-h-[36vh]')}>
         {customer ? (
-          <div className="mb-3 flex items-center gap-2 rounded-xl border border-accent-500/25 bg-accent-50 px-2.5 py-2">
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-accent-foreground/25 bg-accent-50 px-2.5 py-2">
             <Avatar name={customer.name} size="xs" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12px] font-semibold text-ink">{customer.name}</div>
-              <div className="text-[10.5px] text-accent-700">
+              <div className="text-[10.5px] text-accent-foreground">
                 Tab balance · {money(balance)}
               </div>
             </div>
             <button
               onClick={onClearCustomer}
-              className="rounded-md p-1 text-accent-700/60 hover:bg-white/60 hover:text-accent-700"
+              className="rounded-md p-1 text-accent-foreground/60 hover:bg-white/60 hover:text-accent-foreground"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -131,7 +131,7 @@ export function CartPanel({
         ) : (
           <button
             onClick={onPickCustomer}
-            className="mb-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-2.5 py-2.5 text-left transition hover:border-accent-500/50 hover:bg-white"
+            className="mb-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-2.5 py-2.5 text-left transition hover:border-accent-foreground/50 hover:bg-white"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-200 text-muted">
               <UserRound className="h-4 w-4" />

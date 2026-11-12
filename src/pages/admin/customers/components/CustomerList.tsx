@@ -82,7 +82,7 @@ export default function CustomerList({
 
       {!isAdmin && (
         <div className="flex items-start gap-2.5 rounded-xl border border-line bg-white px-3.5 py-3 text-[12px] leading-relaxed text-muted">
-          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-600" />
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-foreground" />
           <span>
             {canSettle
               ? 'You can start an order or take a payment from any card.'
@@ -159,7 +159,7 @@ export default function CustomerList({
             return (
               <div
                 key={customer.id}
-                className="group flex flex-col overflow-hidden rounded-2xl border border-line/80 bg-white transition hover:-translate-y-0.5 hover:border-accent-500/40 hover:shadow-[0_6px_20px_rgba(36,30,25,0.06)]"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-line/80 bg-white transition hover:-translate-y-0.5 hover:border-accent-foreground/40 hover:shadow-[0_6px_20px_rgba(17,27,48,0.08)]"
               >
                 <button onClick={() => onSelect(customer)} className="flex-1 p-4 text-left">
                   <div className="flex items-start gap-3">
@@ -200,14 +200,14 @@ export default function CustomerList({
                     <div
                       className={cn(
                         'h-full rounded-full transition-all',
-                        overLimit ? 'bg-red-400' : 'bg-accent-500',
+                        overLimit ? 'bg-red-400' : 'bg-accent-foreground',
                       )}
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
                   <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-dashed border-line/70 pt-2.5">
                     <span className="inline-flex min-w-0 items-center gap-1 text-[10.5px] font-semibold text-muted">
-                      <CalendarClock className="h-3 w-3 shrink-0 text-accent-600" />
+                      <CalendarClock className="h-3 w-3 shrink-0 text-accent-foreground" />
                       <span className="truncate">
                         {cycleLabel(customer.cycle)} · {nextDueLabel(customer.cycle)}
                       </span>
@@ -223,14 +223,14 @@ export default function CustomerList({
                 <div className="flex items-center gap-1 border-t border-line/60 bg-cream-50/70 px-2 py-1.5">
                   <button
                     onClick={() => onStartOrder(customer.id)}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-ink transition hover:bg-white hover:text-accent-700"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-ink transition hover:bg-white hover:text-accent-foreground"
                   >
                     <Plus className="h-3.5 w-3.5" /> New order
                   </button>
                   {canSettle && balance > 0 && (
                     <button
                       onClick={() => onSettle(customer.id)}
-                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-accent-700 transition hover:bg-accent-50"
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-accent-foreground transition hover:bg-accent-50"
                     >
                       <HandCoins className="h-3.5 w-3.5" /> Take payment
                     </button>
@@ -270,7 +270,7 @@ function SummaryTile({
       <div
         className={cn(
           'flex h-9 w-9 items-center justify-center rounded-xl',
-          accent ? 'bg-accent-50 text-accent-600' : 'bg-cream-100 text-muted',
+          accent ? 'bg-accent-50 text-accent-foreground' : 'bg-cream-100 text-muted',
         )}
       >
         {icon}

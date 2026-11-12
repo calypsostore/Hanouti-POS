@@ -54,7 +54,7 @@ function Kpi({
         <span
           className={cn(
             'flex h-7 w-7 items-center justify-center rounded-lg',
-            accent ? 'bg-accent-50 text-accent-600' : 'bg-cream-100 text-muted',
+            accent ? 'bg-accent-50 text-accent-foreground' : 'bg-cream-100 text-muted',
           )}
         >
           {icon}

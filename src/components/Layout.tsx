@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
   Calculator,
-  Coffee,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -22,6 +21,9 @@ import {
 import { useApp } from '../store/AppStore'
 import { Avatar, Badge } from './ui'
 import { cn, fmtDate } from '../lib/utils'
+import { BRAND_NAME } from '../lib/brand'
+import { BrandLogo } from './BrandLogo'
+import { ThemeToggle } from './ThemeToggle'
 
 interface NavItem {
   to: string
@@ -117,7 +119,7 @@ export function AppShell() {
           },
         ]
 
-  const title = titles[location.pathname] ?? (location.pathname.startsWith('/admin') ? 'Workspace' : 'Kawa POS')
+  const title = titles[location.pathname] ?? (location.pathname.startsWith('/admin') ? 'Workspace' : BRAND_NAME)
   const outstanding = db.ledger
     .filter((l) => l.storeId === store?.id && !l.creditAdjustment)
     .reduce((acc, l) => acc + (l.type === 'charge' ? l.amount : -l.amount), 0)
@@ -125,24 +127,14 @@ export function AppShell() {
   const sidebar = (
     <div className="relative flex h-full flex-col overflow-hidden bg-espresso-900 text-cream-50 grain">
       <div className="relative flex items-center gap-2.5 px-5 pb-5 pt-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-accent-600 shadow-lg shadow-black/30">
-          <Coffee className="h-[18px] w-[18px] text-white" strokeWidth={2.2} />
-        </div>
-        <div className="leading-none">
-          <div className="text-[17px] font-extrabold tracking-tight">
-            kawa<span className="text-accent-500">.</span>
-          </div>
-          <div className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-white/40">
-            Point of sale
-          </div>
-        </div>
+        <BrandLogo size="sm" variant="dark" />
       </div>
 
       <div className="relative mx-3 mb-2 rounded-xl border border-white/[0.07] bg-white/[0.04] p-3">
         {isSuper ? (
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
-              <ShieldCheck className="h-4 w-4 text-accent-500" />
+              <ShieldCheck className="h-4 w-4 text-brand-blue" />
             </div>
             <div className="min-w-0">
               <div className="truncate text-[12.5px] font-semibold">Platform console</div>
@@ -192,7 +184,7 @@ export function AppShell() {
                     cn(
                       'group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors',
                       isActive
-                        ? 'bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                        ? 'bg-brand-amber text-brand-navy shadow-sm'
                         : 'text-white/55 hover:bg-white/[0.05] hover:text-white/90',
                     )
                   }
@@ -200,12 +192,12 @@ export function AppShell() {
                   {({ isActive }) => (
                     <>
                       <item.icon
-                        className={cn('h-4 w-4 shrink-0', isActive ? 'text-accent-500' : 'text-white/40')}
+                        className={cn('h-4 w-4 shrink-0', isActive ? 'text-brand-navy' : 'text-white/40')}
                         strokeWidth={2}
                       />
                       <span className="flex-1">{item.label}</span>
                       {item.label === 'Regulars' && outstanding > 0 && !isSuper && (
-                        <span className="rounded-full bg-accent-600/20 px-1.5 py-0.5 text-[9.5px] font-bold text-accent-500">
+                        <span className="rounded-full bg-brand-blue/15 px-1.5 py-0.5 text-[9.5px] font-bold text-blue-200">
                           {Math.round(outstanding)}
                         </span>
                       )}
@@ -269,9 +261,10 @@ export function AppShell() {
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-[16px] font-bold tracking-tight text-ink">{title}</h1>
               <p className="hidden text-[11.5px] text-muted sm:block">
-                {isSuper ? 'Kawa POS · platform administration' : `${store?.name} · ${store?.city}`}
+                {isSuper ? `${BRAND_NAME} · platform administration` : `${store?.name} · ${store?.city}`}
               </p>
             </div>
+            <ThemeToggle accent={store?.settings.accent} />
             <div className="hidden items-center gap-2 text-[12px] text-muted md:flex">
               <span className="rounded-lg border border-line bg-white px-2.5 py-1.5 font-medium">
                 {fmtDate(now.toISOString())}
@@ -280,7 +273,7 @@ export function AppShell() {
             {!isSuper && (
               <NavLink
                 to="/pos"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-accent-600 px-3.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-700"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-amber px-3.5 text-[13px] font-semibold text-brand-navy shadow-sm transition hover:bg-brand-amber-hover active:bg-brand-amber-pressed"
               >
                 <Plus className="h-4 w-4" />
                 New sale

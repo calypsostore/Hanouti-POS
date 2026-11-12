@@ -38,7 +38,7 @@ const defaultSettings = (
   requireCustomerForCredit: true,
   receiptFooter: businessTemplate(businessType).receiptFooter,
   lowStockThreshold: 10,
-  accent: 'caramel',
+  accent: '7anouti',
   printer: { ...DEFAULT_PRINTER },
   features: businessTemplate(businessType).features,
   ...over,

@@ -21,7 +21,7 @@ const toneStyles: Record<Tone, string> = {
 const toneIcon: Record<Tone, ReactNode> = {
   success: <CheckCircle2 className="h-[18px] w-[18px] text-emerald-600" />,
   error: <AlertTriangle className="h-[18px] w-[18px] text-red-500" />,
-  info: <Info className="h-[18px] w-[18px] text-accent-600" />,
+  info: <Info className="h-[18px] w-[18px] text-accent-foreground" />,
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {

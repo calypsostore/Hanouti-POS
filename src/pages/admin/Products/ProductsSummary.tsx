@@ -42,7 +42,7 @@ function Tile({
     <Card className="flex items-center gap-3 p-4">
       <div
         className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-          warn ? 'bg-amber-50 text-amber-600' : 'bg-cream-100 text-muted'
+          warn ? 'bg-brand-amber-soft text-accent-foreground' : 'bg-cream-100 text-muted'
         }`}
       >
         {icon}

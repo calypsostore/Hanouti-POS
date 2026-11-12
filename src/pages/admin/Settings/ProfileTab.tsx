@@ -29,7 +29,7 @@ export default function ProfileTab({
     <div className="grid gap-5 lg:grid-cols-3">
       <Card className="p-5 lg:col-span-2">
         <div className="mb-4 flex items-center gap-2">
-          <StoreIcon className="h-4 w-4 text-accent-600" />
+          <StoreIcon className="h-4 w-4 text-accent-foreground" />
           <h3 className="text-[15px] font-semibold tracking-tight">Store details</h3>
         </div>
 
@@ -44,7 +44,7 @@ export default function ProfileTab({
                   className={cn(
                     'flex h-10 w-10 items-center justify-center rounded-xl border text-lg transition',
                     form.emoji === emoji
-                      ? 'border-accent-500/50 bg-accent-50 ring-2 ring-accent-500/10'
+                      ? 'border-accent-foreground/50 bg-accent-50 ring-2 ring-accent-foreground/20'
                       : 'border-line bg-white hover:bg-cream-100',
                   )}
                 >
@@ -104,7 +104,7 @@ export default function ProfileTab({
               <Badge tone="dark" className="bg-white/10 text-white/80">
                 {store.status === 'trial' ? 'Trial' : plan.label} plan
               </Badge>
-              <Sparkles className="h-4 w-4 text-accent-500" />
+              <Sparkles className="h-4 w-4 text-accent-foreground" />
             </div>
             <div className="mt-3 text-[24px] font-extrabold tracking-tight">
               {money(plan.price)}

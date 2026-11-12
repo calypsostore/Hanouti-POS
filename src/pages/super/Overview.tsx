@@ -19,6 +19,7 @@ import { ChartTooltip, axisProps } from '../../components/charts'
 import { StoreProfileDrawer } from './StoreProfile'
 import { balanceFor } from '../../lib/selectors'
 import { cn, dateKey, fmtDate, money, sum } from '../../lib/utils'
+import { BRAND_NAME } from '../../lib/brand'
 
 export default function SuperOverview() {
   const { db, user } = useApp()
@@ -88,7 +89,7 @@ export default function SuperOverview() {
             Platform overview
           </h2>
           <p className="mt-1 text-[13px] text-muted">
-            {fmtDate(new Date().toISOString())} · {stores.length} stores on Kawa POS.
+            {fmtDate(new Date().toISOString())} · {stores.length} stores on {BRAND_NAME}.
           </p>
         </div>
         <Link
@@ -110,7 +111,7 @@ export default function SuperOverview() {
                 {stores.filter((s) => s.status === 'trial').length} trial
               </div>
             </div>
-            <div className="rounded-xl bg-cream-100 p-2 text-espresso-700">
+            <div className="rounded-xl bg-cream-100 p-2 text-ink">
               <Building2 className="h-4 w-4" />
             </div>
           </div>
@@ -134,7 +135,7 @@ export default function SuperOverview() {
               <div className="mt-1.5 text-[24px] font-extrabold tracking-tight tabular">{money(gmv)}</div>
               <div className="mt-0.5 text-[11.5px] text-muted">{orders30.length} orders</div>
             </div>
-            <div className="rounded-xl bg-accent-50 p-2 text-accent-600">
+            <div className="rounded-xl bg-accent-50 p-2 text-accent-foreground">
               <TrendingUp className="h-4 w-4" />
             </div>
           </div>
@@ -148,7 +149,7 @@ export default function SuperOverview() {
                 across {customers.filter((c) => balanceFor(db.ledger, c.id) > 0).length} customers
               </div>
             </div>
-            <div className="rounded-xl bg-amber-50 p-2 text-amber-600">
+            <div className="rounded-xl bg-brand-amber-soft p-2 text-accent-foreground">
               <Wallet className="h-4 w-4" />
             </div>
           </div>
@@ -172,11 +173,11 @@ export default function SuperOverview() {
               <AreaChart data={trend} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="platformRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#B4652F" stopOpacity={0.24} />
-                    <stop offset="100%" stopColor="#B4652F" stopOpacity={0.01} />
+                    <stop offset="0%" stopColor="var(--color-brand-navy)" stopOpacity={0.24} />
+                    <stop offset="100%" stopColor="var(--color-brand-navy)" stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eee6d9" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-brand-tint)" vertical={false} />
                 <XAxis dataKey="day" {...axisProps} interval={4} />
                 <YAxis {...axisProps} width={54} />
                 <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} />
@@ -184,7 +185,7 @@ export default function SuperOverview() {
                   type="monotone"
                   dataKey="revenue"
                   name="Revenue"
-                  stroke="#B4652F"
+                  stroke="var(--color-brand-navy)"
                   strokeWidth={2.2}
                   fill="url(#platformRev)"
                   dot={false}
@@ -251,7 +252,7 @@ export default function SuperOverview() {
               <h3 className="text-[15px] font-semibold tracking-tight">Store performance</h3>
               <p className="mt-0.5 text-[12px] text-muted">Revenue in the last 30 days</p>
             </div>
-            <Link to="/super/stores" className="text-[12px] font-semibold text-accent-700 hover:text-accent-600">
+            <Link to="/super/stores" className="text-[12px] font-semibold text-accent-foreground hover:text-accent-foreground">
               Manage
             </Link>
           </div>

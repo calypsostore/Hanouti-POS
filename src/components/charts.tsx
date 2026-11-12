@@ -21,7 +21,7 @@ export function ChartTooltip({
         <div key={i} className="flex items-center gap-2 text-[12px]">
           <span
             className="h-2 w-2 rounded-full"
-            style={{ background: p.color ?? '#B4652F' }}
+            style={{ background: p.color ?? 'var(--color-brand-amber)' }}
           />
           <span className="text-muted">{p.name}</span>
           <span className="ml-auto font-bold text-ink tabular">
@@ -34,7 +34,7 @@ export function ChartTooltip({
 }
 
 export const axisProps = {
-  tick: { fill: '#9a8f83', fontSize: 10.5 },
+  tick: { fill: 'var(--color-muted)', fontSize: 10.5 },
   axisLine: false,
   tickLine: false,
 } as const

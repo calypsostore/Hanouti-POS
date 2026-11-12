@@ -1,4 +1,7 @@
 import type { BusinessType, PosMode, StoreFeatures } from '../types'
+import { BRAND_NAME } from './brand'
+
+const receiptFooter = (message: string) => `${message} · ${BRAND_NAME}`
 
 export interface BusinessTemplate {
   posMode: PosMode
@@ -11,7 +14,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   cafe: {
     posMode: 'cashier',
     features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
-    receiptFooter: 'Thank you for your visit!',
+    receiptFooter: receiptFooter('Thank you for your visit!'),
     categories: [
       { name: 'Coffee', emoji: '☕' },
       { name: 'Tea & Infusions', emoji: '🫖' },
@@ -24,7 +27,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   restaurant: {
     posMode: 'cashier',
     features: { tables: true, kitchenScreen: true, barcode: false, weightItems: false },
-    receiptFooter: 'Thank you for dining with us!',
+    receiptFooter: receiptFooter('Thank you for dining with us!'),
     categories: [
       { name: 'Starters', emoji: '🥗' },
       { name: 'Main courses', emoji: '🍽️' },
@@ -36,7 +39,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   bakery: {
     posMode: 'cashier',
     features: { tables: false, kitchenScreen: false, barcode: true, weightItems: true },
-    receiptFooter: 'Freshly baked for you!',
+    receiptFooter: receiptFooter('Freshly baked for you!'),
     categories: [
       { name: 'Bread', emoji: '🍞' },
       { name: 'Pastries', emoji: '🥐' },
@@ -48,7 +51,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   snack: {
     posMode: 'quick',
     features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
-    receiptFooter: 'Thanks — see you soon!',
+    receiptFooter: receiptFooter('Thanks — see you soon!'),
     categories: [
       { name: 'Sandwiches', emoji: '🥪' },
       { name: 'Snacks', emoji: '🍟' },
@@ -60,7 +63,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   retail: {
     posMode: 'cashier',
     features: { tables: false, kitchenScreen: false, barcode: true, weightItems: true },
-    receiptFooter: 'Thank you for shopping with us!',
+    receiptFooter: receiptFooter('Thank you for shopping with us!'),
     categories: [
       { name: 'Groceries', emoji: '🛒' },
       { name: 'Drinks', emoji: '🥤' },
@@ -71,7 +74,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   salon: {
     posMode: 'cashier',
     features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
-    receiptFooter: 'Thank you — we look forward to seeing you again!',
+    receiptFooter: receiptFooter('Thank you — we look forward to seeing you again!'),
     categories: [
       { name: 'Hair services', emoji: '💇' },
       { name: 'Nail services', emoji: '💅' },

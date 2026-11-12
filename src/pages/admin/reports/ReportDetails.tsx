@@ -56,7 +56,7 @@ export function ReportDetails({
                       <div className="flex items-center justify-end gap-2">
                         <div className="h-1.5 w-16 overflow-hidden rounded-full bg-cream-200">
                           <div
-                            className="h-full rounded-full bg-accent-500"
+                            className="h-full rounded-full bg-accent-foreground"
                             style={{ width: `${sales > 0 ? (product.revenue / sales) * 100 : 0}%` }}
                           />
                         </div>
@@ -86,7 +86,7 @@ export function ReportDetails({
               <ReportLine label="New charges" value={money(charges)} />
               <ReportLine label="Settlements received" value={money(settled)} valueClass="text-emerald-600" />
               <div className="border-t border-dashed border-line pt-2.5">
-                <ReportLine label="Outstanding overall" value={money(outstanding)} valueClass="text-accent-700" strong />
+                <ReportLine label="Outstanding overall" value={money(outstanding)} valueClass="text-accent-foreground" strong />
               </div>
             </div>
             <div className="mt-3 rounded-xl bg-cream-100 px-3 py-2.5 text-[11px] leading-relaxed text-muted">

@@ -2,7 +2,25 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database, User } from '../types'
 import { verifySecret } from '../lib/hash'
 import type { Result } from './types'
-import { SESSION_KEY } from './database'
+import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
+
+const readStoredUserId = () => {
+  try {
+    const current = localStorage.getItem(SESSION_KEY)
+    if (current) return current
+    for (const key of LEGACY_SESSION_KEYS) {
+      const legacy = localStorage.getItem(key)
+      if (legacy) {
+        localStorage.setItem(SESSION_KEY, legacy)
+        localStorage.removeItem(key)
+        return legacy
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 type AuthSliceDependencies = {
   dbRef: { current: Database }
@@ -12,9 +30,7 @@ type AuthSliceDependencies = {
 
 export function useAuthSlice(dependencies: AuthSliceDependencies) {
   const { dbRef, ready, loadError } = dependencies
-  const [userId, setStoredUserId] = useState<string | null>(() => {
-    try { return localStorage.getItem(SESSION_KEY) } catch { return null }
-  })
+  const [userId, setStoredUserId] = useState<string | null>(readStoredUserId)
   const userIdRef = useRef<string | null>(userId)
   const pinFailures = useRef(new Map<string, { count: number; lockedUntil: number }>())
   const setSessionUserId = useCallback((next: string | null) => {
@@ -25,6 +41,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
     try {
       if (userId) localStorage.setItem(SESSION_KEY, userId)
       else localStorage.removeItem(SESSION_KEY)
+      for (const key of LEGACY_SESSION_KEYS) localStorage.removeItem(key)
     } catch { /* ignore */ }
   }, [userId])
   const login = useCallback(

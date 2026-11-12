@@ -17,7 +17,7 @@ export default function RegisterTab({
       <div className="space-y-5 lg:col-span-2">
         <Card className="p-5">
           <div className="mb-1 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-accent-600" />
+            <Zap className="h-4 w-4 text-accent-foreground" />
             <h3 className="text-[15px] font-semibold tracking-tight">How the register works</h3>
           </div>
           <p className="text-[12px] text-muted">
@@ -153,9 +153,9 @@ export default function RegisterTab({
           </div>
         </Card>
 
-        <Card className="border-accent-500/20 bg-accent-50/50 p-5">
-          <h3 className="text-[13.5px] font-semibold text-accent-700">A note on switching</h3>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-accent-700/80">
+        <Card className="border-accent-foreground/20 bg-accent-50/50 p-5">
+          <h3 className="text-[13.5px] font-semibold text-accent-foreground">A note on switching</h3>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-accent-foreground/80">
             Switching modes never changes past orders. Reports stay accurate and staff see the
             new flow on their next sale.
           </p>
@@ -186,15 +186,15 @@ function ModeCard({
       className={cn(
         'relative rounded-2xl border p-4 text-left transition',
         active
-          ? 'border-accent-500/50 bg-accent-50/50 ring-2 ring-accent-500/15'
-          : 'border-line bg-white hover:border-accent-500/30 hover:bg-cream-50',
+          ? 'border-accent-foreground/50 bg-accent-50/50 ring-2 ring-accent-foreground/20'
+          : 'border-line bg-white hover:border-accent-foreground/30 hover:bg-cream-50',
       )}
     >
       <div className="flex items-start justify-between">
         <div
           className={cn(
             'flex h-10 w-10 items-center justify-center rounded-xl',
-            active ? 'bg-accent-600 text-white' : 'bg-cream-100 text-muted',
+            active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-100 text-muted',
           )}
         >
           {icon}
@@ -202,7 +202,7 @@ function ModeCard({
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide',
-            active ? 'bg-accent-600 text-white' : 'bg-cream-200 text-muted',
+            active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-200 text-muted',
           )}
         >
           {badge}
@@ -218,8 +218,8 @@ function ModeCard({
         ))}
       </ul>
       {active && (
-        <div className="absolute right-3 top-3 flex h-4 w-4 items-center justify-center rounded-full bg-accent-600">
-          <Check className="h-2.5 w-2.5 text-white" />
+        <div className="absolute right-3 top-3 flex h-4 w-4 items-center justify-center rounded-full bg-brand-amber">
+          <Check className="h-2.5 w-2.5 text-brand-navy" />
         </div>
       )}
     </button>

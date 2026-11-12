@@ -212,7 +212,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
               <div key={i} className="group flex flex-1 flex-col items-center gap-1">
                 <div className="flex h-12 w-full items-end">
                   <div
-                    className="w-full rounded-sm bg-accent-500/80 transition group-hover:bg-accent-600"
+                    className="w-full rounded-sm bg-accent-foreground/80 transition group-hover:bg-accent-foreground"
                     style={{ height: `${Math.max(4, (d.value / maxDay) * 100)}%` }}
                     title={money(d.value)}
                   />
@@ -277,7 +277,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
                       <div className="text-[12px] font-semibold">{c.name}</div>
                       <div className="text-[10px] text-muted">{c.phone || 'No phone'}</div>
                     </div>
-                    <span className="text-[12px] font-bold text-accent-700 tabular">
+                    <span className="text-[12px] font-bold text-accent-foreground tabular">
                       {money(balanceFor(db.ledger, c.id))}
                     </span>
                   </div>

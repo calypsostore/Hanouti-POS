@@ -1,4 +1,4 @@
-# Kawa POS
+# 7anouti-POS
 
 A multi-tenant point-of-sale platform for Tunisian cafés, snacks and salons de thé.
 Built as a fully interactive frontend prototype with a browser-persisted demo backend, so

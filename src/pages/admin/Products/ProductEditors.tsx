@@ -21,7 +21,7 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (value: str
             onClick={() => onChange(emoji)}
             className={cn(
               'flex h-8 w-8 items-center justify-center rounded-lg text-lg transition',
-              value === emoji ? 'bg-accent-50 ring-1 ring-accent-500/40' : 'hover:bg-cream-100',
+              value === emoji ? 'bg-accent-50 ring-1 ring-accent-foreground/40' : 'hover:bg-cream-100',
             )}
           >
             {emoji}
