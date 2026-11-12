@@ -54,8 +54,9 @@ The login screen has one-click demo buttons for the first three.
 - POS with categories, search, stock awareness, notes, discounts, customer
   attachment and receipt printing
 - Orders history with filters, detail drawer, receipt print, CSV export and voids
-- Customers & tabs: credit limits, running balances, full ledger, partial or
-  full settlements, edit/delete protected by balance
+- Regulars & tabs: monthly customer cards with credit limits, settlement cycle,
+  running balances, full ledger and partial or full payments. Staff can start
+  orders and take payments; only admins can edit profiles or remove customers.
 - Products and categories: emoji icons, pricing, cost/margin, stock tracking,
   active toggles
 - Team: email/password + 4-digit PIN, roles, granular permissions, activation
@@ -68,7 +69,9 @@ The login screen has one-click demo buttons for the first three.
 ### Staff
 - Scoped to their own store only
 - Quick PIN login with store code
-- POS, order history and customer tabs
+- POS, order history and regular customer cards
+- Add a new order to a regular's card or take a tab payment
+- Customer profiles are read-only for staff; admin-only editing is enforced
 - Permissions control discounts, tabs, settlements and reports
 
 ## How data isolation works in the prototype
@@ -90,7 +93,7 @@ src/
   pages/
     Login.tsx
     POS.tsx
-    admin/                 overview, orders, customers, products, staff,
+    admin/                 overview, orders, regulars, products, staff,
                            reports, expenses, settings
     super/                 overview, stores, store profile drawer
 ```

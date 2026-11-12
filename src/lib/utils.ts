@@ -1,4 +1,5 @@
 import clsx, { type ClassValue } from 'clsx'
+import type { SettlementCycle } from '../types'
 
 export const cn = (...inputs: ClassValue[]) => clsx(inputs)
 
@@ -58,6 +59,23 @@ export const fmtDateTime = (iso: string) =>
 
 export const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+export const cycleLabel = (cycle: SettlementCycle = 'monthly') =>
+  cycle === 'weekly' ? 'Weekly' : cycle === 'on-demand' ? 'On demand' : 'Monthly'
+
+export const nextDueLabel = (cycle: SettlementCycle = 'monthly', from = new Date()) => {
+  if (cycle === 'on-demand') return 'Pay anytime'
+  if (cycle === 'weekly') {
+    const d = new Date(from)
+    const add = (5 - d.getDay() + 7) % 7
+    d.setDate(d.getDate() + add)
+    if (add === 0) return 'Due today'
+    return `Due ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`
+  }
+  const end = new Date(from.getFullYear(), from.getMonth() + 1, 0)
+  if (dateKey(end) === dateKey(from)) return 'Due today'
+  return `Due ${end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+}
 
 export const relative = (iso: string) => {
   const diff = Date.now() - new Date(iso).getTime()

@@ -1,10 +1,14 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ArrowDownRight,
   ArrowUpRight,
   Banknote,
+  CalendarClock,
   CreditCard,
   HandCoins,
+  Lock,
+  Pencil,
   Phone,
   Plus,
   Search,
@@ -14,7 +18,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
-import type { Customer } from '../../types'
+import type { Customer, SettlementCycle } from '../../types'
 import {
   Avatar,
   Badge,
@@ -26,21 +30,32 @@ import {
   Input,
   Modal,
   Segmented,
+  Select,
   Textarea,
 } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { balanceFor, customerActivity } from '../../lib/selectors'
-import { cn, fmtDate, fmtDateTime, money } from '../../lib/utils'
+import { cn, cycleLabel, dateKey, fmtDate, fmtDateTime, money, nextDueLabel } from '../../lib/utils'
 
 export default function Customers() {
-  const { db, store, user, addCustomer, updateCustomer, deleteCustomer, settleCredit } = useApp()
+  const {
+    db,
+    store,
+    user,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    settleCredit,
+  } = useApp()
   const { push } = useToast()
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
+  const [view, setView] = useState<'all' | 'open' | 'settled'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editor, setEditor] = useState<{ open: boolean; customer?: Customer }>({ open: false })
-  const [settleOpen, setSettleOpen] = useState(false)
+  const [settleCustomerId, setSettleCustomerId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
-  const [tab, setTab] = useState<'ledger' | 'orders'>('ledger')
+  const [detailTab, setDetailTab] = useState<'ledger' | 'orders'>('ledger')
 
   if (!store || !user) return null
 
@@ -48,7 +63,9 @@ export default function Customers() {
   const canSettle = isAdmin || user.permissions.settle
   const customers = db.customers.filter((c) => c.storeId === store.id)
   const selected = customers.find((c) => c.id === selectedId) ?? null
+  const settleTarget = customers.find((c) => c.id === settleCustomerId) ?? null
   const balance = selected ? balanceFor(db.ledger, selected.id) : 0
+  const settleBalance = settleTarget ? balanceFor(db.ledger, settleTarget.id) : 0
   const activity = selected ? customerActivity(db.ledger, selected.id) : []
   const orders = selected
     ? db.orders
@@ -57,10 +74,14 @@ export default function Customers() {
     : []
 
   const filtered = customers
-    .filter(
-      (c) =>
-        c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query.trim()),
-    )
+    .filter((c) => {
+      const matchesQuery =
+        c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query.trim())
+      const cBalance = balanceFor(db.ledger, c.id)
+      const matchesView =
+        view === 'all' || (view === 'open' ? cBalance > 0 : cBalance <= 0)
+      return matchesQuery && matchesView
+    })
     .sort((a, b) => balanceFor(db.ledger, b.id) - balanceFor(db.ledger, a.id))
 
   const totalOutstanding = customers.reduce(
@@ -68,17 +89,25 @@ export default function Customers() {
     0,
   )
   const debtors = customers.filter((c) => balanceFor(db.ledger, c.id) > 0).length
-  const collected = db.ledger
-    .filter((l) => l.storeId === store.id && l.type === 'payment')
+  const monthPrefix = dateKey(new Date()).slice(0, 7)
+  const collectedThisMonth = db.ledger
+    .filter(
+      (l) =>
+        l.storeId === store.id &&
+        l.type === 'payment' &&
+        dateKey(l.createdAt).startsWith(monthPrefix),
+    )
     .reduce((a, l) => a + l.amount, 0)
+
+  const startOrder = (customerId: string) => navigate(`/pos?customer=${customerId}`)
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-[20px] font-extrabold tracking-tight">Customers & tabs</h2>
+          <h2 className="text-[20px] font-extrabold tracking-tight">Regulars &amp; tabs</h2>
           <p className="mt-1 text-[13px] text-muted">
-            Regulars can run a tab and settle whenever they like.
+            Monthly customer cards for regulars who settle at the end of the month.
           </p>
         </div>
         {isAdmin && (
@@ -88,8 +117,20 @@ export default function Customers() {
         )}
       </div>
 
+      {!isAdmin && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-line bg-white px-3.5 py-3 text-[12px] leading-relaxed text-muted">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-600" />
+          <span>
+            {canSettle
+              ? 'You can start an order or take a payment from any card.'
+              : 'You can start an order from any card. Taking payments needs the settlement permission — ask your manager.'}{' '}
+            Customer details and credit limits can only be edited by an admin.
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryTile label="Customers" value={String(customers.length)} icon={<Users className="h-4 w-4" />} />
+        <SummaryTile label="Regulars" value={String(customers.length)} icon={<Users className="h-4 w-4" />} />
         <SummaryTile
           label="Outstanding"
           value={money(totalOutstanding)}
@@ -97,16 +138,32 @@ export default function Customers() {
           accent
         />
         <SummaryTile label="Open tabs" value={String(debtors)} icon={<HandCoins className="h-4 w-4" />} />
-        <SummaryTile label="Collected" value={money(collected)} icon={<Banknote className="h-4 w-4" />} />
+        <SummaryTile
+          label="Collected this month"
+          value={money(collectedThisMonth)}
+          icon={<Banknote className="h-4 w-4" />}
+        />
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search customers…"
-          className="pl-9"
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name or phone…"
+            className="pl-9"
+          />
+        </div>
+        <Segmented
+          value={view}
+          onChange={setView}
+          size="sm"
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'open', label: 'Open tabs' },
+            { value: 'settled', label: 'Settled' },
+          ]}
         />
       </div>
 
@@ -114,10 +171,10 @@ export default function Customers() {
         <Card>
           <EmptyState
             icon={<Users className="h-5 w-5" />}
-            title={customers.length ? 'No customers match' : 'No customers yet'}
+            title={customers.length ? 'No customers match' : 'No regulars yet'}
             description={
               customers.length
-                ? 'Try a different name or phone number.'
+                ? 'Try a different name, phone number or filter.'
                 : 'Create a profile for regulars who pay at the end of the month.'
             }
             action={
@@ -136,54 +193,99 @@ export default function Customers() {
             const pct = c.limit > 0 ? Math.min(100, (bal / c.limit) * 100) : 0
             const over = c.limit > 0 && bal > c.limit
             return (
-              <button
+              <div
                 key={c.id}
-                onClick={() => {
-                  setSelectedId(c.id)
-                  setTab('ledger')
-                }}
-                className="group rounded-2xl border border-line/80 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-accent-500/40 hover:shadow-[0_6px_20px_rgba(36,30,25,0.06)]"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-line/80 bg-white transition hover:-translate-y-0.5 hover:border-accent-500/40 hover:shadow-[0_6px_20px_rgba(36,30,25,0.06)]"
               >
-                <div className="flex items-start gap-3">
-                  <Avatar name={c.name} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13.5px] font-bold text-ink">{c.name}</div>
-                    <div className="mt-0.5 truncate text-[11.5px] text-muted">{c.phone || 'No phone'}</div>
-                  </div>
-                  {bal > 0 ? (
-                    <Badge tone={over ? 'danger' : 'accent'}>{over ? 'Over limit' : 'Tab open'}</Badge>
-                  ) : (
-                    <Badge tone="success">Settled</Badge>
-                  )}
-                </div>
-                <div className="mt-3 flex items-end justify-between">
-                  <div>
-                    <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
-                      Outstanding
+                <button
+                  onClick={() => {
+                    setSelectedId(c.id)
+                    setDetailTab('ledger')
+                  }}
+                  className="flex-1 p-4 text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar name={c.name} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] font-bold text-ink">{c.name}</div>
+                      <div className="mt-0.5 truncate text-[11.5px] text-muted">
+                        {c.phone || 'No phone'}
+                      </div>
                     </div>
+                    {bal > 0 ? (
+                      <Badge tone={over ? 'danger' : 'accent'}>{over ? 'Over limit' : 'Tab open'}</Badge>
+                    ) : (
+                      <Badge tone="success">Settled</Badge>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-end justify-between">
+                    <div>
+                      <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
+                        Outstanding
+                      </div>
+                      <div
+                        className={cn(
+                          'text-[19px] font-extrabold tracking-tight tabular',
+                          bal > 0 ? (over ? 'text-red-500' : 'text-ink') : 'text-muted',
+                        )}
+                      >
+                        {money(bal)}
+                      </div>
+                    </div>
+                    <div className="text-right text-[10.5px] text-muted">
+                      limit {money(c.limit)}
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-cream-200">
                     <div
                       className={cn(
-                        'text-[19px] font-extrabold tracking-tight tabular',
-                        bal > 0 ? (over ? 'text-red-500' : 'text-ink') : 'text-muted',
+                        'h-full rounded-full transition-all',
+                        over ? 'bg-red-400' : 'bg-accent-500',
                       )}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-dashed border-line/70 pt-2.5">
+                    <span className="inline-flex min-w-0 items-center gap-1 text-[10.5px] font-semibold text-muted">
+                      <CalendarClock className="h-3 w-3 shrink-0 text-accent-600" />
+                      <span className="truncate">
+                        {cycleLabel(c.cycle)} · {nextDueLabel(c.cycle)}
+                      </span>
+                    </span>
+                    {c.notes && (
+                      <span className="max-w-[45%] truncate text-[10.5px] italic text-muted">
+                        “{c.notes}”
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-1 border-t border-line/60 bg-cream-50/70 px-2 py-1.5">
+                  <button
+                    onClick={() => startOrder(c.id)}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-ink transition hover:bg-white hover:text-accent-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> New order
+                  </button>
+                  {canSettle && bal > 0 && (
+                    <button
+                      onClick={() => setSettleCustomerId(c.id)}
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-accent-700 transition hover:bg-accent-50"
                     >
-                      {money(bal)}
-                    </div>
-                  </div>
-                  <div className="text-right text-[10.5px] text-muted">
-                    limit {money(c.limit)}
-                  </div>
+                      <HandCoins className="h-3.5 w-3.5" /> Take payment
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setEditor({ open: true, customer: c })}
+                      className="rounded-lg p-1.5 text-muted transition hover:bg-white hover:text-ink"
+                      title="Edit customer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-cream-200">
-                  <div
-                    className={cn('h-full rounded-full transition-all', over ? 'bg-red-400' : 'bg-accent-500')}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                {c.notes && (
-                  <p className="mt-2 line-clamp-1 text-[11px] italic text-muted">“{c.notes}”</p>
-                )}
-              </button>
+              </div>
             )
           })}
         </div>
@@ -195,19 +297,19 @@ export default function Customers() {
         onClose={() => setSelectedId(null)}
         width="max-w-2xl"
         title={selected?.name}
-        subtitle={selected ? `Customer since ${fmtDate(selected.createdAt)}` : ''}
+        subtitle={selected ? `Regular since ${fmtDate(selected.createdAt)}` : ''}
         footer={
           selected ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-2">
-                {isAdmin && (
+              <div className="flex items-center gap-2">
+                {isAdmin ? (
                   <>
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => setEditor({ open: true, customer: selected })}
                     >
-                      Edit profile
+                      <Pencil className="h-3.5 w-3.5" /> Edit profile
                     </Button>
                     <Button
                       variant="ghost"
@@ -218,13 +320,25 @@ export default function Customers() {
                       <Trash2 className="h-3.5 w-3.5" /> Remove
                     </Button>
                   </>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+                    <Lock className="h-3 w-3" /> Profile is managed by an admin
+                  </span>
                 )}
               </div>
-              {canSettle && balance > 0 && (
-                <Button size="md" onClick={() => setSettleOpen(true)}>
-                  <HandCoins className="h-4 w-4" /> Take payment
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" size="md" onClick={() => startOrder(selected.id)}>
+                  <Plus className="h-4 w-4" /> New order
                 </Button>
-              )}
+                {canSettle && balance > 0 && (
+                  <Button size="md" onClick={() => setSettleCustomerId(selected.id)}>
+                    <HandCoins className="h-4 w-4" /> Take payment
+                  </Button>
+                )}
+                {!canSettle && balance > 0 && (
+                  <span className="text-[11px] text-muted">Ask an admin to record the payment.</span>
+                )}
+              </div>
             </div>
           ) : null
         }
@@ -259,7 +373,7 @@ export default function Customers() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-line bg-white p-3">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
                   <Phone className="h-3 w-3" /> Phone
@@ -270,11 +384,18 @@ export default function Customers() {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-muted">Orders</div>
                 <div className="mt-1 text-[12.5px] font-semibold">{orders.length}</div>
               </div>
-              <div className="col-span-2 rounded-xl border border-line bg-white p-3 sm:col-span-1">
+              <div className="rounded-xl border border-line bg-white p-3">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-muted">Lifetime</div>
                 <div className="mt-1 text-[12.5px] font-semibold tabular">
                   {money(orders.filter((o) => o.status === 'completed').reduce((a, o) => a + o.total, 0))}
                 </div>
+              </div>
+              <div className="rounded-xl border border-line bg-white p-3">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                  <CalendarClock className="h-3 w-3" /> Settlement
+                </div>
+                <div className="mt-1 text-[12.5px] font-semibold">{cycleLabel(selected.cycle)}</div>
+                <div className="text-[10px] text-muted">{nextDueLabel(selected.cycle)}</div>
               </div>
             </div>
 
@@ -286,8 +407,8 @@ export default function Customers() {
 
             <div>
               <Segmented
-                value={tab}
-                onChange={setTab}
+                value={detailTab}
+                onChange={setDetailTab}
                 size="sm"
                 options={[
                   { value: 'ledger', label: 'Tab activity' },
@@ -296,7 +417,7 @@ export default function Customers() {
               />
             </div>
 
-            {tab === 'ledger' ? (
+            {detailTab === 'ledger' ? (
               <div className="overflow-hidden rounded-2xl border border-line bg-white">
                 {activity.length === 0 ? (
                   <p className="py-10 text-center text-[12.5px] text-muted">No tab activity yet.</p>
@@ -384,31 +505,33 @@ export default function Customers() {
         customer={editor.customer}
         onClose={() => setEditor({ open: false })}
         onSave={(data) => {
-          if (editor.customer) {
-            updateCustomer(editor.customer.id, data)
-            push('Customer profile updated')
-          } else {
-            addCustomer(store.id, data)
-            push('Customer created')
+          const res = editor.customer
+            ? updateCustomer(editor.customer.id, data)
+            : addCustomer(store.id, data)
+          if (!res.ok) {
+            push(res.error, 'error')
+            return
           }
+          push(editor.customer ? 'Customer profile updated' : 'Customer created')
           setEditor({ open: false })
         }}
       />
 
-      {selected && (
+      {settleTarget && (
         <SettleModal
-          open={settleOpen}
-          onClose={() => setSettleOpen(false)}
-          customer={selected}
-          balance={balance}
+          key={settleTarget.id}
+          open
+          onClose={() => setSettleCustomerId(null)}
+          customer={settleTarget}
+          balance={settleBalance}
           onSettle={(amount, method, note) => {
-            const res = settleCredit(selected.id, amount, method, note)
+            const res = settleCredit(settleTarget.id, amount, method, note)
             if (!res.ok) {
               push(res.error, 'error')
               return
             }
-            push(`${money(amount)} received from ${selected.name}`)
-            setSettleOpen(false)
+            push(`${money(amount)} received from ${settleTarget.name}`)
+            setSettleCustomerId(null)
           }}
         />
       )}
@@ -490,12 +613,19 @@ function CustomerEditor({
   open: boolean
   customer?: Customer
   onClose: () => void
-  onSave: (data: { name: string; phone: string; limit: number; notes: string }) => void
+  onSave: (data: {
+    name: string
+    phone: string
+    limit: number
+    notes: string
+    cycle: SettlementCycle
+  }) => void
 }) {
   const [name, setName] = useState(customer?.name ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
-  const [limit, setLimit] = useState(String(customer?.limit ?? 100))
+  const [limit, setLimit] = useState(String(customer?.limit ?? 150))
   const [notes, setNotes] = useState(customer?.notes ?? '')
+  const [cycle, setCycle] = useState<SettlementCycle>(customer?.cycle ?? 'monthly')
 
   // Reset when switching between create/edit targets
   const key = customer?.id ?? 'new'
@@ -504,8 +634,9 @@ function CustomerEditor({
     setLastKey(key)
     setName(customer?.name ?? '')
     setPhone(customer?.phone ?? '')
-    setLimit(String(customer?.limit ?? 100))
+    setLimit(String(customer?.limit ?? 150))
     setNotes(customer?.notes ?? '')
+    setCycle(customer?.cycle ?? 'monthly')
   }
 
   return (
@@ -513,7 +644,7 @@ function CustomerEditor({
       open={open}
       onClose={onClose}
       title={customer ? 'Edit customer' : 'New customer'}
-      subtitle={customer ? customer.name : 'Create a profile for a regular customer.'}
+      subtitle={customer ? customer.name : 'Create a card for a regular who runs a tab.'}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -522,7 +653,13 @@ function CustomerEditor({
           <Button
             disabled={!name.trim()}
             onClick={() =>
-              onSave({ name: name.trim(), phone: phone.trim(), limit: Number(limit) || 0, notes: notes.trim() })
+              onSave({
+                name: name.trim(),
+                phone: phone.trim(),
+                limit: Number(limit) || 0,
+                notes: notes.trim(),
+                cycle,
+              })
             }
           >
             {customer ? 'Save changes' : 'Create customer'}
@@ -537,16 +674,28 @@ function CustomerEditor({
         <Field label="Phone" hint="Optional">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+216 …" />
         </Field>
-        <Field label="Credit limit (DT)" hint="0 = unlimited">
-          <Input
-            type="number"
-            min={0}
-            step={10}
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-            className="tabular"
-          />
-        </Field>
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label="Credit limit (DT)" hint="0 = unlimited">
+            <Input
+              type="number"
+              min={0}
+              step={10}
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              className="tabular"
+            />
+          </Field>
+          <Field label="Settlement cycle">
+            <Select
+              value={cycle}
+              onChange={(e) => setCycle(e.target.value as SettlementCycle)}
+            >
+              <option value="monthly">Monthly — end of month</option>
+              <option value="weekly">Weekly — every Friday</option>
+              <option value="on-demand">On demand — pay anytime</option>
+            </Select>
+          </Field>
+        </div>
         <Field label="Notes" hint="Optional">
           <Textarea
             value={notes}
@@ -555,8 +704,8 @@ function CustomerEditor({
           />
         </Field>
         <div className="rounded-xl bg-cream-100 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
-          A credit limit warns staff when a tab is getting large. Tabs are settled from this profile
-          at any time.
+          Staff can add orders and record payments from this card. Only store admins can edit the
+          profile, credit limit or settlement cycle.
         </div>
       </div>
     </Modal>

@@ -5,6 +5,7 @@ export type StoreStatus = 'active' | 'trial' | 'suspended'
 export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
 export type PaymentMethod = 'cash' | 'card' | 'credit'
 export type OrderStatus = 'completed' | 'void'
+export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
 
 export interface StoreSettings {
   posMode: PosMode
@@ -82,6 +83,7 @@ export interface Customer {
   phone: string
   limit: number
   notes: string
+  cycle?: SettlementCycle
   createdAt: string
 }
 

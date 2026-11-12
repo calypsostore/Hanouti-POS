@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowUpRight, Search, Store as StoreIcon, Users, Wallet } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import { PLAN_INFO } from '../../data/seed'
-import type { Plan, Store, StoreStatus } from '../../types'
+import type { Plan, StoreStatus } from '../../types'
 import { Badge, Card, EmptyState, Input, Select, Button } from '../../components/ui'
 import { StoreProfileDrawer } from './StoreProfile'
 import { balanceFor } from '../../lib/selectors'
@@ -210,5 +210,3 @@ function StatusBadge({ status }: { status: StoreStatus }) {
     </Badge>
   )
 }
-
-export type { Store }

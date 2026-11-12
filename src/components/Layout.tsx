@@ -32,7 +32,7 @@ interface NavItem {
 const titles: Record<string, string> = {
   '/admin': 'Overview',
   '/admin/orders': 'Orders',
-  '/admin/customers': 'Customers & tabs',
+  '/admin/customers': 'Regulars & tabs',
   '/admin/products': 'Products',
   '/admin/staff': 'Team',
   '/admin/reports': 'Reports',
@@ -77,7 +77,7 @@ export function AppShell() {
             items: [
               { to: '/pos', label: 'Take order', icon: ShoppingBag },
               { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
-              { to: '/admin/customers', label: 'Customers & tabs', icon: Users },
+              { to: '/admin/customers', label: 'Regulars', icon: Users },
             ],
           },
         ]
@@ -88,7 +88,7 @@ export function AppShell() {
               { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
               { to: '/pos', label: 'Point of sale', icon: ShoppingBag },
               { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
-              { to: '/admin/customers', label: 'Customers & tabs', icon: Users },
+              { to: '/admin/customers', label: 'Regulars', icon: Users },
             ],
           },
           {
@@ -198,7 +198,7 @@ export function AppShell() {
                         strokeWidth={2}
                       />
                       <span className="flex-1">{item.label}</span>
-                      {item.label === 'Customers & tabs' && outstanding > 0 && !isSuper && (
+                      {item.label === 'Regulars' && outstanding > 0 && !isSuper && (
                         <span className="rounded-full bg-accent-600/20 px-1.5 py-0.5 text-[9.5px] font-bold text-accent-500">
                           {Math.round(outstanding)}
                         </span>

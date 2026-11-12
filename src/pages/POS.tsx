@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   Banknote,
@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   Trash2,
   UserRound,
+  Users,
   Wallet,
   X,
   Zap,
@@ -44,12 +45,14 @@ export default function POS() {
   const { user, store, db, logout, createOrder } = useApp()
   const navigate = useNavigate()
   const { push } = useToast()
+  const [searchParams] = useSearchParams()
+  const linkedCustomerId = searchParams.get('customer') ?? undefined
 
   const [categoryId, setCategoryId] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<OrderItem[]>([])
   const [channel, setChannel] = useState<OrderChannel>('takeaway')
-  const [customerId, setCustomerId] = useState<string | undefined>()
+  const [customerId, setCustomerId] = useState<string | undefined>(linkedCustomerId)
   const [discount, setDiscount] = useState(0)
   const [note, setNote] = useState('')
   const [paymentOpen, setPaymentOpen] = useState(false)
@@ -62,6 +65,10 @@ export default function POS() {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(t)
   }, [])
+
+  useEffect(() => {
+    if (linkedCustomerId) setCustomerId(linkedCustomerId)
+  }, [linkedCustomerId])
 
   if (!user || !store) return null
 
@@ -76,6 +83,7 @@ export default function POS() {
   const totals = computeTotals(cart, store.settings, discount, channel)
   const count = cart.reduce((a, i) => a + i.qty, 0)
   const quick = store.settings.posMode === 'quick'
+  const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
 
   const filteredProducts = products.filter((p) =>
@@ -165,6 +173,10 @@ export default function POS() {
   }
 
   const addToTab = () => {
+    if (!canUseCredit) {
+      push('You do not have permission to add orders to tabs.', 'error')
+      return
+    }
     if (!customerId) {
       push('Select a customer first.', 'error')
       setCustomerOpen(true)
@@ -205,12 +217,22 @@ export default function POS() {
             </Link>
           )}
           {user.role === 'staff' && (
-            <Link
-              to="/admin/orders"
-              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
-            >
-              <ReceiptText className="h-3.5 w-3.5" /> Orders
-            </Link>
+            <>
+              <Link
+                to="/admin/customers"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:px-3"
+                title="Regulars & tabs"
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Regulars</span>
+              </Link>
+              <Link
+                to="/admin/orders"
+                className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+              >
+                <ReceiptText className="h-3.5 w-3.5" /> Orders
+              </Link>
+            </>
           )}
           <div className="hidden items-center gap-2 rounded-xl border border-line px-2 py-1 sm:flex">
             <Avatar name={user.name} size="xs" />
@@ -364,7 +386,7 @@ export default function POS() {
             note={note}
             setNote={setNote}
             quick={quick}
-            allowCredit={store.settings.allowCredit}
+            allowCredit={canUseCredit}
             onCheckout={checkout}
             onAddToTab={addToTab}
             count={count}
@@ -401,7 +423,7 @@ export default function POS() {
           note={note}
           setNote={setNote}
           quick={quick}
-          allowCredit={store.settings.allowCredit}
+          allowCredit={canUseCredit}
           onCheckout={checkout}
           onAddToTab={addToTab}
           count={count}
@@ -419,7 +441,7 @@ export default function POS() {
           setCustomerId(id)
           setCustomerOpen(false)
         }}
-        allowCredit={store.settings.allowCredit}
+        allowCredit={canUseCredit}
         isAdmin={user.role === 'admin'}
       />
 
@@ -433,7 +455,7 @@ export default function POS() {
           customerId={customerId}
           setCustomerId={setCustomerId}
           ledger={db.ledger}
-          allowCredit={store.settings.allowCredit}
+          allowCredit={canUseCredit}
           onConfirm={completeSale}
           orderNo={null}
         />
@@ -775,7 +797,7 @@ function CustomerPicker({
             <p className="text-[13px] font-semibold text-ink">No customer found</p>
             <p className="mt-1 text-[11.5px] text-muted">
               {isAdmin
-                ? 'Create the customer profile from Customers & tabs.'
+                ? 'Create the customer profile from Regulars & tabs.'
                 : 'Ask your manager to create the customer profile.'}
             </p>
           </div>

@@ -28,7 +28,7 @@ import { isoDaysAgo, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { applyAccent } from '../lib/theme'
 
-const DB_KEY = 'cafepos.db.v3'
+const DB_KEY = 'cafepos.db.v5'
 const SESSION_KEY = 'cafepos.session.v2'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -61,8 +61,11 @@ interface AppContextValue {
   addStaff: (storeId: string, data: Omit<User, 'id' | 'storeId' | 'createdAt'>) => Result
   updateStaff: (id: string, patch: Partial<User>) => void
   deleteStaff: (id: string) => Result
-  addCustomer: (storeId: string, data: { name: string; phone: string; limit: number; notes: string }) => void
-  updateCustomer: (id: string, patch: Partial<Customer>) => void
+  addCustomer: (
+    storeId: string,
+    data: { name: string; phone: string; limit: number; notes: string; cycle: Customer['cycle'] },
+  ) => Result
+  updateCustomer: (id: string, patch: Partial<Customer>) => Result
   deleteCustomer: (id: string) => Result
   addExpense: (storeId: string, data: { category: string; note: string; amount: number; date: string }) => void
   deleteExpense: (id: string) => void
@@ -175,7 +178,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!input.items.length) return { ok: false, error: 'Cart is empty.' }
       if (input.paymentMethod === 'credit') {
         if (!target.settings.allowCredit) return { ok: false, error: 'Credit tabs are disabled for this store.' }
+        if (seller.role !== 'admin' && !seller.permissions.credit) {
+          return { ok: false, error: 'You do not have permission to add orders to tabs.' }
+        }
         if (!input.customerId) return { ok: false, error: 'Select a customer to add this order to a tab.' }
+        const customer = db.customers.find((c) => c.id === input.customerId)
+        if (!customer || customer.storeId !== target.id) {
+          return { ok: false, error: 'That customer does not belong to this store.' }
+        }
       }
 
       const discount = round(input.discount ?? 0)
@@ -229,7 +239,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }))
       return { ok: true, order }
     },
-    [db.users, db.stores, db.orders, userId],
+    [db.users, db.stores, db.orders, db.customers, userId],
   )
 
   const voidOrder = useCallback(
@@ -266,6 +276,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (customerId, amount, method, note) => {
       const customer = db.customers.find((c) => c.id === customerId)
       if (!customer) return { ok: false, error: 'Customer not found.' }
+      const actor = db.users.find((u) => u.id === userId)
+      if (!actor) return { ok: false, error: 'No active session.' }
+      if (actor.storeId !== customer.storeId) {
+        return { ok: false, error: 'That customer does not belong to this store.' }
+      }
+      if (actor.role !== 'admin' && !actor.permissions.settle) {
+        return { ok: false, error: 'You do not have permission to record payments.' }
+      }
       const balance = balanceFor(db.ledger, customerId)
       if (amount <= 0) return { ok: false, error: 'Enter an amount greater than zero.' }
       if (amount > balance + 0.0001) {
@@ -394,33 +412,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [db.users],
   )
 
-  const addCustomer = useCallback<AppContextValue['addCustomer']>((storeId, data) => {
-    setDb((prev) => ({
-      ...prev,
-      customers: [
-        ...prev.customers,
-        {
-          id: uid('cus'),
-          storeId,
-          name: data.name.trim(),
-          phone: data.phone.trim(),
-          limit: data.limit,
-          notes: data.notes.trim(),
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    }))
-  }, [])
+  const addCustomer = useCallback<AppContextValue['addCustomer']>(
+    (storeId, data) => {
+      const actor = db.users.find((u) => u.id === userId)
+      if (actor?.role !== 'admin' || actor.storeId !== storeId) {
+        return { ok: false, error: 'Only a store admin can create customer profiles.' }
+      }
+      if (!data.name.trim()) return { ok: false, error: 'Enter the customer name.' }
+      setDb((prev) => ({
+        ...prev,
+        customers: [
+          ...prev.customers,
+          {
+            id: uid('cus'),
+            storeId,
+            name: data.name.trim(),
+            phone: data.phone.trim(),
+            limit: data.limit,
+            notes: data.notes.trim(),
+            cycle: data.cycle ?? 'monthly',
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      }))
+      return { ok: true }
+    },
+    [db.users, userId],
+  )
 
-  const updateCustomer = useCallback<AppContextValue['updateCustomer']>((id, patch) => {
-    setDb((prev) => ({
-      ...prev,
-      customers: prev.customers.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    }))
-  }, [])
+  const updateCustomer = useCallback<AppContextValue['updateCustomer']>(
+    (id, patch) => {
+      const actor = db.users.find((u) => u.id === userId)
+      const customer = db.customers.find((c) => c.id === id)
+      if (!customer) return { ok: false, error: 'Customer not found.' }
+      if (actor?.role !== 'admin' || actor.storeId !== customer.storeId) {
+        return { ok: false, error: 'Only a store admin can edit customer details.' }
+      }
+      const safePatch: Partial<Customer> = { ...patch }
+      delete safePatch.id
+      delete safePatch.storeId
+      setDb((prev) => ({
+        ...prev,
+        customers: prev.customers.map((c) => (c.id === id ? { ...c, ...safePatch } : c)),
+      }))
+      return { ok: true }
+    },
+    [db.customers, db.users, userId],
+  )
 
   const deleteCustomer = useCallback<AppContextValue['deleteCustomer']>(
     (id) => {
+      const actor = db.users.find((u) => u.id === userId)
+      const customer = db.customers.find((c) => c.id === id)
+      if (!customer) return { ok: false, error: 'Customer not found.' }
+      if (actor?.role !== 'admin' || actor.storeId !== customer.storeId) {
+        return { ok: false, error: 'Only a store admin can remove customer profiles.' }
+      }
       const balance = balanceFor(db.ledger, id)
       if (balance > 0) return { ok: false, error: 'Settle the outstanding balance before removing this customer.' }
       setDb((prev) => ({
@@ -430,7 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }))
       return { ok: true }
     },
-    [db.ledger],
+    [db.customers, db.ledger, db.users, userId],
   )
 
   const addExpense = useCallback<AppContextValue['addExpense']>((storeId, data) => {

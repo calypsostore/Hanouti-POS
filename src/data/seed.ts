@@ -7,6 +7,7 @@ import type {
   Order,
   Plan,
   Product,
+  SettlementCycle,
   Store,
   StoreSettings,
   User,
@@ -214,7 +215,7 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-06-21T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: false, reports: false },
+    permissions: { discount: false, credit: true, settle: true, reports: false },
   },
   {
     id: 'u_mehdi',
@@ -254,23 +255,44 @@ const users: User[] = [
   },
 ]
 
-const customerSeed: Record<string, Array<{ name: string; phone: string; limit: number; notes?: string }>> = {
+const customerSeed: Record<
+  string,
+  Array<{ name: string; phone: string; limit: number; notes?: string; cycle?: SettlementCycle }>
+> = {
   st_yasmine: [
-    { name: 'Mohamed Ali', phone: '+216 98 111 222', limit: 100, notes: 'Pays at the end of each month' },
-    { name: 'Fatma Khelifi', phone: '+216 97 333 444', limit: 60 },
-    { name: 'Bureau Express', phone: '+216 71 888 999', limit: 500, notes: 'Corporate account — monthly invoice' },
-    { name: 'Youssef Mansour', phone: '+216 95 777 888', limit: 80 },
-    { name: 'Leila Bouzid', phone: '+216 92 456 789', limit: 120 },
+    {
+      name: 'Mohamed Ali',
+      phone: '+216 98 111 222',
+      limit: 150,
+      notes: 'Pays at the end of each month',
+      cycle: 'monthly',
+    },
+    { name: 'Fatma Khelifi', phone: '+216 97 333 444', limit: 100, cycle: 'monthly' },
+    {
+      name: 'Bureau Express',
+      phone: '+216 71 888 999',
+      limit: 750,
+      notes: 'Corporate account — monthly invoice',
+      cycle: 'monthly',
+    },
+    { name: 'Youssef Mansour', phone: '+216 95 777 888', limit: 120, cycle: 'monthly' },
+    { name: 'Leila Bouzid', phone: '+216 92 456 789', limit: 200, cycle: 'monthly' },
   ],
   st_petitcoin: [
-    { name: 'Ahmed Sassi', phone: '+216 96 222 333', limit: 50 },
-    { name: 'Mariem Dridi', phone: '+216 94 555 666', limit: 80, notes: 'Neighbour, settles weekly' },
+    { name: 'Ahmed Sassi', phone: '+216 96 222 333', limit: 250, cycle: 'monthly' },
+    {
+      name: 'Mariem Dridi',
+      phone: '+216 94 555 666',
+      limit: 300,
+      notes: 'Neighbour, settles at month end',
+      cycle: 'monthly',
+    },
   ],
   st_darchai: [
-    { name: 'Hichem Belhaj', phone: '+216 99 123 456', limit: 150 },
-    { name: 'Sonia Kammoun', phone: '+216 93 654 321', limit: 60 },
+    { name: 'Hichem Belhaj', phone: '+216 99 123 456', limit: 200, cycle: 'monthly' },
+    { name: 'Sonia Kammoun', phone: '+216 93 654 321', limit: 120, cycle: 'monthly' },
   ],
-  st_nour: [{ name: 'Rania Ayari', phone: '+216 98 333 111', limit: 40 }],
+  st_nour: [{ name: 'Rania Ayari', phone: '+216 98 333 111', limit: 100, cycle: 'monthly' }],
 }
 
 const expenseCatalog: Array<[string, number, string]> = [
@@ -326,6 +348,7 @@ export function buildSeed(): Database {
         phone: c.phone,
         limit: c.limit,
         notes: c.notes ?? '',
+        cycle: c.cycle ?? 'monthly',
         createdAt: isoDaysAgo(200 - i * 15, 10, 0),
       }
       customers.push(cust)
@@ -426,15 +449,35 @@ export function buildSeed(): Database {
         }
       }
 
-      // Some customers settle (partially or fully) their tabs at month end.
+      // Regulars clear their previous months at month end. The current month's
+      // charges stay open, which is exactly what makes the tab realistic.
+      const now = new Date()
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
       for (const customer of storeCustomers) {
-        const charges = ledger.filter((l) => l.customerId === customer.id && l.type === 'charge')
+        const charges = ledger
+          .filter((l) => l.customerId === customer.id && l.type === 'charge')
+          .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
         if (!charges.length) continue
-        const totalCharges = round(charges.reduce((a, l) => a + l.amount, 0))
-        const paymentChance = customer.name === 'Bureau Express' ? 0.55 : 0.85
-        if (rng() < paymentChance) {
-          const ratio = 0.35 + rng() * 0.45
-          const paid = round(totalCharges * ratio)
+
+        const byMonth = new Map<string, number>()
+        for (const charge of charges) {
+          const key = charge.createdAt.slice(0, 7)
+          byMonth.set(key, round((byMonth.get(key) ?? 0) + charge.amount))
+        }
+
+        for (const [month, total] of byMonth) {
+          if (month >= currentMonth) continue
+          const [year, monthNumber] = month.split('-').map(Number)
+          const settleAt = new Date(year, monthNumber, 0, 18, 30, 0, 0)
+          settleAt.setDate(settleAt.getDate() + 1)
+          if (settleAt > now) continue
+
+          // Corporate accounts clear in full; a few regulars carry a small part.
+          const fullyPaid = customer.name === 'Bureau Express' || rng() < 0.9
+          const paid = round(total * (fullyPaid ? 1 : 0.7))
+          if (paid <= 0) continue
+
           ledger.push({
             id: uid('led'),
             storeId: store.id,
@@ -442,9 +485,9 @@ export function buildSeed(): Database {
             type: 'payment',
             amount: paid,
             method: rng() < 0.7 ? 'cash' : 'card',
-            note: 'Monthly settlement',
+            note: fullyPaid ? 'Month-end settlement' : 'Partial month-end payment',
             staffName: pick(rng, staffPool)?.name ?? 'Staff',
-            createdAt: isoDaysAgo(Math.floor(rng() * 14) + 1, 18, 30),
+            createdAt: settleAt.toISOString(),
           })
         }
       }
