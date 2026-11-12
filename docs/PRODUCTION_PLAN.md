@@ -70,6 +70,9 @@ stored; no demo values are presented as production data.
 - First-load seed initialization reuses its fallback database rather than
   generating demo data twice; sign-in controls stay disabled until migration
   and credential hashing finish.
+- If a versioned local database migration hits browser storage quota, the app
+  retries after temporarily removing older database keys and restores them if
+  the new database still cannot be saved.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
   settings viewport had no horizontal overflow. The local v9 database contains

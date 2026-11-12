@@ -14,6 +14,9 @@ export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+const isQuotaExceeded = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && 'name' in error &&
+  (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
 const LEGACY_EMOJI_ICONS: Record<string, IconName> = {
   '☕': 'Coffee', '🧁': 'Cake', '🥐': 'Croissant', '🍰': 'Cake',
   '🥤': 'CupSoda', '🍽️': 'Utensils', '🌿': 'Leaf', '🍵': 'Coffee',
@@ -274,7 +277,24 @@ export const loadDb = async (seed: Database): Promise<Database> => {
     pin: isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin),
   })))
   const migrated = { ...source, users }
-  localStorage.setItem(DB_KEY, JSON.stringify(migrated))
+  const serialized = JSON.stringify(migrated)
+  try {
+    localStorage.setItem(DB_KEY, serialized)
+  } catch (error) {
+    if (!isQuotaExceeded(error)) throw error
+    const legacyValues = LEGACY_DB_KEYS.flatMap((key) => {
+      const value = localStorage.getItem(key)
+      return value === null ? [] : [{ key, value }]
+    })
+    if (legacyValues.length === 0) throw error
+    for (const { key } of legacyValues) localStorage.removeItem(key)
+    try {
+      localStorage.setItem(DB_KEY, serialized)
+    } catch (retryError) {
+      for (const { key, value } of legacyValues) localStorage.setItem(key, value)
+      throw retryError
+    }
+  }
   for (const key of LEGACY_DB_KEYS) localStorage.removeItem(key)
   return migrated
 }
