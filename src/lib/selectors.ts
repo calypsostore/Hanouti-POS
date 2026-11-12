@@ -4,7 +4,9 @@ import { round } from './pricing-utils'
 export const balanceFor = (ledger: LedgerEntry[], customerId: string) => {
   const entries = ledger.filter((l) => l.customerId === customerId)
   const charges = entries.filter((l) => l.type === 'charge').reduce((a, l) => a + l.amount, 0)
-  const payments = entries.filter((l) => l.type === 'payment').reduce((a, l) => a + l.amount, 0)
+  const payments = entries
+    .filter((l) => l.type === 'payment' && !l.creditAdjustment)
+    .reduce((a, l) => a + l.amount, 0)
   return round(charges - payments)
 }
 

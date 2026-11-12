@@ -22,15 +22,34 @@ export const computeRegisterTotals = (
   const start = new Date(startISO).getTime()
   const end = new Date(endISO).getTime()
 
-  const inWindow = db.orders.filter((o) => {
+  const createdInWindow = db.orders.filter((o) => {
     if (o.storeId !== storeId) return false
     const t = new Date(o.createdAt).getTime()
     return t >= start && t <= end
   })
-  const done = inWindow.filter((o) => o.status === 'completed')
-  const voided = inWindow.filter((o) => o.status === 'void')
+  const voided = db.orders.filter((o) => {
+    if (o.storeId !== storeId || o.status !== 'void' || !o.voidedAt) return false
+    const t = new Date(o.voidedAt).getTime()
+    return t >= start && t <= end
+  })
+  const voidedInWindow = (o: (typeof db.orders)[number]) => {
+    if (!o.voidedAt) return false
+    const t = new Date(o.voidedAt).getTime()
+    return t >= start && t <= end
+  }
+  const done = createdInWindow.filter(
+    (o) => !voidedInWindow(o) && (o.status === 'completed' || o.status === 'void'),
+  )
 
-  const cashSales = round(done.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0))
+  const cashSales = round(
+    done.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0) +
+      voided
+        .filter((o) => {
+          const created = new Date(o.createdAt).getTime()
+          return o.paymentMethod === 'cash' && created >= start && created <= end
+        })
+        .reduce((a, o) => a + o.total, 0),
+  )
   const cardSales = round(done.filter((o) => o.paymentMethod === 'card').reduce((a, o) => a + o.total, 0))
   const creditSales = round(done.filter((o) => o.paymentMethod === 'credit').reduce((a, o) => a + o.total, 0))
 
@@ -40,7 +59,7 @@ export const computeRegisterTotals = (
   )
 
   const payments = db.ledger.filter((l) => {
-    if (l.storeId !== storeId || l.type !== 'payment') return false
+    if (l.storeId !== storeId || l.type !== 'payment' || l.creditAdjustment) return false
     const t = new Date(l.createdAt).getTime()
     return t >= start && t <= end
   })
@@ -51,7 +70,7 @@ export const computeRegisterTotals = (
     db.expenses
       .filter((e) => {
         if (e.storeId !== storeId) return false
-        const t = new Date(e.date).getTime()
+        const t = new Date(e.createdAt ?? e.date).getTime()
         return t >= start && t <= end
       })
       .reduce((a, e) => a + e.amount, 0),

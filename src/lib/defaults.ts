@@ -15,6 +15,7 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   settle: role !== 'staff',
   reports: role !== 'staff',
   register: role !== 'staff',
+  supervisor: role !== 'staff',
 })
 
 /** Fill in fields that were added after a database version was released. */
@@ -24,11 +25,12 @@ export const normalizeUser = (u: User): User => {
   return {
     ...u,
     permissions: {
-      discount: p.discount ?? base.discount,
-      credit: p.credit ?? base.credit,
-      settle: p.settle ?? base.settle,
-      reports: p.reports ?? base.reports,
-      register: p.register ?? base.register,
+      discount: typeof p.discount === 'boolean' ? p.discount : base.discount,
+      credit: typeof p.credit === 'boolean' ? p.credit : base.credit,
+      settle: typeof p.settle === 'boolean' ? p.settle : base.settle,
+      reports: typeof p.reports === 'boolean' ? p.reports : base.reports,
+      register: typeof p.register === 'boolean' ? p.register : base.register,
+      supervisor: typeof p.supervisor === 'boolean' ? p.supervisor : base.supervisor,
     },
   }
 }

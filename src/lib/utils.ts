@@ -16,7 +16,9 @@ export const compactMoney = (n: number) => {
 }
 
 export const uid = (prefix: string) =>
-  `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
+  `${prefix}_${typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`}`
 
 export const initials = (name: string) =>
   name

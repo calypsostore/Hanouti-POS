@@ -5,9 +5,53 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-12 · repo phase: **Phase 3 + Phase 4 shipped** (touch POS
-print pipeline + X/Z cash register), Phase 2 (backend) documented as the next
-major milestone.
+Last updated: 2026-11-12 · shipped: **POS hardening, architecture refactor,
+and requested feature Phase 1**. The requested feature Phases 2–9 remain
+unstarted.
+
+## Code organization update (2026-11-12)
+
+The POS, Customers, Orders, Products, Settings, Reports, and Register screens
+now use focused feature modules, and `AppStore.tsx` composes auth, orders,
+register, catalog, customers, staff, and settings slices without changing the
+public `useApp()` API. This was an organizational refactor; it does not change
+the app's persistence or trust boundary. Data, authentication, and authorization
+remain browser-local demo behavior and still require the Phase 2 backend for
+production.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the folder map and extension
+guidance. The line-count audit also found other existing large files outside
+this refactor's page/store scope; those remain follow-up structure work.
+
+## Requested feature roadmap
+
+### Phase 1 — Business types and product options ✅ demo implementation
+
+- Stores support cafe, restaurant, bakery, snack, retail and salon templates.
+  A super administrator can create a store with its first administrator; that
+  administrator chooses a business type at first sign-in. The template supplies
+  starter categories, POS mode, feature defaults and receipt footer.
+- Settings can toggle tables, kitchen screen, barcode scanning and weight-based
+  items. The restaurant/table and kitchen workflows themselves are part of
+  requested Phase 2.
+- Products support modifier groups/options, variants with independent price,
+  cost, barcode and stock, product barcodes, per-item notes, and sales by kg/g/
+  piece to three decimal places. POS validates and snapshots chosen variants and
+  modifiers from the local catalog; receipts, kitchen tickets and sales totals
+  use the saved line details.
+- `cafepos.db.v8` migrates the v7/v6 local database with safe defaults for the
+  new fields. Seed data includes realistic sample stores for all six business
+  types.
+- All of this remains browser-local demo behavior. It is not authoritative or
+  tamper-resistant; production authorization, inventory and receipt numbering
+  still require the Phase 2 backend described below.
+
+### Requested feature phases 2–9 ⏳ not started
+
+Restaurant open orders and tables; returns and labels; Tunisia VAT/fiscal
+compliance; ingredients and inventory; shifts, permissions and activity
+history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
+polish remain planned work.
 
 ---
 
@@ -15,7 +59,7 @@ major milestone.
 
 | Area | State before this phase | Now |
 | --- | --- | --- |
-| Auth | Email + staff PIN, plaintext demo store | Unchanged (Phase 2 will hash) |
+| Auth | Browser-local demo auth | PBKDF2-hashed passwords/PINs, store-layer checks and PIN lockout; server auth still needed |
 | POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets |
 | Orders | History, void (admin only) | + manager-PIN void authorization, reprint, `voidedByName` audit |
 | Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
@@ -26,7 +70,7 @@ major milestone.
 | Offline | None (localStorage demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in `localStorage` under `cafepos.db.v6`. **This is a demo backend,
+Data lives in `localStorage` under `cafepos.db.v8` (with v7/v6 migrations). **This is a demo backend,
 not production storage** — it exists so the UX can be reviewed without
 infrastructure, and every mutation is funnelled through `AppStore` so a real API
 can replace it one-for-one.
@@ -43,14 +87,19 @@ Cannot be completed in this environment: no server, no PostgreSQL. What is
 **not** faked:
 
 - No API server / PostgreSQL schema / migrations were written.
-- No password or PIN hashing (demo store keeps plaintextPINs visible to admins
-  on purpose for the demo).
-- Server-side tenant isolation does not exist; isolation is currently enforced
-  at the store layer (`AppStore` guards + `storeId` filters).
+- There is no trusted server: PBKDF2 hashing, PIN lockout, manager-PIN checks,
+  store ownership checks, admin-only mutation checks, register requirements,
+  stock/discount/credit-limit validation, expense ownership, and admin
+  protections are currently enforced by the browser store layer (`AppStore`).
+- Client-side controls can be bypassed by a user who can alter localStorage or
+  the running JavaScript. They are defense-in-depth for the demo, not
+  production authorization or tamper-resistant audit history.
 
 **Plan (next phase):** Node + Fastify (or NestJS) + PostgreSQL with row-level
-tenancy (`store_id` on every row + RLS), JWT access tokens, bcrypt password
-hashing + PIN hashing (argon2id), rate limiting on login, audit log table.
+tenancy (`store_id` on every row + RLS), JWT access tokens, server-side
+password/PIN hashing (argon2id), rate limiting on login, audit log table,
+server validation for all mutations, and authoritative register/inventory/
+ledger state. The browser's PBKDF2 hashes and guards do not replace these.
 The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 
 ### Phase 3 — Touch POS + ESC/POS printing ✅ implemented (see §4 for hardware)
@@ -91,8 +140,11 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   viewable and **re-printable exactly as it was closed** (prints from the
   frozen snapshot, not recomputed).
 - Void authorization: staff voids require a manager PIN (validated against the
-  store's active admins); the void records `voidedById/Name` and tab charges
-  are reversed. Admin voids record the admin.
+  store's active admins inside the store layer); the void records
+  `voidedById/Name/At`, restores tracked stock, and reverses the outstanding
+  tab charge without making the balance negative. Any already-paid remainder is
+  recorded as a flagged customer-credit ledger entry. Admin voids record the
+  admin.
 - Register permissions: `permissions.register` gates open/close/X/Z pages and
   actions (Amine/Karim have it; Salma/Hedi don't — demo lock states).
 
@@ -104,9 +156,10 @@ on every movement), low-stock alerts, valuation, suppliers + purchases.
 
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 
-Unique PINs, store-scoped access and granular permissions exist. Blocked on
-Phase 2: server-side hashing, failed-attempt lockout, session timeout, activity
-tracking.
+Unique PINs, store-scoped access, granular permissions, PBKDF2 credential
+hashing in local storage, and a 30-second lock after five failed store-PIN
+attempts are implemented in the demo. Phase 2 must add server-side hashing,
+authoritative rate limiting, session timeout, and activity tracking.
 
 ### Phase 7 — Offline-first ⏳ not started (needs Phase 2 API design)
 
@@ -143,8 +196,9 @@ Hardware checklist before onboarding a real café:
 **Known limitation:** Arabic text is not encodable in Windows-1252/CP437 on
 standard ESC/POS firmware — Arabic receipt content requires a printer with an
 Arabic codepage or a raster-image pipeline (Phase 2+); current builds replace
-unsupported glyphs with `?`. French/Latin text and TND amounts are fully
-supported.
+unsupported Arabic glyphs with `?`. Emoji are omitted from printed item names
+because the selected codepage cannot render them. French/Latin text and TND
+amounts are fully supported.
 
 ---
 
@@ -152,8 +206,8 @@ supported.
 
 Executed in-browser (Chrome, dev build) against the seeded demo data:
 
-- DB migrates to `cafepos.db.v6` with 2 closed Z sessions + 1 open session per
-  store; register nav visible for admin; staff without `register` permission
+- DB migrates to `cafepos.db.v8` from v7/v6, hashing legacy credentials and retaining
+  2 closed Z sessions + 1 open session per store; register nav visible for admin; staff without `register` permission
   redirected from `/admin/register`; staff with permission can access.
 - X report matches on-screen expected cash (opening + cash sales + tab
   payments − expenses − refunds) and does not mutate the session.
@@ -173,6 +227,20 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
   manually with `mode: auto` on a clean profile.
 - `npm run build` passes clean (tsc + vite).
 
+Phase 1 build/type validation also passes. Manual browser scenarios still to run:
+
+- Confirm all six seeded business types display appropriate product/category
+  samples; create a store as super admin, then sign in as its initial admin and
+  verify the setup wizard applies the selected template.
+- Create/edit a product with required and optional single/multiple modifiers;
+  verify POS selection, distinct cart lines, unit price, receipt, kitchen ticket
+  and report totals.
+- Add and scan product/variant barcodes, including an unknown code; test
+  barcode feature off and on.
+- Sell a variant and verify its price/cost/stock; sell 0.125 kg and verify the
+  three-decimal quantity, total and stock validation; void each order and verify
+  tracked stock is restored.
+
 Not executable here: real thermal printer over WebSerial (no hardware) — see
 §3 checklist; backend tests (no backend).
 
@@ -182,7 +250,9 @@ Not executable here: real thermal printer over WebSerial (no hardware) — see
 
 1. **Backend (Phase 2)** is the critical path: real auth, tenancy, audit logs,
    backups. The frontend store layer is the seam.
-2. PIN/password hashing and lockout — after Phase 2.
+2. Server-backed authentication, authorization, lockout and tamper-resistant
+   audit data — Phase 2. Browser-side credential hashing and lockout are only
+   demo protections.
 3. Inventory module (Phase 5) — next implementation phase after backend, or in
    parallel since it is frontend-compatible.
 4. Arabic receipts — needs raster printing pipeline.

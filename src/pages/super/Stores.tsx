@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowUpRight, Search, Store as StoreIcon, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, Plus, Search, Store as StoreIcon, Users, Wallet } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import { PLAN_INFO } from '../../data/seed'
 import type { Plan, StoreStatus } from '../../types'
@@ -7,13 +7,17 @@ import { Badge, Card, EmptyState, Input, Select, Button } from '../../components
 import { StoreProfileDrawer } from './StoreProfile'
 import { balanceFor } from '../../lib/selectors'
 import { cn, money, sum } from '../../lib/utils'
+import { useToast } from '../../components/toast'
+import { NewStoreModal } from './NewStoreModal'
 
 export default function SuperStores() {
-  const { db } = useApp()
+  const { db, createStore } = useApp()
+  const { push } = useToast()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<'all' | StoreStatus>('all')
   const [plan, setPlan] = useState<'all' | Plan>('all')
   const [selected, setSelected] = useState<string | null>(null)
+  const [newStoreOpen, setNewStoreOpen] = useState(false)
 
   const since30 = new Date()
   since30.setDate(since30.getDate() - 30)
@@ -64,6 +68,9 @@ export default function SuperStores() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button onClick={() => setNewStoreOpen(true)}>
+            <Plus className="h-4 w-4" /> New store
+          </Button>
           <div className="rounded-xl border border-line bg-white px-3 py-2 text-right">
             <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">Stores</div>
             <div className="text-[14px] font-extrabold leading-tight">{db.stores.length}</div>
@@ -187,6 +194,16 @@ export default function SuperStores() {
       )}
 
       <StoreProfileDrawer storeId={selected} onClose={() => setSelected(null)} />
+      <NewStoreModal
+        open={newStoreOpen}
+        onClose={() => setNewStoreOpen(false)}
+        onSave={async (data) => {
+          const result = await createStore(data)
+          if (result.ok) push('Store created; its administrator can sign in to complete setup.')
+          else push(result.error, 'error')
+          return result
+        }}
+      />
     </div>
   )
 }

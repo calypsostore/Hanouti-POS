@@ -1,0 +1,96 @@
+import { Link } from 'react-router-dom'
+import { ArrowLeft, LogOut, ReceiptText, Users, Zap } from 'lucide-react'
+import type { Store, User } from '../../types'
+import { Avatar, Badge } from '../../components/ui'
+
+type POSHeaderProps = {
+  store: Store
+  user: User
+  now: Date
+  registerOpen: boolean
+  canOpenRegister: boolean
+  onLogout: () => void
+}
+
+export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onLogout }: POSHeaderProps) {
+  const quick = store.settings.posMode === 'quick'
+
+  return (
+    <>
+      <header className="z-20 flex h-[64px] shrink-0 items-center gap-3 border-b border-line bg-white px-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-espresso-900 text-lg">
+            {store.emoji}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[14px] font-bold tracking-tight text-ink">{store.name}</span>
+              <Badge tone={quick ? 'info' : 'accent'} className="hidden sm:inline-flex">
+                {quick ? <Zap className="h-3 w-3" /> : <ReceiptText className="h-3 w-3" />}
+                {quick ? 'Quick' : 'Cashier'}
+              </Badge>
+            </div>
+            <div className="text-[11px] text-muted">
+              {store.city} · {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {user.name}
+            </div>
+          </div>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {user.role === 'admin' && (
+            <Link
+              to="/admin"
+              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
+            </Link>
+          )}
+          {user.role === 'staff' && (
+            <>
+              <Link
+                to="/admin/customers"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:px-3"
+                title="Regulars & tabs"
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Regulars</span>
+              </Link>
+              <Link
+                to="/admin/orders"
+                className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+              >
+                <ReceiptText className="h-3.5 w-3.5" /> Orders
+              </Link>
+            </>
+          )}
+          <div className="hidden items-center gap-2 rounded-xl border border-line px-2 py-1 sm:flex">
+            <Avatar name={user.name} size="xs" />
+            <span className="pr-1 text-[12px] font-semibold text-ink">{user.name.split(' ')[0]}</span>
+          </div>
+          <button
+            onClick={onLogout}
+            className="rounded-xl border border-line p-2 text-muted transition hover:bg-cream-100 hover:text-ink"
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      {!registerOpen && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-900 sm:px-5">
+          <span>{canOpenRegister ? 'Open the register before taking orders.' : 'The register is closed. Ask a manager to open it before taking orders.'}</span>
+          {canOpenRegister && (
+            <Link
+              to="/admin/register"
+              className="shrink-0 rounded-lg bg-amber-800 px-3 py-1.5 font-semibold text-white hover:bg-amber-900"
+            >
+              Open register
+            </Link>
+          )}
+        </div>
+      )}
+
+    </>
+  )
+}

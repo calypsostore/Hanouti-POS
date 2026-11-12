@@ -63,7 +63,11 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
   const maxDay = Math.max(1, ...last14.map((d) => d.value))
 
   const applyStatus = (status: StoreStatus) => {
-    setStoreStatus(store.id, status)
+    const result = setStoreStatus(store.id, status)
+    if (!result.ok) {
+      push(result.error, 'error')
+      return
+    }
     push(
       status === 'suspended'
         ? `${store.name} suspended — sign-in is blocked`
@@ -131,8 +135,13 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
               <Select
                 value={store.plan}
                 onChange={(e) => {
-                  changePlan(store.id, e.target.value as Plan)
-                  push(`${store.name} moved to ${PLAN_INFO[e.target.value as Plan].label}`)
+                  const plan = e.target.value as Plan
+                  const result = changePlan(store.id, plan)
+                  if (!result.ok) {
+                    push(result.error, 'error')
+                    return
+                  }
+                  push(`${store.name} moved to ${PLAN_INFO[plan].label}`)
                 }}
               >
                 {(Object.keys(PLAN_INFO) as Plan[]).map((p) => (

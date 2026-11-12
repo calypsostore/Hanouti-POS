@@ -119,7 +119,7 @@ export function AppShell() {
 
   const title = titles[location.pathname] ?? (location.pathname.startsWith('/admin') ? 'Workspace' : 'Kawa POS')
   const outstanding = db.ledger
-    .filter((l) => l.storeId === store?.id)
+    .filter((l) => l.storeId === store?.id && !l.creditAdjustment)
     .reduce((acc, l) => acc + (l.type === 'charge' ? l.amount : -l.amount), 0)
 
   const sidebar = (

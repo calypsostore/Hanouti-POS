@@ -60,26 +60,26 @@ export default function Login() {
     else navigate('/admin')
   }
 
-  const submitEmail = (e: React.FormEvent) => {
+  const submitEmail = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    const res = login(email, password)
+    const res = await login(email, password)
     if (!res.ok) return setError(res.error)
     const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : email.includes('amine') ? 'staff' : 'admin'
     go(target)
   }
 
-  const submitPin = (e: React.FormEvent) => {
+  const submitPin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    const res = loginPin(slug, pin)
+    const res = await loginPin(slug, pin)
     if (!res.ok) return setError(res.error)
     go('staff')
   }
 
-  const quickLogin = (accountEmail: string, role: string) => {
+  const quickLogin = async (accountEmail: string, role: string) => {
     setError('')
-    const res = login(accountEmail, 'password')
+    const res = await login(accountEmail, 'password')
     if (!res.ok) return setError(res.error)
     go(role === 'Super admin' ? 'super' : role === 'Staff' ? 'staff' : 'admin')
   }
@@ -258,10 +258,10 @@ export default function Login() {
                   required
                 />
               </Field>
-              <Field label="4-digit PIN" hint="Demo: 1234">
+              <Field label="Staff PIN" hint="4–6 digits · Demo: 1234">
                 <Input
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="••••"
                   inputMode="numeric"
                   className="text-center text-lg font-bold tracking-[0.5em]"

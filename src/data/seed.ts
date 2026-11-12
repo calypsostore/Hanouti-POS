@@ -1,6 +1,7 @@
 import type {
   Category,
   Customer,
+  BusinessType,
   Database,
   Expense,
   LedgerEntry,
@@ -16,6 +17,7 @@ import type {
 } from '../types'
 import { isoDaysAgo, uid } from '../lib/utils'
 import { DEFAULT_PRINTER } from '../lib/defaults'
+import { businessTemplate } from '../lib/businessTemplates'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
   starter: { label: 'Starter', price: 29, blurb: 'Single counter, up to 3 staff' },
@@ -23,32 +25,27 @@ export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: stri
   pro: { label: 'Pro', price: 99, blurb: 'Multi-device, advanced analytics, priority support' },
 }
 
-const defaultSettings = (over: Partial<StoreSettings> = {}): StoreSettings => ({
-  posMode: 'cashier',
+const defaultSettings = (
+  over: Partial<StoreSettings> = {},
+  businessType: BusinessType = 'cafe',
+): StoreSettings => ({
+  posMode: businessTemplate(businessType).posMode,
   currency: 'TND',
   taxRate: 0,
   taxInclusive: true,
   serviceCharge: 0,
   allowCredit: true,
   requireCustomerForCredit: true,
-  receiptFooter: 'Thank you for your visit — شكراً لزيارتكم',
+  receiptFooter: businessTemplate(businessType).receiptFooter,
   lowStockThreshold: 10,
   accent: 'caramel',
   printer: { ...DEFAULT_PRINTER },
+  features: businessTemplate(businessType).features,
   ...over,
 })
 
-const baseCategories: Array<Omit<Category, 'id' | 'storeId' | 'sort'>> = [
-  { name: 'Coffee', emoji: '☕' },
-  { name: 'Tea & Infusions', emoji: '🫖' },
-  { name: 'Juices', emoji: '🧃' },
-  { name: 'Pastries', emoji: '🥐' },
-  { name: 'Snacks', emoji: '🥪' },
-  { name: 'Cold Drinks', emoji: '🥤' },
-]
-
 // categoryIndex, name, emoji, price, cost
-const catalog: Array<[number, string, string, number, number]> = [
+const cafeCatalog: Array<[number, string, string, number, number]> = [
   [0, 'Espresso', '☕', 2.2, 0.7],
   [0, 'Direct', '☕', 2.4, 0.7],
   [0, 'Cappuccino', '☕', 3.5, 1.1],
@@ -72,6 +69,40 @@ const catalog: Array<[number, string, string, number, number]> = [
   [5, 'Soda', '🥤', 2.5, 0.9],
   [5, 'Ice Tea', '🧊', 4.2, 1.4],
 ]
+
+const demoCatalog: Record<BusinessType, Array<[number, string, string, number, number]>> = {
+  cafe: cafeCatalog,
+  bakery: [
+    [0, 'Baguette', '🥖', 1.2, 0.45], [0, 'Whole wheat loaf', '🍞', 2.4, 0.9],
+    [1, 'Croissant', '🥐', 2.8, 0.9], [1, 'Pain au chocolat', '🍫', 3.2, 1.0],
+    [2, 'Chocolate cake slice', '🍰', 4.5, 1.7], [2, 'Fruit tart', '🥧', 5.2, 2.1],
+    [3, 'Almond cookie', '🍪', 1.5, 0.4], [4, 'Coffee', '☕', 2.5, 0.8],
+  ],
+  restaurant: [
+    [0, 'Tunisian salad', '🥗', 8, 2.4], [0, 'Brik à l’œuf', '🥚', 4.5, 1.5],
+    [1, 'Grilled sea bass', '🐟', 28, 12], [1, 'Chicken couscous', '🍲', 19, 7],
+    [2, 'Fries', '🍟', 5, 1.2], [2, 'Grilled vegetables', '🥦', 6, 2],
+    [3, 'Orange cake', '🍰', 6, 1.8], [4, 'Lemonade', '🍋', 5, 1.3],
+  ],
+  snack: [
+    [0, 'Tuna sandwich', '🥪', 7.5, 3.2], [0, 'Chicken baguette', '🥖', 9, 4],
+    [1, 'Fries', '🍟', 4, 1.1], [1, 'Mlewi', '🫓', 5, 1.5],
+    [2, 'Tunisian salad', '🥗', 7, 2.4], [3, 'Donut', '🍩', 2.5, 0.8],
+    [4, 'Soda', '🥤', 2.5, 0.9], [4, 'Water', '💧', 1.5, 0.5],
+  ],
+  retail: [
+    [0, 'Olive oil', '🫒', 18, 12], [0, 'Dates (loose)', '🌴', 28, 17],
+    [1, 'Bottled water', '💧', 1, 0.35], [1, 'Orange juice', '🧃', 4, 2],
+    [2, 'Dish soap', '🧴', 5.5, 3], [2, 'Paper towels', '🧻', 6, 3.5],
+    [3, 'Hand cream', '🧴', 12, 6], [3, 'Shampoo', '🧴', 15, 8],
+  ],
+  salon: [
+    [0, 'Haircut', '💇', 20, 2], [0, 'Blow-dry', '💨', 25, 4],
+    [1, 'Manicure', '💅', 18, 3], [1, 'Gel nails', '✨', 45, 10],
+    [2, 'Facial treatment', '🧖', 60, 12], [2, 'Eyebrow shaping', '✂️', 12, 1],
+    [3, 'Hair serum', '🧴', 32, 18], [3, 'Conditioner', '🧴', 24, 13],
+  ],
+}
 
 const mulberry32 = (a: number) => () => {
   a |= 0
@@ -97,8 +128,10 @@ const stores: Store[] = [
     emoji: '☕',
     plan: 'growth',
     status: 'active',
+    businessType: 'cafe',
+    setupComplete: true,
     createdAt: '2024-06-12T09:00:00.000Z',
-    settings: defaultSettings({ taxRate: 19, posMode: 'cashier' }),
+    settings: defaultSettings({ taxRate: 19, posMode: 'cashier' }, 'cafe'),
   },
   {
     id: 'st_petitcoin',
@@ -112,8 +145,10 @@ const stores: Store[] = [
     emoji: '🧁',
     plan: 'starter',
     status: 'active',
+    businessType: 'bakery',
+    setupComplete: true,
     createdAt: '2025-02-03T09:00:00.000Z',
-    settings: defaultSettings({ posMode: 'quick', taxRate: 0, serviceCharge: 0.5 }),
+    settings: defaultSettings({ posMode: 'quick', taxRate: 0, serviceCharge: 0.5 }, 'bakery'),
   },
   {
     id: 'st_darchai',
@@ -127,9 +162,11 @@ const stores: Store[] = [
     emoji: '🫖',
     plan: 'pro',
     status: 'trial',
+    businessType: 'restaurant',
+    setupComplete: true,
     createdAt: '2026-10-20T09:00:00.000Z',
     trialEndsAt: '2026-12-20T09:00:00.000Z',
-    settings: defaultSettings({ posMode: 'cashier', allowCredit: true, taxRate: 19 }),
+    settings: defaultSettings({ posMode: 'cashier', allowCredit: true, taxRate: 19 }, 'restaurant'),
   },
   {
     id: 'st_nour',
@@ -143,8 +180,45 @@ const stores: Store[] = [
     emoji: '🌿',
     plan: 'starter',
     status: 'suspended',
+    businessType: 'snack',
+    setupComplete: true,
     createdAt: '2025-09-11T09:00:00.000Z',
-    settings: defaultSettings({ posMode: 'quick' }),
+    settings: defaultSettings({ posMode: 'quick' }, 'snack'),
+  },
+  {
+    id: 'st_zaytouna',
+    name: 'Épicerie Zaytouna',
+    slug: 'zaytouna',
+    ownerName: 'Amira Ben Salem',
+    ownerEmail: 'amira@zaytouna.tn',
+    phone: '+216 71 444 222',
+    address: '18 Rue de Marseille',
+    city: 'Tunis',
+    emoji: '🛒',
+    plan: 'starter',
+    status: 'trial',
+    businessType: 'retail',
+    setupComplete: true,
+    createdAt: '2026-11-01T09:00:00.000Z',
+    trialEndsAt: '2026-12-01T09:00:00.000Z',
+    settings: defaultSettings({ taxRate: 7 }, 'retail'),
+  },
+  {
+    id: 'st_lilas',
+    name: 'Studio Lilas',
+    slug: 'studio-lilas',
+    ownerName: 'Lilas Karray',
+    ownerEmail: 'lilas@studiolilas.tn',
+    phone: '+216 73 333 444',
+    address: '6 Avenue de la République',
+    city: 'Sousse',
+    emoji: '💇',
+    plan: 'growth',
+    status: 'active',
+    businessType: 'salon',
+    setupComplete: true,
+    createdAt: '2026-04-15T09:00:00.000Z',
+    settings: defaultSettings({ taxRate: 19 }, 'salon'),
   },
 ]
 
@@ -159,7 +233,14 @@ const users: User[] = [
     role: 'super',
     active: true,
     createdAt: '2024-01-01T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
   },
   {
     id: 'u_sami',
@@ -171,7 +252,14 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2024-06-12T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
   },
   {
     id: 'u_amine',
@@ -183,7 +271,14 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-03-18T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false, register: true },
+    permissions: {
+      discount: false,
+      credit: true,
+      settle: true,
+      reports: false,
+      register: true,
+      supervisor: false,
+    },
   },
   {
     id: 'u_salma',
@@ -195,7 +290,14 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-08-02T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: false, reports: false, register: false },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: false,
+      reports: false,
+      register: false,
+      supervisor: false,
+    },
   },
   {
     id: 'u_ines',
@@ -207,7 +309,14 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2025-02-03T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
   },
   {
     id: 'u_karim',
@@ -219,7 +328,16 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-06-21T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false, register: true },
+    // Karim is the trusted shift supervisor at Le Petit Coin: he can see the
+    // whole team's register sessions, unlike a plain staff member.
+    permissions: {
+      discount: false,
+      credit: true,
+      settle: true,
+      reports: false,
+      register: true,
+      supervisor: true,
+    },
   },
   {
     id: 'u_mehdi',
@@ -231,7 +349,14 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2026-10-20T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
   },
   {
     id: 'u_hedi',
@@ -243,7 +368,14 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2026-10-22T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false, register: false },
+    permissions: {
+      discount: false,
+      credit: true,
+      settle: true,
+      reports: false,
+      register: false,
+      supervisor: false,
+    },
   },
   {
     id: 'u_nour',
@@ -255,7 +387,52 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2025-09-11T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
+  },
+  {
+    id: 'u_amira',
+    storeId: 'st_zaytouna',
+    name: 'Amira Ben Salem',
+    email: 'amira@zaytouna.tn',
+    password: 'password',
+    pin: '6789',
+    role: 'admin',
+    active: true,
+    createdAt: '2026-11-01T09:00:00.000Z',
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
+  },
+  {
+    id: 'u_lilas',
+    storeId: 'st_lilas',
+    name: 'Lilas Karray',
+    email: 'lilas@studiolilas.tn',
+    password: 'password',
+    pin: '7890',
+    role: 'admin',
+    active: true,
+    createdAt: '2026-04-15T09:00:00.000Z',
+    permissions: {
+      discount: true,
+      credit: true,
+      settle: true,
+      reports: true,
+      register: true,
+      supervisor: true,
+    },
   },
 ]
 
@@ -320,7 +497,8 @@ export function buildSeed(): Database {
   const rng = mulberry32(20260214)
 
   for (const store of stores) {
-    const cats = baseCategories.map((c, i) => {
+    const template = businessTemplate(store.businessType)
+    const cats = template.categories.map((c, i) => {
       const cat: Category = { ...c, id: `cat_${store.id}_${i}`, storeId: store.id, sort: i }
       categories.push(cat)
       return cat
@@ -328,7 +506,8 @@ export function buildSeed(): Database {
 
     const priceFactor = store.id === 'st_yasmine' ? 1.1 : store.id === 'st_darchai' ? 1.05 : 0.95
 
-    const storeProducts: Product[] = catalog.map(([catIdx, name, emoji, price, cost], i) => {
+    const storeProducts: Product[] = demoCatalog[store.businessType].map(([catIdx, name, emoji, price, cost], i) => {
+      const trackStock = catIdx >= 3 || (store.businessType === 'retail' && name === 'Dates (loose)')
       const p: Product = {
         id: `prd_${store.id}_${i}`,
         storeId: store.id,
@@ -337,9 +516,39 @@ export function buildSeed(): Database {
         emoji,
         price: round(price * priceFactor),
         cost: round(cost * priceFactor),
-        trackStock: catIdx >= 3,
-        stock: catIdx >= 3 ? 6 + Math.floor(rng() * 34) : 0,
+        trackStock,
+        stock: trackStock ? 6 + Math.floor(rng() * 34) : 0,
         active: true,
+        barcode: store.settings.features.barcode ? `${store.id.replace('st_', '')}${String(i + 1).padStart(6, '0')}` : '',
+        modifiers: store.businessType === 'cafe' && name === 'Cappuccino'
+          ? [{
+              id: 'group_size',
+              name: 'Size',
+              selection: 'single',
+              required: true,
+              options: [
+                { id: 'size_regular', name: 'Regular', priceDelta: 0 },
+                { id: 'size_large', name: 'Large', priceDelta: 1.2 },
+              ],
+            }, {
+              id: 'group_extras',
+              name: 'Extras',
+              selection: 'multiple',
+              required: false,
+              options: [
+                { id: 'extra_shot', name: 'Extra shot', priceDelta: 1 },
+                { id: 'oat_milk', name: 'Oat milk', priceDelta: 0.8 },
+              ],
+            }]
+          : [],
+        variants: store.businessType === 'retail' && name === 'Olive oil'
+          ? [
+              { id: 'olive_500ml', name: '500 ml', size: '500 ml', price: 10, cost: 6.8, barcode: 'zaytouna000001', trackStock: true, stock: 14 },
+              { id: 'olive_1l', name: '1 L', size: '1 L', price: 18, cost: 12, barcode: 'zaytouna000002', trackStock: true, stock: 10 },
+            ]
+          : [],
+        soldByWeight: store.businessType === 'retail' && name === 'Dates (loose)',
+        saleUnit: store.businessType === 'retail' && name === 'Dates (loose)' ? 'kg' : 'piece',
       }
       products.push(p)
       return p

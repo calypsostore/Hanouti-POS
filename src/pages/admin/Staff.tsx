@@ -124,7 +124,7 @@ export default function Staff() {
                     <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
                       PIN
                     </div>
-                    <div className="font-mono text-[13px] font-bold tracking-[0.2em]">{m.pin}</div>
+                    <div className="font-mono text-[12px] font-semibold">Set/reset in edit</div>
                   </div>
                   <div>
                     <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
@@ -141,14 +141,19 @@ export default function Staff() {
                   {m.permissions.credit && <Badge tone="neutral">Tabs</Badge>}
                   {m.permissions.settle && <Badge tone="neutral">Settlements</Badge>}
                   {m.permissions.register && <Badge tone="neutral">Register</Badge>}
+                  {m.permissions.supervisor && <Badge tone="neutral">Supervisor</Badge>}
                   {m.permissions.reports && <Badge tone="neutral">Reports</Badge>}
                 </div>
 
                 <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5">
                   <Toggle
                     checked={m.active}
-                    onChange={(v) => {
-                      updateStaff(m.id, { active: v })
+                    onChange={async (v) => {
+                      const result = await updateStaff(m.id, { active: v })
+                      if (!result.ok) {
+                        push(result.error, 'error')
+                        return
+                      }
                       push(v ? `${m.name} activated` : `${m.name} deactivated`, 'info')
                     }}
                     label="Active"
@@ -180,7 +185,7 @@ export default function Staff() {
         <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-600" />
         <div className="text-[12px] leading-relaxed text-accent-700">
           <span className="font-semibold">How staff access works:</span> each person gets their own
-          email + password, plus a 4-digit PIN for fast register login using the store code{' '}
+          email + password, plus a 4–6 digit PIN for fast register login using the store code{' '}
           <span className="rounded bg-white/70 px-1 font-mono font-bold">{store.slug}</span>. Data is
           always scoped to this store.
         </div>
@@ -192,12 +197,16 @@ export default function Staff() {
           member={editor.member}
           isSelf={editor.member?.id === user.id}
           onClose={() => setEditor({ open: false })}
-          onSave={(data) => {
+          onSave={async (data) => {
             if (editor.member) {
-              updateStaff(editor.member.id, data)
+              const result = await updateStaff(editor.member.id, data)
+              if (!result.ok) {
+                push(result.error, 'error')
+                return
+              }
               push('Team member updated')
             } else {
-              const res = addStaff(store.id, data)
+              const res = await addStaff(store.id, data)
               if (!res.ok) {
                 push(res.error, 'error')
                 return
@@ -269,8 +278,8 @@ function StaffEditor({
 }) {
   const [name, setName] = useState(member?.name ?? '')
   const [email, setEmail] = useState(member?.email ?? '')
-  const [password, setPassword] = useState(member?.password ?? 'password')
-  const [pin, setPin] = useState(member?.pin ?? '')
+  const [password, setPassword] = useState('')
+  const [pin, setPin] = useState('')
   const [active, setActive] = useState(member?.active ?? true)
   const [role, setRole] = useState<'admin' | 'staff'>(member?.role === 'admin' ? 'admin' : 'staff')
   const [permissions, setPermissions] = useState(member?.permissions ?? {
@@ -279,9 +288,14 @@ function StaffEditor({
     settle: false,
     reports: false,
     register: false,
+    supervisor: false,
   })
 
-  const valid = name.trim() && email.trim().includes('@') && /^\d{4}$/.test(pin) && password.length >= 4
+  const valid =
+    name.trim() &&
+    email.trim().includes('@') &&
+    (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin)) &&
+    (member ? !password || password.length >= 4 : password.length >= 4)
 
   return (
     <Modal
@@ -338,14 +352,14 @@ function StaffEditor({
               placeholder="name@yourcafe.tn"
             />
           </Field>
-          <Field label="Password" hint="Min 4 characters">
-            <Input value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Field label={member ? 'Set/reset password' : 'Password'} hint={member ? 'Leave blank to keep current password' : 'Min 4 characters'}>
+            <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={member ? 'Leave unchanged' : ''} />
           </Field>
-          <Field label="4-digit PIN" hint="Register login">
+          <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? 'Leave blank to keep current PIN · 4–6 digits' : 'Register login · 4–6 digits'}>
             <Input
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="1234"
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder={member ? 'Leave unchanged' : '1234'}
               inputMode="numeric"
               className="font-mono tracking-[0.3em]"
             />
@@ -384,6 +398,12 @@ function StaffEditor({
               onChange={(v) => setPermissions((p) => ({ ...p, register: v }))}
               label="Open & close the register"
               description="Can open a session, print X reports and close the day with a Z report."
+            />
+            <Toggle
+              checked={permissions.supervisor}
+              onChange={(v) => setPermissions((p) => ({ ...p, supervisor: v }))}
+              label="Shift supervisor"
+              description="Trusted with the team: sees every register session and the whole team's sales, and can close sessions opened by others."
             />
           </div>
         </div>

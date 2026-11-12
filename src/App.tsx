@@ -14,6 +14,7 @@ import Staff from './pages/admin/Staff'
 import Reports from './pages/admin/Reports'
 import Expenses from './pages/admin/Expenses'
 import Settings from './pages/admin/Settings'
+import SetupWizard from './pages/admin/SetupWizard'
 import SuperOverview from './pages/super/Overview'
 import SuperStores from './pages/super/Stores'
 import type { Role } from './types'
@@ -51,6 +52,18 @@ function LoginRoute() {
   return <Login />
 }
 
+function AdminShell() {
+  const { store } = useApp()
+  if (store && !store.setupComplete) return <SetupWizard />
+  return <AppShell />
+}
+
+function StoreSetupGate({ children }: { children: React.ReactNode }) {
+  const { user, store } = useApp()
+  if (user?.role === 'admin' && store && !store.setupComplete) return <Navigate to="/admin" replace />
+  return <>{children}</>
+}
+
 function HomeRoute() {
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
@@ -72,7 +85,9 @@ export default function App() {
               element={
                 <Protected>
                   <RoleGate roles={['admin', 'staff']}>
-                    <POS />
+                    <StoreSetupGate>
+                      <POS />
+                    </StoreSetupGate>
                   </RoleGate>
                 </Protected>
               }
@@ -83,7 +98,7 @@ export default function App() {
               element={
                 <Protected>
                   <RoleGate roles={['admin', 'staff']}>
-                    <AppShell />
+                    <AdminShell />
                   </RoleGate>
                 </Protected>
               }

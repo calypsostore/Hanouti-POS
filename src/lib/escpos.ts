@@ -1,5 +1,6 @@
 import type { Order, PrinterWidth, RegisterSession, RegisterSnapshot, Store } from '../types'
 import { fmtDate, fmtDateTime, fmtTime } from './utils'
+import { round } from './pricing-utils'
 
 /**
  * ESC/POS receipt builder.
@@ -27,16 +28,35 @@ export interface ReceiptLine {
 export const columnsFor = (width: PrinterWidth) => (width === 58 ? 32 : 48)
 
 const repeat = (ch: string, n: number) => (n > 0 ? ch.repeat(n) : '')
+const truncate = (text: string, length: number) => Array.from(text).slice(0, length).join('')
+
+const stripEmoji = (text: string) =>
+  Array.from(text)
+    .filter((character) => {
+      const code = character.codePointAt(0) ?? 0
+      return !(
+        (code >= 0x1f000 && code <= 0x1faff) ||
+        (code >= 0x2600 && code <= 0x27ff) ||
+        (code >= 0x1f1e6 && code <= 0x1f1ff) ||
+        code === 0x200d ||
+        code === 0xfe0f ||
+        code === 0x20e3 ||
+        (code >= 0xe0020 && code <= 0xe007f) ||
+        (code >= 0x1f3fb && code <= 0x1f3ff)
+      )
+    })
+    .join('')
 
 /** Two-column line, e.g. `1x Espresso   2.420`. */
 const twoCol = (left: string, right: string, cols: number) => {
-  const l = left.slice(0, Math.max(0, cols - right.length - 1))
-  return l + repeat(' ', Math.max(1, cols - l.length - right.length)) + right
+  const rightText = truncate(right, cols)
+  const leftText = truncate(left, Math.max(0, cols - Array.from(rightText).length - 1))
+  return leftText + repeat(' ', Math.max(1, cols - Array.from(leftText).length - Array.from(rightText).length)) + rightText
 }
 
 const center = (text: string, cols: number) => {
-  const t = text.slice(0, cols)
-  const pad = Math.max(0, Math.floor((cols - t.length) / 2))
+  const t = truncate(text, cols)
+  const pad = Math.max(0, Math.floor((cols - Array.from(t).length) / 2))
   return repeat(' ', pad) + t
 }
 
@@ -48,8 +68,8 @@ export const linesToText = (lines: ReceiptLine[], cols: number): string[] =>
   lines.map((l) => {
     const text = l.text
     if (l.align === 'center') return center(text, cols)
-    if (l.align === 'right') return text.padStart(cols)
-    return text
+    if (l.align === 'right') return truncate(text, cols).padStart(cols)
+    return truncate(text, cols)
   })
 
 /* ------------------------------ byte encoding ------------------------------ */
@@ -89,7 +109,7 @@ export const linesToEscpos = (lines: ReceiptLine[], width: PrinterWidth): Uint8A
     push(0x1b, 0x45, line.bold ? 0x01 : 0x00)
     if (line.size === 'double') push(0x1d, 0x21, 0x11) // GS ! 17 — 2× wide/tall
     else push(0x1d, 0x21, 0x00)
-    for (const byte of encodeCp1252(line.text.slice(0, cols) + '\n')) push(byte)
+    for (const byte of encodeCp1252(truncate(line.text, cols) + '\n')) push(byte)
   }
 
   push(0x1d, 0x21, 0x00)
@@ -122,7 +142,15 @@ export const buildReceiptLines = (
   }
   lines.push({ text: divider(cols) })
   for (const item of order.items) {
-    lines.push({ text: twoCol(`${item.qty} x ${item.name}`, amount(item.price * item.qty), cols) })
+    const quantity = item.soldByWeight
+      ? `${item.qty.toFixed(3)} ${item.saleUnit ?? 'piece'}`
+      : `${item.qty} x`
+    const variant = item.variantName ? ` · ${stripEmoji(item.variantName)}` : ''
+    lines.push({ text: twoCol(`${quantity} ${stripEmoji(item.name)}${variant}`, amount(round(item.price * item.qty)), cols) })
+    for (const modifier of item.modifiers ?? []) {
+      lines.push({ text: `  + ${stripEmoji(modifier.optionName)}` })
+    }
+    if (item.note) lines.push({ text: `  Note: ${stripEmoji(item.note)}` })
   }
   lines.push({ text: divider(cols) })
   lines.push({ text: twoCol('Subtotal', amount(order.subtotal), cols) })
@@ -156,7 +184,14 @@ export const buildKitchenLines = (order: Order, store: Store): ReceiptLine[] => 
   lines.push({ text: order.channel.replace('-', ' ').toUpperCase(), align: 'center', bold: true })
   lines.push({ text: divider(cols) })
   for (const item of order.items) {
-    lines.push({ text: `${item.qty} x ${item.name}`, bold: true, size: 'double' })
+    const quantity = item.soldByWeight
+      ? `${item.qty.toFixed(3)} ${item.saleUnit ?? 'piece'}`
+      : `${item.qty} x`
+    lines.push({ text: `${quantity} ${stripEmoji(item.name)}${item.variantName ? ` · ${stripEmoji(item.variantName)}` : ''}`, bold: true, size: 'double' })
+    for (const modifier of item.modifiers ?? []) {
+      lines.push({ text: `  + ${stripEmoji(modifier.optionName)}` })
+    }
+    if (item.note) lines.push({ text: `  NOTE: ${stripEmoji(item.note)}`, bold: true })
   }
   lines.push({ text: divider(cols) })
   if (order.note) lines.push({ text: `NOTE: ${order.note}`, bold: true })

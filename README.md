@@ -62,13 +62,15 @@ The login screen has one-click demo buttons for the first three.
 - Products and categories: emoji icons, pricing, cost/margin, stock tracking,
   active toggles
 - Team: email/password + 4-digit PIN, roles, granular permissions (discounts,
-  tabs, settlements, register, reports), activation
+  tabs, settlements, register, reports, shift supervisor), activation
 - Reports: today / week / month / year, sales chart, payment split, top
   products, categories, staff performance, tab charges vs settlements, expenses
 - Expenses: add/delete, monthly totals, category breakdown, CSV export
 - **Cash register (X/Z)**: X report any time without closing; Z closing with
   counted cash and cash-difference; sessions are unique and become immutable
-  once closed; full Z history can be viewed and re-printed exactly as closed
+  once closed; full Z history can be viewed and re-printed exactly as closed.
+  Staff see only their own shifts unless they have the shift-supervisor
+  permission (admins see everything)
 - Settings: store profile, tax and service charge, tab rules, low-stock alerts,
   receipt footer, accent colour, **thermal printer setup** (58/80 mm, auto or
   manual, USB/WebSerial or browser, baud rate, kitchen tickets, test print),
@@ -82,8 +84,16 @@ The login screen has one-click demo buttons for the first three.
 - Customer profiles are read-only for staff; admin-only editing is enforced
 - Voiding an order requires a manager's PIN (recorded in the audit trail)
 - With the `register` permission: open the register, print X reports and close
-  the day with a Z report
-- Permissions control discounts, tabs, settlements, register and reports
+  the day with a Z report — **only the sessions they personally opened**.
+  Teammates' sessions, sales and Z history are invisible to plain staff, and a
+  store-layer guard rejects closing a session someone else opened
+- **Shift supervisor** (`supervisor` permission, granted by an admin): for the
+  trusted "responsible" person of a shift — sees every register session of the
+  store including sessions opened by admins, the whole team's sales breakdown,
+  and can close sessions opened by others. Without it a staff member only ever
+  sees their own row in the by-employee breakdown
+- Permissions control discounts, tabs, settlements, register, reports and
+  shift supervisor
 
 ## How data isolation works in the prototype
 

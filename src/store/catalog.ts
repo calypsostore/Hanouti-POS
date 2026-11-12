@@ -1,0 +1,174 @@
+import { useCallback } from 'react'
+import type { Category, Product } from '../types'
+import { uid } from '../lib/utils'
+import type { AppContextValue } from './types'
+import type { StoreSliceDependencies } from './sliceTypes'
+
+const validateOptions = (
+  products: Product[],
+  storeId: string,
+  options: Pick<Product, 'barcode' | 'modifiers' | 'variants'>,
+  excludeProductId?: string,
+): string | null => {
+  const barcodes = [options.barcode, ...(options.variants ?? []).map((variant) => variant.barcode ?? '')]
+    .map((barcode) => (barcode ?? '').trim().toLowerCase())
+    .filter(Boolean)
+  if (new Set(barcodes).size !== barcodes.length) return 'Product and variant barcodes must be unique.'
+  const otherBarcodes = products
+    .filter((product) => product.storeId === storeId && product.id !== excludeProductId)
+    .flatMap((product) => [
+      product.barcode ?? '',
+      ...(product.variants ?? []).map((variant) => variant.barcode ?? ''),
+    ])
+    .map((barcode) => barcode.trim().toLowerCase())
+    .filter(Boolean)
+  if (barcodes.some((barcode) => otherBarcodes.includes(barcode))) {
+    return 'That barcode is already assigned to another product or variant in this store.'
+  }
+  const modifierIds = (options.modifiers ?? []).map((group) => group.id)
+  if (modifierIds.some((id) => !id) || new Set(modifierIds).size !== modifierIds.length) {
+    return 'Modifier groups need unique IDs.'
+  }
+  for (const group of options.modifiers ?? []) {
+    const optionIds = group.options.map((option) => option.id)
+    if (!group.name.trim() || !group.options.length || optionIds.some((id) => !id) ||
+      new Set(optionIds).size !== optionIds.length ||
+      group.options.some((option) => !option.name.trim() || !Number.isFinite(option.priceDelta))) {
+      return 'Each modifier group needs a name and valid options.'
+    }
+  }
+  const variantIds = (options.variants ?? []).map((variant) => variant.id)
+  if (variantIds.some((id) => !id) || new Set(variantIds).size !== variantIds.length ||
+    (options.variants ?? []).some((variant) =>
+      !variant.name.trim() || !Number.isFinite(variant.price) || variant.price < 0 ||
+      !Number.isFinite(variant.cost) || variant.cost < 0 ||
+      !Number.isFinite(variant.stock) || variant.stock < 0,
+    )) {
+    return 'Each variant needs a name and valid price, cost and stock.'
+  }
+  return null
+}
+
+export function useCatalogSlice(dependencies: StoreSliceDependencies) {
+  const { dbRef, commitDb, requireAdmin } = dependencies
+  const addCategory = useCallback<AppContextValue['addCategory']>((storeId, data) => {
+    const actorResult = requireAdmin(storeId)
+    if (!actorResult.ok) return actorResult
+    if (!data.name.trim()) return { ok: false, error: 'Enter a category name.' }
+    commitDb((prev) => ({
+      ...prev,
+      categories: [
+        ...prev.categories,
+        {
+          id: uid('cat'),
+          storeId,
+          name: data.name.trim(),
+          emoji: data.emoji || '🍽️',
+          sort: prev.categories.filter((c) => c.storeId === storeId).length,
+        },
+      ],
+    }))
+    return { ok: true }
+  }, [commitDb, requireAdmin])
+
+  const updateCategory = useCallback<AppContextValue['updateCategory']>((id, patch) => {
+    const category = dbRef.current.categories.find((candidate) => candidate.id === id)
+    if (!category) return { ok: false, error: 'Category not found.' }
+    const actorResult = requireAdmin(category.storeId)
+    if (!actorResult.ok) return actorResult
+    if (patch.storeId !== undefined && patch.storeId !== category.storeId) {
+      return { ok: false, error: 'A category cannot be moved to another store.' }
+    }
+    const safePatch: Partial<Category> = { ...patch }
+    delete safePatch.id
+    delete safePatch.storeId
+    commitDb((prev) => ({
+      ...prev,
+      categories: prev.categories.map((c) => (c.id === id ? { ...c, ...safePatch } : c)),
+    }))
+    return { ok: true }
+  }, [commitDb, requireAdmin])
+
+  const deleteCategory = useCallback<AppContextValue['deleteCategory']>(
+    (id) => {
+      const category = dbRef.current.categories.find((candidate) => candidate.id === id)
+      if (!category) return { ok: false, error: 'Category not found.' }
+      const actorResult = requireAdmin(category.storeId)
+      if (!actorResult.ok) return actorResult
+      const products = dbRef.current.products.filter((p) => p.storeId === category.storeId && p.categoryId === id)
+      if (products.length) {
+        return { ok: false, error: `Move or delete the ${products.length} item(s) in this category first.` }
+      }
+      commitDb((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== id) }))
+      return { ok: true }
+    },
+    [commitDb, requireAdmin],
+  )
+
+  const addProduct = useCallback<AppContextValue['addProduct']>((storeId, data) => {
+    const actorResult = requireAdmin(storeId)
+    if (!actorResult.ok) return actorResult
+    const category = dbRef.current.categories.find((candidate) =>
+      candidate.id === data.categoryId && candidate.storeId === storeId,
+    )
+    if (!category) return { ok: false, error: 'Choose a category from this store.' }
+    if (!Number.isFinite(data.price) || data.price < 0 || !Number.isFinite(data.stock) || data.stock < 0) {
+      return { ok: false, error: 'Enter a valid product price and stock quantity.' }
+    }
+    const optionsError = validateOptions(dbRef.current.products, storeId, data)
+    if (optionsError) return { ok: false, error: optionsError }
+    commitDb((prev) => ({
+      ...prev,
+      products: [...prev.products, { ...data, id: uid('prd'), storeId }],
+    }))
+    return { ok: true }
+  }, [commitDb, requireAdmin])
+
+  const updateProduct = useCallback<AppContextValue['updateProduct']>((id, patch) => {
+    const product = dbRef.current.products.find((candidate) => candidate.id === id)
+    if (!product) return { ok: false, error: 'Product not found.' }
+    const actorResult = requireAdmin(product.storeId)
+    if (!actorResult.ok) return actorResult
+    if (patch.storeId !== undefined && patch.storeId !== product.storeId) {
+      return { ok: false, error: 'A product cannot be moved to another store.' }
+    }
+    if (patch.categoryId !== undefined && !dbRef.current.categories.some((category) =>
+      category.id === patch.categoryId && category.storeId === product.storeId,
+    )) {
+      return { ok: false, error: 'Choose a category from this store.' }
+    }
+    if (patch.price !== undefined && (!Number.isFinite(patch.price) || patch.price < 0)) {
+      return { ok: false, error: 'Enter a valid product price.' }
+    }
+    if (patch.stock !== undefined && (!Number.isFinite(patch.stock) || patch.stock < 0)) {
+      return { ok: false, error: 'Enter a valid stock quantity.' }
+    }
+    const optionsError = validateOptions(
+      dbRef.current.products,
+      product.storeId,
+      { barcode: patch.barcode ?? product.barcode, modifiers: patch.modifiers ?? product.modifiers, variants: patch.variants ?? product.variants },
+      product.id,
+    )
+    if (optionsError) return { ok: false, error: optionsError }
+    const safePatch: Partial<Product> = { ...patch }
+    delete safePatch.id
+    delete safePatch.storeId
+    commitDb((prev) => ({
+      ...prev,
+      products: prev.products.map((p) => (p.id === id ? { ...p, ...safePatch } : p)),
+    }))
+    return { ok: true }
+  }, [commitDb, requireAdmin])
+
+  const deleteProduct = useCallback<AppContextValue['deleteProduct']>((id) => {
+    const product = dbRef.current.products.find((candidate) => candidate.id === id)
+    if (!product) return { ok: false, error: 'Product not found.' }
+    const actorResult = requireAdmin(product.storeId)
+    if (!actorResult.ok) return actorResult
+    commitDb((prev) => ({ ...prev, products: prev.products.filter((p) => p.id !== id) }))
+    return { ok: true }
+  }, [commitDb, requireAdmin])
+
+
+  return { addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct }
+}

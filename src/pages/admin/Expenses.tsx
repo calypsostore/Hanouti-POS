@@ -14,7 +14,7 @@ import {
   Textarea,
 } from '../../components/ui'
 import { useToast } from '../../components/toast'
-import { cn, csvDownload, fmtDate, money, sum } from '../../lib/utils'
+import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
 
 const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
@@ -34,7 +34,7 @@ export default function Expenses() {
   const { push } = useToast()
   const [open, setOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [month, setMonth] = useState(() => dateKey(new Date()).slice(0, 7))
   const [category, setCategory] = useState('all')
 
   if (!store || !user) return null
@@ -43,20 +43,21 @@ export default function Expenses() {
 
   const months = (() => {
     const set = new Set<string>()
-    expenses.forEach((e) => set.add(e.date.slice(0, 7)))
-    set.add(new Date().toISOString().slice(0, 7))
+    expenses.forEach((e) => set.add(dateKey(e.date).slice(0, 7)))
+    set.add(dateKey(new Date()).slice(0, 7))
     return Array.from(set).sort().reverse().slice(0, 8)
   })()
 
-  const monthExpenses = expenses.filter((e) => e.date.slice(0, 7) === month)
+  const monthExpenses = expenses.filter((e) => dateKey(e.date).slice(0, 7) === month)
   const filtered = monthExpenses.filter((e) => category === 'all' || e.category === category)
   const monthTotal = sum(monthExpenses, (e) => e.amount)
 
-  const prevMonthDate = new Date(`${month}-01T12:00:00`)
+  const [monthYear, monthNumber] = month.split('-').map(Number)
+  const prevMonthDate = new Date(monthYear, monthNumber - 1, 1, 12)
   prevMonthDate.setMonth(prevMonthDate.getMonth() - 1)
-  const prevKey = prevMonthDate.toISOString().slice(0, 7)
+  const prevKey = dateKey(prevMonthDate).slice(0, 7)
   const prevTotal = sum(
-    expenses.filter((e) => e.date.slice(0, 7) === prevKey),
+    expenses.filter((e) => dateKey(e.date).slice(0, 7) === prevKey),
     (e) => e.amount,
   )
   const change = prevTotal > 0 ? ((monthTotal - prevTotal) / prevTotal) * 100 : 0
@@ -71,7 +72,7 @@ export default function Expenses() {
 
   const revenue = sum(
     db.orders.filter(
-      (o) => o.storeId === store.id && o.status === 'completed' && o.createdAt.slice(0, 7) === month,
+    (o) => o.storeId === store.id && o.status === 'completed' && dateKey(o.createdAt).slice(0, 7) === month,
     ),
     (o) => o.total,
   )
@@ -79,7 +80,13 @@ export default function Expenses() {
   const exportCsv = () => {
     csvDownload(`expenses-${store.slug}-${month}.csv`, [
       ['Date', 'Category', 'Note', 'Amount (DT)', 'Recorded by'],
-      ...filtered.map((e) => [fmtDate(e.date), e.category, e.note, e.amount.toFixed(3), e.createdBy]),
+      ...filtered.map((e) => [
+        fmtDate(e.date),
+        e.category,
+        e.note,
+        e.amount.toFixed(3),
+        db.users.find((candidate) => candidate.id === e.createdBy)?.name ?? e.createdBy,
+      ]),
     ])
     push('Expenses exported to CSV')
   }
@@ -203,7 +210,7 @@ export default function Expenses() {
                         <Badge tone="neutral">{fmtDate(e.date)}</Badge>
                       </div>
                       <div className="truncate text-[11px] text-muted">
-                        {e.note} · {e.createdBy}
+                        {e.note} · {db.users.find((candidate) => candidate.id === e.createdBy)?.name ?? e.createdBy}
                       </div>
                     </div>
                     <span className="text-[13px] font-bold tabular">{money(e.amount)}</span>
@@ -251,7 +258,11 @@ export default function Expenses() {
         <ExpenseEditor
           onClose={() => setOpen(false)}
           onSave={(data) => {
-            addExpense(store.id, data)
+            const result = addExpense(store.id, data)
+            if (!result.ok) {
+              push(result.error, 'error')
+              return
+            }
             push('Expense recorded')
             setOpen(false)
           }}
@@ -272,7 +283,11 @@ export default function Expenses() {
               variant="danger"
               onClick={() => {
                 if (!deleteTarget) return
-                deleteExpense(deleteTarget.id)
+                const result = deleteExpense(deleteTarget.id)
+                if (!result.ok) {
+                  push(result.error, 'error')
+                  return
+                }
                 push('Expense deleted', 'info')
                 setDeleteTarget(null)
               }}
@@ -300,7 +315,7 @@ function ExpenseEditor({
   const [category, setCategory] = useState('Supplies')
   const [note, setNote] = useState('')
   const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(dateKey(new Date()))
 
   const value = Number(amount) || 0
 
@@ -323,7 +338,7 @@ function ExpenseEditor({
                 category,
                 note: note.trim() || category,
                 amount: value,
-                date: `${date}T12:00:00.000Z`,
+                date,
               })
             }
           >

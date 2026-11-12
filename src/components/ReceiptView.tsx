@@ -1,5 +1,6 @@
 import type { Order, Store } from '../types'
 import { fmtDateTime } from '../lib/utils'
+import { round } from '../lib/pricing-utils'
 
 export function ReceiptView({ order, store }: { order: Order; store: Store }) {
   const settings = store.settings
@@ -26,11 +27,20 @@ export function ReceiptView({ order, store }: { order: Order; store: Store }) {
       <hr />
       <div className="space-y-1">
         {order.items.map((item) => (
-          <div key={item.productId} className="flex justify-between gap-2">
-            <span className="min-w-0">
-              {item.qty} × {item.name}
-            </span>
-            <span className="shrink-0 mono">{(item.price * item.qty).toFixed(3)}</span>
+          <div key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`} className="space-y-0.5">
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0">
+                {item.soldByWeight ? item.qty.toFixed(3) : item.qty} {item.saleUnit ?? '×'} {item.name}
+                {item.variantName ? ` · ${item.variantName}` : ''}
+              </span>
+              <span className="shrink-0 mono">{round(item.price * item.qty).toFixed(3)}</span>
+            </div>
+            {!!item.modifiers?.length && (
+              <div className="pl-2 text-[9.5px] text-neutral-500">
+                {item.modifiers.map((modifier) => modifier.optionName).join(', ')}
+              </div>
+            )}
+            {item.note && <div className="pl-2 text-[9.5px] italic text-neutral-500">{item.note}</div>}
           </div>
         ))}
       </div>

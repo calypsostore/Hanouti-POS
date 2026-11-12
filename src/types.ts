@@ -9,6 +9,15 @@ export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
 export type PrinterWidth = 58 | 80
 export type PrintMode = 'auto' | 'manual'
 export type PrinterConnection = 'webserial' | 'browser'
+export type BusinessType = 'cafe' | 'restaurant' | 'bakery' | 'snack' | 'retail' | 'salon'
+export type SaleUnit = 'kg' | 'g' | 'piece'
+
+export interface StoreFeatures {
+  tables: boolean
+  kitchenScreen: boolean
+  barcode: boolean
+  weightItems: boolean
+}
 
 export interface PrinterSettings {
   enabled: boolean
@@ -31,6 +40,7 @@ export interface StoreSettings {
   lowStockThreshold: number
   accent: string
   printer: PrinterSettings
+  features: StoreFeatures
 }
 
 export interface Store {
@@ -45,6 +55,8 @@ export interface Store {
   emoji: string
   plan: Plan
   status: StoreStatus
+  businessType: BusinessType
+  setupComplete: boolean
   createdAt: string
   trialEndsAt?: string
   settings: StoreSettings
@@ -66,6 +78,8 @@ export interface User {
     settle: boolean
     reports: boolean
     register: boolean
+    /** Shift supervisor: sees every register session and the whole team's sales. */
+    supervisor: boolean
   }
 }
 
@@ -88,6 +102,37 @@ export interface Product {
   trackStock: boolean
   stock: number
   active: boolean
+  barcode?: string
+  modifiers?: ProductModifierGroup[]
+  variants?: ProductVariant[]
+  soldByWeight?: boolean
+  saleUnit?: SaleUnit
+}
+
+export interface ProductModifierOption {
+  id: string
+  name: string
+  priceDelta: number
+}
+
+export interface ProductModifierGroup {
+  id: string
+  name: string
+  selection: 'single' | 'multiple'
+  required: boolean
+  options: ProductModifierOption[]
+}
+
+export interface ProductVariant {
+  id: string
+  name: string
+  size?: string
+  color?: string
+  price: number
+  cost: number
+  barcode?: string
+  trackStock: boolean
+  stock: number
 }
 
 export interface Customer {
@@ -102,11 +147,26 @@ export interface Customer {
 }
 
 export interface OrderItem {
+  lineId?: string
   productId: string
   name: string
   emoji: string
   price: number
   qty: number
+  variantId?: string
+  variantName?: string
+  modifiers?: OrderModifier[]
+  note?: string
+  saleUnit?: SaleUnit
+  soldByWeight?: boolean
+}
+
+export interface OrderModifier {
+  groupId: string
+  groupName: string
+  optionId: string
+  optionName: string
+  priceDelta: number
 }
 
 export interface Order {
@@ -129,6 +189,7 @@ export interface Order {
   createdAt: string
   voidedById?: string
   voidedByName?: string
+  voidedAt?: string
 }
 
 export interface LedgerEntry {
@@ -140,6 +201,7 @@ export interface LedgerEntry {
   method?: 'cash' | 'card'
   orderId?: string
   note?: string
+  creditAdjustment?: boolean
   staffName?: string
   createdAt: string
 }
@@ -151,6 +213,7 @@ export interface Expense {
   note: string
   amount: number
   date: string
+  createdAt?: string
   createdBy: string
 }
 
