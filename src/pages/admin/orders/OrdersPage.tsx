@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Banknote,
   CreditCard,
@@ -22,6 +23,7 @@ import type { OrderMethod, OrderRange, OrderStatus } from './types'
 
 export default function OrdersPage() {
   const { db, store, user, voidOrder } = useApp()
+  const [searchParams] = useSearchParams()
   const { push } = useToast()
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<OrderRange>('today')
@@ -37,6 +39,7 @@ export default function OrdersPage() {
 
   const customers = db.customers.filter((customer) => customer.storeId === store.id)
   const customerName = (id?: string) => customers.find((customer) => customer.id === id)?.name
+  const myOrders = user.role === 'staff' && searchParams.get('mine') === 'true'
 
   const boundary = new Date()
   if (range === '7d') boundary.setDate(boundary.getDate() - 6)
@@ -44,6 +47,7 @@ export default function OrdersPage() {
   boundary.setHours(0, 0, 0, 0)
   const filtered = db.orders
     .filter((order) => order.storeId === store.id)
+    .filter((order) => !myOrders || order.staffId === user.id)
     .filter((order) =>
       range === 'today'
         ? dateKey(order.createdAt) === dateKey(new Date())
@@ -125,7 +129,7 @@ export default function OrdersPage() {
         <div>
           <h2 className="text-[20px] font-extrabold tracking-tight">Orders</h2>
           <p className="mt-1 text-[13px] text-muted">
-            Every sale, tab and void — searchable and exportable.
+            {myOrders ? 'Your sales and voids — searchable and exportable.' : 'Every sale, tab and void — searchable and exportable.'}
           </p>
         </div>
         <Button variant="secondary" onClick={exportCsv}>

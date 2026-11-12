@@ -28,7 +28,9 @@ export default function POS() {
   const [search, setSearch] = useState('')
   const productCart = useProductCart(db, store, push)
   const { cart, setCart, optionsProduct, setOptionsProduct, qtyInCart, addItem, addSelection, scanBarcode, changeQty, setLineQty } = productCart
-  const [channel, setChannel] = useState<OrderChannel>('takeaway')
+  const [channel, setChannel] = useState<OrderChannel>(
+    searchParams.get('channel') === 'dine-in' ? 'dine-in' : 'takeaway',
+  )
   const [customerId, setCustomerId] = useState<string | undefined>(linkedCustomerId)
   const [discount, setDiscount] = useState(0)
   const [note, setNote] = useState('')

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Check } from 'lucide-react'
+import { ArrowRight, Check, Coffee, ShoppingBag, Sparkles, Store, Utensils, Wheat, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card } from '../../components/ui'
 import { useToast } from '../../components/toast'
@@ -9,13 +9,13 @@ import type { BusinessType } from '../../types'
 import { cn } from '../../lib/utils'
 import { BrandLogo } from '../../components/BrandLogo'
 
-const businessTypes: Array<{ value: BusinessType; label: string; emoji: string; description: string }> = [
-  { value: 'cafe', label: 'Cafe', emoji: '☕', description: 'Coffee, tea, pastries and counter service.' },
-  { value: 'restaurant', label: 'Restaurant', emoji: '🍽️', description: 'Tables, kitchen workflow and full meals.' },
-  { value: 'bakery', label: 'Bakery', emoji: '🥐', description: 'Bread, pastries and optional weight sales.' },
-  { value: 'snack', label: 'Snack shop', emoji: '🥪', description: 'Fast takeaway and quick orders.' },
-  { value: 'retail', label: 'Retail', emoji: '🛒', description: 'Products, barcode scanning and weighed goods.' },
-  { value: 'salon', label: 'Salon', emoji: '💇', description: 'Appointments or services and retail products.' },
+const businessTypes: Array<{ value: BusinessType; label: string; icon: LucideIcon; description: string }> = [
+  { value: 'cafe', label: 'Cafe', icon: Coffee, description: 'Coffee, tea, pastries and counter service.' },
+  { value: 'restaurant', label: 'Restaurant', icon: Utensils, description: 'Tables, kitchen workflow and full meals.' },
+  { value: 'bakery', label: 'Bakery', icon: Wheat, description: 'Bread, pastries and optional weight sales.' },
+  { value: 'snack', label: 'Snack shop', icon: ShoppingBag, description: 'Fast takeaway and quick orders.' },
+  { value: 'retail', label: 'Retail', icon: Store, description: 'Products, barcode scanning and weighed goods.' },
+  { value: 'salon', label: 'Salon', icon: Sparkles, description: 'Appointments or services and retail products.' },
 ]
 
 export default function SetupWizard() {
@@ -57,7 +57,9 @@ export default function SetupWizard() {
                   : 'border-line hover:border-accent-foreground/40',
               )}
             >
-              <span className="text-2xl">{option.emoji}</span>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-tint text-brand-navy">
+                <option.icon className="h-5 w-5" />
+              </span>
               <span className="mt-2 block text-sm font-bold text-ink">{option.label}</span>
               <span className="mt-1 block text-xs leading-relaxed text-muted">{option.description}</span>
             </button>

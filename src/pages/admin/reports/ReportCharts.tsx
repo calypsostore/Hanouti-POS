@@ -17,7 +17,7 @@ import type { Period } from './reportData'
 
 const methodColors: Record<string, string> = {
   cash: 'var(--color-brand-navy)',
-  card: 'var(--color-accent-foreground)',
+  card: 'var(--color-brand-amber)',
   credit: 'var(--color-brand-blue)',
 }
 

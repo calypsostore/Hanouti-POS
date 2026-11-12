@@ -3,6 +3,7 @@ import { Barcode, ChevronRight, LayoutGrid, Plus, Search, ShoppingBag } from 'lu
 import type { Category, OrderChannel, Product, Store } from '../../types'
 import { Button, EmptyState, Input, Segmented } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
+import { getProductImage } from '../../lib/productDisplay'
 import { CategoryChip } from './CartPanel'
 
 type ProductCatalogProps = {
@@ -104,6 +105,7 @@ export function ProductCatalog({
                     ? p.variants.every((variant) => variant.trackStock && variant.stock <= 0)
                     : p.trackStock && p.stock <= 0
                   const low = p.trackStock && p.stock > 0 && p.stock <= store.settings.lowStockThreshold
+                  const image = getProductImage(p)
                   return (
                     <button
                       key={p.id}
@@ -117,8 +119,8 @@ export function ProductCatalog({
                       )}
                     >
                       <div className="mb-2 flex w-full items-start justify-between">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cream-100 text-[24px]">
-                          {p.emoji}
+                        <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-brand-tint text-[20px] text-brand-navy">
+                          {image ? <img src={image} alt={p.name} className="h-full w-full object-cover" /> : p.emoji || p.name.slice(0, 1).toUpperCase()}
                         </span>
                         {out && (
                           <span className="rounded-md bg-danger-strong px-1.5 py-0.5 text-[9px] font-bold text-white">

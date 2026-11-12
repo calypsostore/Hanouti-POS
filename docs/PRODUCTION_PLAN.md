@@ -38,6 +38,16 @@ The shared logo and browser-tab favicon use the complete supplied
 Existing stores using the former default caramel palette are migrated to the
 7anouti palette; custom accent selections remain unchanged.
 
+The admin, staff, and platform-owner dashboards now share a responsive
+dashboard component set and the app shell is split into a collapsible sidebar,
+top bar, and mobile navigation. Dashboard totals reuse the existing report and
+ledger data; month profit is explicitly an estimate based on current product
+costs and recorded expenses. This is a presentation update only: the current
+database still has no open-order/tracking status model, shift records, last-login
+history, uploaded store-logo field, or billing workflow. Those dashboard
+sections are omitted, marked unavailable, or limited to the data already
+stored; no demo values are presented as production data.
+
 ## Requested feature roadmap
 
 ### Phase 1 — Business types and product options ✅ demo implementation

@@ -39,9 +39,9 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle accent={store.settings.accent} />
-          {user.role === 'admin' && (
+          {(user.role === 'admin' || user.role === 'staff') && (
             <Link
-              to="/admin"
+              to={user.role === 'admin' ? '/admin' : '/staff'}
               className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
@@ -73,6 +73,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
             onClick={onLogout}
             className="rounded-xl border border-line p-2 text-muted transition hover:bg-cream-100 hover:text-ink"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="h-4 w-4" />
           </button>

@@ -82,8 +82,8 @@ export default function OrderDetailsDrawer({
             <div className="space-y-2.5">
               {order.items.map((item) => (
                 <div key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`} className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cream-100 text-base">
-                    {item.emoji}
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
+                    {item.name.slice(0, 1).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-semibold text-ink">{item.name}</div>

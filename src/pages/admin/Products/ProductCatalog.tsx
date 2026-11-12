@@ -2,6 +2,7 @@ import { Boxes, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import type { Category, Product } from '../../../types'
 import { Badge, Button, Card, EmptyState, Input } from '../../../components/ui'
 import { cn, money } from '../../../lib/utils'
+import { getProductImage } from '../../../lib/productDisplay'
 
 export default function ProductCatalog({
   categories,
@@ -142,12 +143,13 @@ export default function ProductCatalog({
                   {filtered.map((product) => {
                     const margin = product.price > 0 ? ((product.price - product.cost) / product.price) * 100 : 0
                     const low = product.trackStock && product.stock <= lowStockThreshold
+                    const image = getProductImage(product)
                     return (
                       <tr key={product.id} className="border-b border-line/50 text-[12.5px]">
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cream-100 text-base">
-                              {product.emoji}
+                            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-brand-tint text-sm font-bold text-brand-navy">
+                              {image ? <img src={image} alt={product.name} className="h-full w-full object-cover" /> : product.emoji || product.name.slice(0, 1).toUpperCase()}
                             </span>
                             <span className="font-semibold text-ink">{product.name}</span>
                           </div>
@@ -210,14 +212,16 @@ export default function ProductCatalog({
             </div>
 
             <div className="divide-y divide-line/60 md:hidden">
-              {filtered.map((product) => (
+              {filtered.map((product) => {
+                const image = getProductImage(product)
+                return (
                 <button
                   key={product.id}
                   onClick={() => onEditProduct(product)}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left"
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cream-100 text-base">
-                    {product.emoji}
+                  <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-brand-tint text-sm font-bold text-brand-navy">
+                    {image ? <img src={image} alt={product.name} className="h-full w-full object-cover" /> : product.emoji || product.name.slice(0, 1).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-semibold">{product.name}</div>
@@ -227,7 +231,8 @@ export default function ProductCatalog({
                   </div>
                   <span className="text-[12.5px] font-bold tabular">{money(product.price)}</span>
                 </button>
-              ))}
+                )
+              })}
             </div>
           </>
         )}

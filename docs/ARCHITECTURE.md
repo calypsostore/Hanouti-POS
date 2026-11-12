@@ -7,9 +7,12 @@
   `src/pages/POS.tsx` and is implemented in `src/pages/pos/`.
 - Large page features keep their implementation beside a small route-facing
   entry file. Current examples include `src/pages/admin/customers/`,
-  `orders/`, `Products/`, `Settings/`, `reports/`, and `register/`.
+  `orders/`, `Products/`, `Settings/`, `reports/`, `register/`, and
+  `src/pages/admin/overview/`.
 - `src/components/` contains UI shared across pages. Reuse
-  `src/components/ui.tsx` for common controls.
+  `src/components/ui.tsx` for common controls. The app shell is split across
+  `Layout.tsx`, `Sidebar.tsx`, `TopBar.tsx`, and `MobileNav.tsx`; reusable
+  dashboard primitives live in `src/components/dashboard/`.
 - `src/lib/` contains reusable domain helpers and pure business calculations.
   Keep React and UI dependencies out of this layer.
 - `src/store/AppStore.tsx` composes the provider and exports `useApp()`.
@@ -30,7 +33,8 @@
 2. Use shared controls from `src/components/ui.tsx`, keep domain calculations
    in pure `src/lib/` helpers, and report action results through the toast UI.
 3. Register the route in `src/App.tsx` with the appropriate authentication and
-   role gates. Add navigation in `src/components/Layout.tsx` when applicable.
+   role gates. Add navigation in `src/components/Sidebar.tsx` and
+   `src/components/MobileNav.tsx` when applicable.
 4. Check phone and tablet layouts and manually exercise the route.
 
 ## Adding a store action

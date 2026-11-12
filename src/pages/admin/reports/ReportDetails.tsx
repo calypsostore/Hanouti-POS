@@ -44,8 +44,8 @@ export function ReportDetails({
                   <tr key={product.name} className="border-b border-line/50 text-[12.5px]">
                     <td className="px-5 py-2.5">
                       <div className="flex items-center gap-2.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cream-100 text-sm">
-                          {product.emoji}
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
+                          {product.name.slice(0, 1).toUpperCase()}
                         </span>
                         <span className="font-medium text-ink">{product.name}</span>
                       </div>
@@ -56,7 +56,7 @@ export function ReportDetails({
                       <div className="flex items-center justify-end gap-2">
                         <div className="h-1.5 w-16 overflow-hidden rounded-full bg-cream-200">
                           <div
-                            className="h-full rounded-full bg-accent-foreground"
+                            className="h-full rounded-full bg-brand-navy"
                             style={{ width: `${sales > 0 ? (product.revenue / sales) * 100 : 0}%` }}
                           />
                         </div>

@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { AppProvider, useApp } from './store/AppStore'
 import { ToastProvider } from './components/toast'
 import { AppShell } from './components/Layout'
 import Login from './pages/Login'
 import POS from './pages/POS'
 import AdminOverview from './pages/admin/Overview'
+import StaffDashboard from './pages/admin/overview/StaffDashboard'
 import Orders from './pages/admin/Orders'
 import Customers from './pages/admin/Customers'
 import Register from './pages/admin/Register'
@@ -21,7 +22,7 @@ import type { Role } from './types'
 
 function homeFor(role: Role) {
   if (role === 'super') return '/super'
-  if (role === 'staff') return '/pos'
+  if (role === 'staff') return '/staff'
   return '/admin'
 }
 
@@ -58,6 +59,11 @@ function AdminShell() {
   return <AppShell />
 }
 
+function POSPage() {
+  const [searchParams] = useSearchParams()
+  return <POS key={searchParams.get('channel') ?? ''} />
+}
+
 function StoreSetupGate({ children }: { children: React.ReactNode }) {
   const { user, store } = useApp()
   if (user?.role === 'admin' && store && !store.setupComplete) return <Navigate to="/admin" replace />
@@ -81,12 +87,25 @@ export default function App() {
             <Route path="/" element={<HomeRoute />} />
 
             <Route
+              path="/staff"
+              element={
+                <Protected>
+                  <RoleGate roles={['staff']}>
+                    <AppShell />
+                  </RoleGate>
+                </Protected>
+              }
+            >
+              <Route index element={<StaffDashboard />} />
+            </Route>
+
+            <Route
               path="/pos"
               element={
                 <Protected>
                   <RoleGate roles={['admin', 'staff']}>
                     <StoreSetupGate>
-                      <POS />
+                      <POSPage />
                     </StoreSetupGate>
                   </RoleGate>
                 </Protected>

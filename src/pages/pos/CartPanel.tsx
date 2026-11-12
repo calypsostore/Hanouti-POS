@@ -161,8 +161,8 @@ export function CartPanel({
                 key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
                 className="group flex items-center gap-2.5 rounded-xl px-1.5 py-2 transition hover:bg-white"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-100 text-base">
-                  {item.emoji}
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
+                  {item.name.slice(0, 1).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] font-semibold text-ink">{item.name}</div>
