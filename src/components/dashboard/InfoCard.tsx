@@ -6,7 +6,7 @@ import { IconChip } from './IconChip'
 
 export function InfoCard({ user, store, profileHref }: { user: User; store: Store; profileHref: string }) {
   return (
-    <article className="rounded-2xl border border-line bg-white p-4 shadow-sm dark:bg-espresso-800">
+    <article className="glass rounded-3xl p-4">
       <div className="flex items-center gap-3">
         <Avatar name={user.name} size="lg" />
         <div className="min-w-0 flex-1">

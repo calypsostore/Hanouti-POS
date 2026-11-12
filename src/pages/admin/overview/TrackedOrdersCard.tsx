@@ -7,7 +7,7 @@ import { SectionCard } from '../../../components/dashboard/SectionCard'
 export function TrackedOrdersCard({ data }: { data: AdminDashboardData }) {
   const orders = data.recentOrders.filter((order) => String(order.status) === 'recorded')
   return (
-    <SectionCard icon={ClipboardList} tone="amber" title="Tracked orders" subtitle="Recorded activity · no payment totals" bodyClassName="px-4 pb-4 sm:px-5">
+    <SectionCard icon={ClipboardList} tone="purple" title="Tracked orders" subtitle="Recorded activity · no payment totals" bodyClassName="px-4 pb-4 sm:px-5">
       {orders.length === 0 ? <EmptyState icon={ClipboardList} title="No tracked orders yet" description="Recorded orders will appear here without payment amounts." /> : (
         <div className="divide-y divide-line/70">
           {orders.map((order) => (

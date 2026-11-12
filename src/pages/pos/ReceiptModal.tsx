@@ -111,7 +111,7 @@ export function ReceiptModal({
           </div>
         }
       >
-        <div className="mb-4 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-2.5 text-[12.5px] font-semibold text-emerald-800">
+        <div className="mb-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--semantic-green-soft)] py-2.5 text-[12.5px] font-semibold text-[var(--semantic-green-text)]">
           <CheckCircle2 className="h-4 w-4" />
           {order.paymentMethod === 'credit'
             ? `Charged to ${customerName ?? 'customer'}'s tab`

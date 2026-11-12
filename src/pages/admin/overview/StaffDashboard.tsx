@@ -20,7 +20,7 @@ export default function StaffDashboard() {
     <div className="space-y-5">
       <AdminHeader store={store} user={user} registerOpen={openRegister} now={now} />
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        <GradientKpiCard icon={ReceiptText} tone="blue" label="Your orders today" value={data.count} caption={`${data.items} items sold`} />
+        <GradientKpiCard icon={ReceiptText} tone="blue" label="Your orders today" value={data.count} caption={`${data.items} items sold`} sparkline={Array.from({ length: 24 }, (_, hour) => data.orders.filter((order) => new Date(order.createdAt).getHours() === hour).length)} />
         {canSeeMoney && <GradientKpiCard icon={Wallet} tone="green" label="Your sales today" value={money(data.total)} caption="Completed orders only" />}
         <GradientKpiCard icon={ShoppingBag} tone="amber" label="Register status" value={openRegister ? 'Open' : 'Closed'} caption={user.permissions.register ? 'Your store register' : 'Ask a manager about register access'} />
       </div>

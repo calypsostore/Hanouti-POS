@@ -37,7 +37,7 @@ export default function OrderDetailsDrawer({
         order ? (
           <div className="flex items-center justify-between gap-2">
             {order.status === 'completed' ? (
-              <Button variant="ghost" onClick={onVoid} className="text-red-600 hover:bg-red-50">
+              <Button variant="ghost" onClick={onVoid} className="text-[var(--semantic-red-text)] hover:bg-[var(--semantic-red-soft)]">
                 <Trash2 className="h-4 w-4" /> {isAdmin ? 'Void order' : 'Request void'}
               </Button>
             ) : (
@@ -70,7 +70,7 @@ export default function OrderDetailsDrawer({
           </div>
 
           {order.status === 'void' && order.voidedByName && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-[12px] text-red-800">
+            <div className="flex items-center gap-2 rounded-xl bg-[var(--semantic-red-soft)] px-3.5 py-2.5 text-[12px] text-[var(--semantic-red-text)]">
               <ShieldAlert className="h-4 w-4 shrink-0" />
               <span>
                 Voided by <span className="font-bold">{order.voidedByName}</span>

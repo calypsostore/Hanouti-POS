@@ -6,8 +6,8 @@ the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
 Last updated: 2026-11-12 · shipped: **POS hardening, architecture refactor,
-and requested feature Phase 1**. The requested feature Phases 2–9 remain
-unstarted.
+requested feature Phase 1, and the visual/icon upgrade**. The requested feature
+Phases 2–9 remain unstarted.
 
 ## Code organization update (2026-11-12)
 
@@ -33,8 +33,9 @@ brand tokens. Light/dark appearance can be toggled and is saved as a local UI
 preference; custom store accent palettes remain available and their foreground
 colors are selected for readable text. This presentation preference and all
 local data remain browser-local demo behavior, not a production security boundary.
-The shared logo and browser-tab favicon use the complete supplied
-`logo/logo1.png` image; the PWA SVG icon uses matching navy-and-amber colors.
+The shared logo uses the supplied `logo/logo1.png` image, and the browser-tab
+favicon is set to the same image. The PWA SVG icon uses matching navy-and-amber
+colors.
 Existing stores using the former default caramel palette are migrated to the
 7anouti palette; custom accent selections remain unchanged.
 
@@ -44,9 +45,35 @@ top bar, and mobile navigation. Dashboard totals reuse the existing report and
 ledger data; month profit is explicitly an estimate based on current product
 costs and recorded expenses. This is a presentation update only: the current
 database still has no open-order/tracking status model, shift records, last-login
-history, uploaded store-logo field, or billing workflow. Those dashboard
+history, or billing workflow. Those dashboard
 sections are omitted, marked unavailable, or limited to the data already
 stored; no demo values are presented as production data.
+
+### Visual and icon upgrade ✅ demo implementation
+
+- Semantic color tokens now define payment, order, stock, money-flow, trend,
+  and icon colors for both themes. Report payment colors are cash green, card
+  blue, and credit amber; report/dashboard charts use those tokens and include
+  legends.
+- Store, category, and product records use Lucide icon keys and semantic icon
+  colors. Existing emoji-backed records migrate to the nearest icon during the
+  `7anouti.db.v9` local database normalization; the legacy emoji property is
+  removed. Store logos and product images can be uploaded and resized to 256 px
+  client-side (up to 300 KB).
+- Shared screens use the liquid-glass surfaces, ambient background, and
+  accessibility fallbacks. The sidebar is edge-docked and full-height, and the
+  top bar is sticky at the viewport top; neither uses the floating glass-shell
+  treatment. Branding uses the supplied logo image; receipt output remains
+  text-only.
+- Local Chrome smoke review covered the dashboard, report donut/bars, POS
+  catalog, settings icon picker, and light/dark presentation. The mobile
+  settings viewport had no horizontal overflow. The local v9 database contains
+  icon keys on every store/category/product and no remaining legacy emoji
+  fields.
+- This remains a browser-local demo: image data and all business records live
+  in localStorage. Browser/device QA for both themes, reduced transparency,
+  end-to-end image uploads, login, order flows, and 200-product POS catalogs
+  remains a manual release check.
 
 ## Requested feature roadmap
 
@@ -64,7 +91,8 @@ stored; no demo values are presented as production data.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v8` migrates the legacy `cafepos.db.v8`, v7 and v6 local databases
+- `7anouti.db.v9` migrates the legacy `7anouti.db.v8`, `cafepos.db.v8`, v7 and
+  v6 local databases
   with safe defaults for the new fields. Seed data includes realistic sample stores for all six business
   types.
 - All of this remains browser-local demo behavior. It is not authoritative or
@@ -95,7 +123,7 @@ polish remain planned work.
 | Offline | None (localStorage demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in `localStorage` under `7anouti.db.v8` (with migrations from legacy
+Data lives in `localStorage` under `7anouti.db.v9` (with migrations from legacy
 `cafepos.db.*` keys). **This is a demo backend, not production storage** — it exists so the UX can be reviewed without
 infrastructure, and every mutation is funnelled through `AppStore` so a real API
 can replace it one-for-one.

@@ -3,6 +3,7 @@ import { ArrowLeft, LogOut, ReceiptText, Users, Zap } from 'lucide-react'
 import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { AppIcon } from '../../components/AppIcon'
 
 type POSHeaderProps = {
   store: Store
@@ -18,11 +19,11 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
 
   return (
     <>
-      <header className="z-20 flex h-[64px] shrink-0 items-center gap-3 border-b border-line bg-white px-4 sm:px-5">
+      <header className="glass z-20 mx-3 mt-3 flex h-[64px] shrink-0 items-center gap-3 rounded-2xl px-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-espresso-900 text-lg">
-            {store.emoji}
-          </div>
+          {store.logo
+            ? <img src={store.logo} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+            : <AppIcon name={store.icon} color={store.iconColor} size={19} className="h-10 w-10 rounded-xl" />}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="truncate text-[14px] font-bold tracking-tight text-ink">{store.name}</span>

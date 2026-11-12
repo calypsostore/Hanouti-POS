@@ -32,7 +32,11 @@ export function buildSeries(period: Period, orders: ReportOrder[], now: Date) {
         orders.filter((o) => new Date(o.createdAt).getHours() === hour),
         (o) => o.total,
       )
-      return { label: `${String(hour).padStart(2, '0')}:00`, value: Math.round(value * 1000) / 1000 }
+      return {
+        label: `${String(hour).padStart(2, '0')}:00`,
+        value: Math.round(value * 1000) / 1000,
+        current: hour === now.getHours(),
+      }
     })
   }
   if (period === 'week' || period === 'month') {
@@ -55,6 +59,7 @@ export function buildSeries(period: Period, orders: ReportOrder[], now: Date) {
             ? d.toLocaleDateString('en-GB', { weekday: 'short' })
             : String(i + 1),
         value: Math.round(value * 1000) / 1000,
+        current: key === dateKey(now),
       }
     })
   }
@@ -69,6 +74,7 @@ export function buildSeries(period: Period, orders: ReportOrder[], now: Date) {
     return {
       label: new Date(now.getFullYear(), m, 1).toLocaleDateString('en-GB', { month: 'short' }),
       value: Math.round(value * 1000) / 1000,
+      current: m === now.getMonth(),
     }
   })
 }
@@ -93,10 +99,10 @@ export function createReportData(db: AppDb, store: ReportStore, period: Period, 
   const series = buildSeries(period, orders, now)
   const seriesTotal = sum(series, (s) => s.value)
 
-  const productStats = new Map<string, { name: string; emoji: string; qty: number; revenue: number }>()
+  const productStats = new Map<string, { name: string; qty: number; revenue: number }>()
   orders.forEach((o) =>
     o.items.forEach((i) => {
-      const cur = productStats.get(i.productId) ?? { name: i.name, emoji: i.emoji, qty: 0, revenue: 0 }
+      const cur = productStats.get(i.productId) ?? { name: i.name, qty: 0, revenue: 0 }
       cur.qty += i.qty
       cur.revenue += i.qty * i.price
       productStats.set(i.productId, cur)

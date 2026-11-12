@@ -4,6 +4,7 @@ import type {
   BusinessType,
   Database,
   Expense,
+  IconName,
   LedgerEntry,
   Order,
   Plan,
@@ -44,63 +45,63 @@ const defaultSettings = (
   ...over,
 })
 
-// categoryIndex, name, emoji, price, cost
-const cafeCatalog: Array<[number, string, string, number, number]> = [
-  [0, 'Espresso', '☕', 2.2, 0.7],
-  [0, 'Direct', '☕', 2.4, 0.7],
-  [0, 'Cappuccino', '☕', 3.5, 1.1],
-  [0, 'Café au Lait', '☕', 3.8, 1.2],
-  [0, 'Café Crème', '☕', 4.0, 1.3],
-  [0, 'Americano', '☕', 3.0, 0.8],
-  [1, 'Thé à la Menthe', '🫖', 2.5, 0.4],
-  [1, 'Thé au Jasmin', '🫖', 2.5, 0.4],
-  [1, 'Verveine', '🌿', 2.8, 0.5],
-  [2, 'Citronnade', '🍋', 4.0, 1.0],
-  [2, 'Jus d’Orange', '🍊', 5.0, 1.6],
-  [2, 'Jus de Fraise', '🍓', 5.5, 2.0],
-  [3, 'Croissant', '🥐', 2.8, 0.9],
-  [3, 'Pain au Chocolat', '🍫', 3.2, 1.0],
-  [3, 'Cake au Chocolat', '🍰', 4.0, 1.5],
-  [4, 'Mlewi', '🫓', 4.5, 1.2],
-  [4, 'Brik à l’Œuf', '🥚', 3.5, 1.3],
-  [4, 'Sandwich Thon', '🥪', 7.5, 3.2],
-  [4, 'Sandwich Poulet', '🍗', 8.5, 3.8],
-  [5, 'Eau Minérale', '💧', 1.5, 0.5],
-  [5, 'Soda', '🥤', 2.5, 0.9],
-  [5, 'Ice Tea', '🧊', 4.2, 1.4],
+// categoryIndex, name, icon, price, cost
+const cafeCatalog: Array<[number, string, IconName, number, number]> = [
+  [0, 'Espresso', 'Coffee', 2.2, 0.7],
+  [0, 'Direct', 'Coffee', 2.4, 0.7],
+  [0, 'Cappuccino', 'Coffee', 3.5, 1.1],
+  [0, 'Café au Lait', 'Coffee', 3.8, 1.2],
+  [0, 'Café Crème', 'Coffee', 4.0, 1.3],
+  [0, 'Americano', 'Coffee', 3.0, 0.8],
+  [1, 'Thé à la Menthe', 'Coffee', 2.5, 0.4],
+  [1, 'Thé au Jasmin', 'Coffee', 2.5, 0.4],
+  [1, 'Verveine', 'Leaf', 2.8, 0.5],
+  [2, 'Citronnade', 'Apple', 4.0, 1.0],
+  [2, 'Jus d’Orange', 'Apple', 5.0, 1.6],
+  [2, 'Jus de Fraise', 'Apple', 5.5, 2.0],
+  [3, 'Croissant', 'Croissant', 2.8, 0.9],
+  [3, 'Pain au Chocolat', 'Cookie', 3.2, 1.0],
+  [3, 'Cake au Chocolat', 'Cake', 4.0, 1.5],
+  [4, 'Mlewi', 'Sandwich', 4.5, 1.2],
+  [4, 'Brik à l’Œuf', 'Sandwich', 3.5, 1.3],
+  [4, 'Sandwich Thon', 'Sandwich', 7.5, 3.2],
+  [4, 'Sandwich Poulet', 'Sandwich', 8.5, 3.8],
+  [5, 'Eau Minérale', 'CupSoda', 1.5, 0.5],
+  [5, 'Soda', 'CupSoda', 2.5, 0.9],
+  [5, 'Ice Tea', 'CupSoda', 4.2, 1.4],
 ]
 
-const demoCatalog: Record<BusinessType, Array<[number, string, string, number, number]>> = {
+const demoCatalog: Record<BusinessType, Array<[number, string, IconName, number, number]>> = {
   cafe: cafeCatalog,
   bakery: [
-    [0, 'Baguette', '🥖', 1.2, 0.45], [0, 'Whole wheat loaf', '🍞', 2.4, 0.9],
-    [1, 'Croissant', '🥐', 2.8, 0.9], [1, 'Pain au chocolat', '🍫', 3.2, 1.0],
-    [2, 'Chocolate cake slice', '🍰', 4.5, 1.7], [2, 'Fruit tart', '🥧', 5.2, 2.1],
-    [3, 'Almond cookie', '🍪', 1.5, 0.4], [4, 'Coffee', '☕', 2.5, 0.8],
+    [0, 'Baguette', 'Croissant', 1.2, 0.45], [0, 'Whole wheat loaf', 'Croissant', 2.4, 0.9],
+    [1, 'Croissant', 'Croissant', 2.8, 0.9], [1, 'Pain au chocolat', 'Cookie', 3.2, 1.0],
+    [2, 'Chocolate cake slice', 'Cake', 4.5, 1.7], [2, 'Fruit tart', 'Cake', 5.2, 2.1],
+    [3, 'Almond cookie', 'Cookie', 1.5, 0.4], [4, 'Coffee', 'Coffee', 2.5, 0.8],
   ],
   restaurant: [
-    [0, 'Tunisian salad', '🥗', 8, 2.4], [0, 'Brik à l’œuf', '🥚', 4.5, 1.5],
-    [1, 'Grilled sea bass', '🐟', 28, 12], [1, 'Chicken couscous', '🍲', 19, 7],
-    [2, 'Fries', '🍟', 5, 1.2], [2, 'Grilled vegetables', '🥦', 6, 2],
-    [3, 'Orange cake', '🍰', 6, 1.8], [4, 'Lemonade', '🍋', 5, 1.3],
+    [0, 'Tunisian salad', 'Salad', 8, 2.4], [0, 'Brik à l’œuf', 'Utensils', 4.5, 1.5],
+    [1, 'Grilled sea bass', 'Fish', 28, 12], [1, 'Chicken couscous', 'Soup', 19, 7],
+    [2, 'Fries', 'Utensils', 5, 1.2], [2, 'Grilled vegetables', 'Salad', 6, 2],
+    [3, 'Orange cake', 'Cake', 6, 1.8], [4, 'Lemonade', 'CupSoda', 5, 1.3],
   ],
   snack: [
-    [0, 'Tuna sandwich', '🥪', 7.5, 3.2], [0, 'Chicken baguette', '🥖', 9, 4],
-    [1, 'Fries', '🍟', 4, 1.1], [1, 'Mlewi', '🫓', 5, 1.5],
-    [2, 'Tunisian salad', '🥗', 7, 2.4], [3, 'Donut', '🍩', 2.5, 0.8],
-    [4, 'Soda', '🥤', 2.5, 0.9], [4, 'Water', '💧', 1.5, 0.5],
+    [0, 'Tuna sandwich', 'Sandwich', 7.5, 3.2], [0, 'Chicken baguette', 'Sandwich', 9, 4],
+    [1, 'Fries', 'Utensils', 4, 1.1], [1, 'Mlewi', 'Sandwich', 5, 1.5],
+    [2, 'Tunisian salad', 'Salad', 7, 2.4], [3, 'Donut', 'Cake', 2.5, 0.8],
+    [4, 'Soda', 'CupSoda', 2.5, 0.9], [4, 'Water', 'CupSoda', 1.5, 0.5],
   ],
   retail: [
-    [0, 'Olive oil', '🫒', 18, 12], [0, 'Dates (loose)', '🌴', 28, 17],
-    [1, 'Bottled water', '💧', 1, 0.35], [1, 'Orange juice', '🧃', 4, 2],
-    [2, 'Dish soap', '🧴', 5.5, 3], [2, 'Paper towels', '🧻', 6, 3.5],
-    [3, 'Hand cream', '🧴', 12, 6], [3, 'Shampoo', '🧴', 15, 8],
+    [0, 'Olive oil', 'Apple', 18, 12], [0, 'Dates (loose)', 'Apple', 28, 17],
+    [1, 'Bottled water', 'CupSoda', 1, 0.35], [1, 'Orange juice', 'CupSoda', 4, 2],
+    [2, 'Dish soap', 'Package', 5.5, 3], [2, 'Paper towels', 'Package', 6, 3.5],
+    [3, 'Hand cream', 'Flower2', 12, 6], [3, 'Shampoo', 'Flower2', 15, 8],
   ],
   salon: [
-    [0, 'Haircut', '💇', 20, 2], [0, 'Blow-dry', '💨', 25, 4],
-    [1, 'Manicure', '💅', 18, 3], [1, 'Gel nails', '✨', 45, 10],
-    [2, 'Facial treatment', '🧖', 60, 12], [2, 'Eyebrow shaping', '✂️', 12, 1],
-    [3, 'Hair serum', '🧴', 32, 18], [3, 'Conditioner', '🧴', 24, 13],
+    [0, 'Haircut', 'Scissors', 20, 2], [0, 'Blow-dry', 'Sparkles', 25, 4],
+    [1, 'Manicure', 'Star', 18, 3], [1, 'Gel nails', 'Sparkles', 45, 10],
+    [2, 'Facial treatment', 'Flower2', 60, 12], [2, 'Eyebrow shaping', 'Scissors', 12, 1],
+    [3, 'Hair serum', 'Flower2', 32, 18], [3, 'Conditioner', 'Flower2', 24, 13],
   ],
 }
 
@@ -125,7 +126,8 @@ const stores: Store[] = [
     phone: '+216 71 123 456',
     address: '12 Avenue Habib Bourguiba',
     city: 'Tunis',
-    emoji: '☕',
+    icon: 'Coffee',
+    iconColor: 'amber',
     plan: 'growth',
     status: 'active',
     businessType: 'cafe',
@@ -142,7 +144,8 @@ const stores: Store[] = [
     phone: '+216 73 987 654',
     address: '4 Rue des Remparts',
     city: 'Sousse',
-    emoji: '🧁',
+    icon: 'Cake',
+    iconColor: 'rose',
     plan: 'starter',
     status: 'active',
     businessType: 'bakery',
@@ -159,7 +162,8 @@ const stores: Store[] = [
     phone: '+216 74 222 333',
     address: '27 Rue Hédi Chaker',
     city: 'Sfax',
-    emoji: '🫖',
+    icon: 'Coffee',
+    iconColor: 'green',
     plan: 'pro',
     status: 'trial',
     businessType: 'restaurant',
@@ -177,7 +181,8 @@ const stores: Store[] = [
     phone: '+216 72 555 777',
     address: '8 Corniche',
     city: 'Bizerte',
-    emoji: '🌿',
+    icon: 'Leaf',
+    iconColor: 'green',
     plan: 'starter',
     status: 'suspended',
     businessType: 'snack',
@@ -194,7 +199,8 @@ const stores: Store[] = [
     phone: '+216 71 444 222',
     address: '18 Rue de Marseille',
     city: 'Tunis',
-    emoji: '🛒',
+    icon: 'ShoppingBasket',
+    iconColor: 'teal',
     plan: 'starter',
     status: 'trial',
     businessType: 'retail',
@@ -212,7 +218,8 @@ const stores: Store[] = [
     phone: '+216 73 333 444',
     address: '6 Avenue de la République',
     city: 'Sousse',
-    emoji: '💇',
+    icon: 'Scissors',
+    iconColor: 'violet',
     plan: 'growth',
     status: 'active',
     businessType: 'salon',
@@ -506,14 +513,15 @@ export function buildSeed(): Database {
 
     const priceFactor = store.id === 'st_yasmine' ? 1.1 : store.id === 'st_darchai' ? 1.05 : 0.95
 
-    const storeProducts: Product[] = demoCatalog[store.businessType].map(([catIdx, name, emoji, price, cost], i) => {
+    const storeProducts: Product[] = demoCatalog[store.businessType].map(([catIdx, name, icon, price, cost], i) => {
       const trackStock = catIdx >= 3 || (store.businessType === 'retail' && name === 'Dates (loose)')
       const p: Product = {
         id: `prd_${store.id}_${i}`,
         storeId: store.id,
         categoryId: cats[catIdx].id,
         name,
-        emoji,
+        icon,
+        iconColor: cats[catIdx].iconColor,
         price: round(price * priceFactor),
         cost: round(cost * priceFactor),
         trackStock,
@@ -606,7 +614,7 @@ export function buildSeed(): Database {
             if (used.has(p.id)) continue
             used.add(p.id)
             const qty = rng() > 0.82 ? 2 : 1
-            items.push({ productId: p.id, name: p.name, emoji: p.emoji, price: p.price, qty })
+            items.push({ productId: p.id, name: p.name, price: p.price, qty })
           }
           if (!items.length) continue
 

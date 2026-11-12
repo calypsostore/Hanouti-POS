@@ -84,7 +84,7 @@ export function ReportDetails({
             <h3 className="text-[15px] font-semibold tracking-tight">Customer tabs</h3>
             <div className="mt-3 space-y-2.5 text-[12px]">
               <ReportLine label="New charges" value={money(charges)} />
-              <ReportLine label="Settlements received" value={money(settled)} valueClass="text-emerald-600" />
+              <ReportLine label="Settlements received" value={money(settled)} valueClass="text-[var(--semantic-green-text)]" />
               <div className="border-t border-dashed border-line pt-2.5">
                 <ReportLine label="Outstanding overall" value={money(outstanding)} valueClass="text-accent-foreground" strong />
               </div>

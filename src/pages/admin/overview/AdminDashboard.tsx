@@ -48,8 +48,8 @@ export default function AdminDashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <GradientKpiCard icon={Banknote} tone="green" label="Revenue today" value={money(data.todayRevenue)} caption={data.yesterdayRevenue ? 'Compared with yesterday' : 'No previous-day comparison'} trend={trend(data.todayRevenue, data.yesterdayRevenue)} />
-          <GradientKpiCard icon={ReceiptText} tone="blue" label="Orders today" value={todayCount} caption={`${data.yesterdayOrders.length} yesterday`} trend={trend(ordersMetric, data.yesterdayOrders.length)} />
+          <GradientKpiCard icon={Banknote} tone="green" label="Revenue today" value={money(data.todayRevenue)} caption={data.yesterdayRevenue ? 'Compared with yesterday' : 'No previous-day comparison'} trend={trend(data.todayRevenue, data.yesterdayRevenue)} sparkline={data.hourly.map((hour) => hour.revenue)} />
+          <GradientKpiCard icon={ReceiptText} tone="blue" label="Orders today" value={todayCount} caption={`${data.yesterdayOrders.length} yesterday`} trend={trend(ordersMetric, data.yesterdayOrders.length)} sparkline={data.hourly.map((hour) => data.todayOrders.filter((order) => new Date(order.createdAt).getHours() === hour.hour).length)} />
           <GradientKpiCard icon={PackageCheck} tone="amber" label="Open orders" value={data.openOrders} caption="No open-order state is stored" />
           <GradientKpiCard icon={CreditCard} tone="rose" label="Unpaid tabs" value={money(data.outstanding)} caption={`${data.debtorCount} customers with a balance`} />
         </div>

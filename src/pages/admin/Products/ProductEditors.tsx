@@ -1,36 +1,11 @@
 import { useState } from 'react'
 import type { Category, Product, ProductModifierGroup, ProductVariant, SaleUnit } from '../../../types'
 import { Button, Field, Input, Modal, Select, Toggle } from '../../../components/ui'
-import { cn } from '../../../lib/utils'
+import { AppIcon } from '../../../components/AppIcon'
+import { IconPicker } from '../../../components/IconPicker'
+import { ImageUpload } from '../../../components/ImageUpload'
 import { ProductOptionsEditor } from './ProductOptionsEditor'
 
-const EMOJIS = [
-  '☕', '🫖', '🧃', '🥐', '🥪', '🍰', '🥤', '💧', '🍋', '🍊', '🍓', '🍫',
-  '🫓', '🥚', '🍗', '🧊', '🌿', '🧁', '🥙', '🍔', '🍕', '🍟', '🍩', '🍪',
-  '🥗', '🍝', '🍳', '🧇', '🥞', '🍦', '🍹', '🥛', '🧋', '🍵', '🫘', '🥜',
-]
-
-function EmojiPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="max-h-[120px] overflow-y-auto rounded-xl border border-line p-2 thin-scrollbar">
-      <div className="grid grid-cols-9 gap-1 sm:grid-cols-12">
-        {EMOJIS.map((emoji) => (
-          <button
-            key={emoji}
-            type="button"
-            onClick={() => onChange(emoji)}
-            className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-lg text-lg transition',
-              value === emoji ? 'bg-accent-50 ring-1 ring-accent-foreground/40' : 'hover:bg-cream-100',
-            )}
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 export function ProductEditor({
   product,
   categories,
@@ -43,7 +18,9 @@ export function ProductEditor({
   onSave: (data: Omit<Product, 'id' | 'storeId'>) => void
 }) {
   const [name, setName] = useState(product?.name ?? '')
-  const [emoji, setEmoji] = useState(product?.emoji ?? '☕')
+  const [icon, setIcon] = useState(product?.icon ?? 'Coffee')
+  const [iconColor, setIconColor] = useState(product?.iconColor ?? 'amber')
+  const [image, setImage] = useState(product?.image)
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? categories[0]?.id ?? '')
   const [price, setPrice] = useState(String(product?.price ?? ''))
   const [cost, setCost] = useState(String(product?.cost ?? ''))
@@ -83,7 +60,9 @@ export function ProductEditor({
               onClick={() =>
                 onSave({
                   name: name.trim(),
-                  emoji,
+                  icon,
+                  iconColor,
+                  image,
                   categoryId,
                   price: priceNum,
                   cost: costNum,
@@ -105,16 +84,12 @@ export function ProductEditor({
       }
     >
       <div className="space-y-3.5">
-        <div className="flex items-center gap-3 rounded-xl border border-line bg-cream-50 p-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-2xl shadow-sm">
-            {emoji}
-          </span>
-          <div>
-            <div className="text-[12.5px] font-semibold text-ink">Icon</div>
-            <div className="text-[11px] text-muted">Pick an emoji that fits the item.</div>
-          </div>
+        <div className="flex items-center gap-3">
+          {image ? <img src={image} alt="" className="h-12 w-12 rounded-2xl object-cover" /> : <AppIcon name={icon} color={iconColor} size={23} className="h-12 w-12 rounded-2xl" />}
+          <div className="text-[12.5px] font-semibold text-ink">Product icon</div>
         </div>
-        <EmojiPicker value={emoji} onChange={setEmoji} />
+        <IconPicker value={icon} color={iconColor} onChange={setIcon} onColorChange={setIconColor} />
+        <ImageUpload value={image} label="Upload product image" onChange={setImage} />
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Name" className="sm:col-span-2">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Cappuccino" autoFocus />
@@ -123,7 +98,7 @@ export function ProductEditor({
             <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.emoji} {category.name}
+                  {category.name}
                 </option>
               ))}
             </Select>
@@ -190,10 +165,11 @@ export function CategoryEditor({
 }: {
   category?: Category
   onClose: () => void
-  onSave: (data: { name: string; emoji: string }) => void
+  onSave: (data: Pick<Category, 'name' | 'icon' | 'iconColor'>) => void
 }) {
   const [name, setName] = useState(category?.name ?? '')
-  const [emoji, setEmoji] = useState(category?.emoji ?? '🍽️')
+  const [icon, setIcon] = useState(category?.icon ?? 'Utensils')
+  const [iconColor, setIconColor] = useState(category?.iconColor ?? 'slate')
 
   return (
     <Modal
@@ -204,7 +180,7 @@ export function CategoryEditor({
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), emoji })}>
+          <Button disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), icon, iconColor })}>
             {category ? 'Save' : 'Create category'}
           </Button>
         </div>
@@ -216,7 +192,7 @@ export function CategoryEditor({
         </Field>
         <div>
           <span className="mb-1.5 block text-[12.5px] font-semibold">Icon</span>
-          <EmojiPicker value={emoji} onChange={setEmoji} />
+          <IconPicker value={icon} color={iconColor} onChange={setIcon} onColorChange={setIconColor} />
         </div>
       </div>
     </Modal>

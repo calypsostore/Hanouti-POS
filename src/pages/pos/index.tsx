@@ -127,7 +127,7 @@ export default function POS() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-cream-100">
+    <div className="flex h-screen flex-col overflow-hidden">
       <POSHeader
         store={store}
         user={user}
@@ -140,7 +140,7 @@ export default function POS() {
         }}
       />
 
-      <div className="flex min-h-0 flex-1">
+      <div className="glass mx-3 mb-3 flex min-h-0 flex-1 overflow-hidden rounded-3xl">
         <ProductCatalog
           categories={categories}
           products={filteredProducts}
@@ -161,7 +161,7 @@ export default function POS() {
         />
 
         {/* Cart */}
-        <aside className="hidden w-[380px] shrink-0 border-l border-line bg-cream-50 lg:flex lg:flex-col">
+        <aside className="glass-strong hidden w-[380px] shrink-0 border-l border-line/70 lg:flex lg:flex-col">
           <CartPanel
             cart={cart}
             channel={channel}

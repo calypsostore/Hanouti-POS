@@ -11,15 +11,10 @@ import {
   YAxis,
 } from 'recharts'
 import { Card } from '../../../components/ui'
-import { ChartTooltip, axisProps } from '../../../components/charts'
+import { ChartLegend, ChartTooltip, axisProps } from '../../../components/charts'
 import { money } from '../../../lib/utils'
+import { paymentColor, SEMANTIC_COLORS } from '../../../lib/semanticColors'
 import type { Period } from './reportData'
-
-const methodColors: Record<string, string> = {
-  cash: 'var(--color-brand-navy)',
-  card: 'var(--color-brand-amber)',
-  credit: 'var(--color-brand-blue)',
-}
 
 export function ReportCharts({
   period,
@@ -30,7 +25,7 @@ export function ReportCharts({
   paymentTotal,
 }: {
   period: Period
-  series: Array<{ label: string; value: number }>
+  series: Array<{ label: string; value: number; current?: boolean }>
   seriesTotal: number
   sales: number
   paymentMix: Array<{ name: string; value: number; count: number }>
@@ -52,14 +47,32 @@ export function ReportCharts({
         <div className="mt-4 h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={series} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-brand-tint)" vertical={false} />
+              <defs>
+                <linearGradient id="salesBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={SEMANTIC_COLORS.moneyFlow.revenue.light.solid} />
+                  <stop offset="100%" stopColor={SEMANTIC_COLORS.moneyFlow.profit.light.solid} />
+                </linearGradient>
+                <linearGradient id="salesBarCurrentGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={SEMANTIC_COLORS.moneyFlow.profit.light.solid} />
+                  <stop offset="100%" stopColor={SEMANTIC_COLORS.moneyFlow.revenue.light.solid} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={SEMANTIC_COLORS.trends.flat.light.border} vertical={false} />
               <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" />
               <YAxis {...axisProps} width={54} />
-              <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ fill: 'var(--color-brand-tint)' }} />
-              <Bar dataKey="value" name="Sales" fill="var(--color-brand-navy)" radius={[5, 5, 0, 0]} maxBarSize={34} />
+              <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} cursor={{ fill: SEMANTIC_COLORS.trends.flat.light.softBackground }} />
+              <Bar dataKey="value" name="Sales" fill="url(#salesBarGradient)" radius={[7, 7, 0, 0]} maxBarSize={34}>
+                {series.map((point) => (
+                  <Cell key={point.label} fill={point.current ? 'url(#salesBarCurrentGradient)' : 'url(#salesBarGradient)'} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
+        <ChartLegend items={[
+          { label: 'Sales', color: SEMANTIC_COLORS.moneyFlow.revenue.light.solid },
+          { label: 'Current period', color: SEMANTIC_COLORS.moneyFlow.profit.light.solid },
+        ]} />
       </Card>
 
       <Card className="p-5">
@@ -81,7 +94,7 @@ export function ReportCharts({
                   >
                     {paymentMix
                       .filter((p) => p.value > 0)
-                      .map((p) => <Cell key={p.name} fill={methodColors[p.name]} />)}
+                      .map((p) => <Cell key={p.name} fill={paymentColor(p.name)} />)}
                   </Pie>
                   <Tooltip content={<ChartTooltip formatter={(v) => money(v)} />} />
                 </PieChart>
@@ -94,7 +107,7 @@ export function ReportCharts({
             <div className="space-y-2">
               {paymentMix.map((p) => (
                 <div key={p.name} className="flex items-center gap-2 text-[12px]">
-                  <span className="h-2 w-2 rounded-full" style={{ background: methodColors[p.name] }} />
+                  <span className="h-2 w-2 rounded-full" style={{ background: paymentColor(p.name) }} />
                   <span className="capitalize text-muted">{p.name}</span>
                   <span className="ml-auto font-semibold tabular">{Math.round((p.value / paymentTotal) * 100)}%</span>
                   <span className="w-[74px] text-right text-[11px] text-muted tabular">{money(p.value)}</span>

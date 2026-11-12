@@ -1,19 +1,46 @@
 import type {
-  BusinessType, Category, Customer, Database, Expense, Order, OrderModifier, Product,
-  ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit, Store, StoreSettings, User,
+  BusinessType, Category, Customer, Database, Expense, IconColor, IconName, Order, OrderModifier,
+  Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit, Store, StoreSettings, User,
 } from '../types'
+import { ICON_NAMES } from '../types'
 import { buildSeed } from '../data/seed'
 import { normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 
-export const DB_KEY = '7anouti.db.v8'
-const LEGACY_DB_KEYS = ['cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
+export const DB_KEY = '7anouti.db.v9'
+const LEGACY_DB_KEYS = ['7anouti.db.v8', 'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
 export const SESSION_KEY = '7anouti.session.v2'
 export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+const LEGACY_EMOJI_ICONS: Record<string, IconName> = {
+  '☕': 'Coffee', '🧁': 'Cake', '🥐': 'Croissant', '🍰': 'Cake',
+  '🥤': 'CupSoda', '🍽️': 'Utensils', '🌿': 'Leaf', '🍵': 'Coffee',
+  '🫖': 'Coffee', '🫘': 'Package', '🧃': 'CupSoda', '🥪': 'Sandwich',
+  '🍟': 'Utensils', '🥗': 'Salad', '🍞': 'Croissant', '🎂': 'Cake',
+  '🍪': 'Cookie', '🍩': 'Cake', '🛒': 'ShoppingBasket', '🧹': 'Wrench',
+  '🧴': 'Flower2', '💇': 'Scissors', '💅': 'Star', '✨': 'Sparkles',
+  '🍋': 'Apple', '🍊': 'Apple', '🍓': 'Apple', '🍫': 'Cookie',
+  '🫓': 'Sandwich', '🥚': 'Utensils', '🍗': 'Beef', '💧': 'CupSoda',
+  '🧊': 'CupSoda', '🥖': 'Croissant', '🥧': 'Cake', '🐟': 'Fish',
+  '🍲': 'Soup', '🥦': 'Salad', '🫒': 'Apple', '🌴': 'Leaf',
+  '🧻': 'Package', '💨': 'Sparkles', '🧖': 'Flower2', '✂️': 'Scissors',
+}
+const isIconName = (value: unknown): value is IconName =>
+  typeof value === 'string' && ICON_NAMES.some((name) => name === value)
+const isIconColor = (value: unknown): value is IconColor =>
+  value === 'green' || value === 'blue' || value === 'amber' || value === 'rose' ||
+  value === 'violet' || value === 'teal' || value === 'slate' || value === 'orange'
+const iconFromLegacyEmoji = (value: unknown, fallback: IconName): IconName =>
+  typeof value === 'string' ? LEGACY_EMOJI_ICONS[value] ?? fallback : fallback
+const legacyEmoji = (record: object): unknown => Reflect.get(record, 'emoji')
+const withoutLegacyEmoji = <T extends object>(record: T): Omit<T, 'emoji'> => {
+  const cleaned = { ...record } as T & { emoji?: unknown }
+  delete cleaned.emoji
+  return cleaned as Omit<T, 'emoji'>
+}
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const isBusinessType = (value: unknown): value is BusinessType =>
@@ -73,7 +100,7 @@ const normalizeDb = (value: unknown): Database | null => {
         const template = businessTemplate(businessType)
         return ({
         ...seed.stores[0],
-        ...s,
+        ...withoutLegacyEmoji(s),
         businessType,
         setupComplete: typeof s.setupComplete === 'boolean' ? s.setupComplete : false,
         ownerName: typeof s.ownerName === 'string' ? s.ownerName : '',
@@ -81,7 +108,9 @@ const normalizeDb = (value: unknown): Database | null => {
         phone: typeof s.phone === 'string' ? s.phone : '',
         address: typeof s.address === 'string' ? s.address : '',
         city: typeof s.city === 'string' ? s.city : '',
-        emoji: typeof s.emoji === 'string' ? s.emoji : '☕',
+        icon: isIconName(s.icon) ? s.icon : iconFromLegacyEmoji(legacyEmoji(s), 'Store'),
+        iconColor: isIconColor(s.iconColor) ? s.iconColor : 'amber',
+        logo: typeof s.logo === 'string' && s.logo.length <= 307200 ? s.logo : undefined,
         settings: {
           ...seed.stores.find((item) => item.id === s.id)?.settings ?? seed.stores[0].settings,
           ...s.settings,
@@ -151,8 +180,7 @@ const normalizeDb = (value: unknown): Database | null => {
       typeof item.name === 'string' && isFiniteNumber(item.price) &&
       isFiniteNumber(item.qty) && item.qty > 0,
     ).map((item, index) => ({
-      ...item,
-      emoji: typeof item.emoji === 'string' ? item.emoji : '',
+      ...withoutLegacyEmoji(item),
       lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note : '',
@@ -178,8 +206,9 @@ const normalizeDb = (value: unknown): Database | null => {
     categories: collection<Category>('categories', (item): item is Category =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string',
     ).map((category) => ({
-      ...category,
-      emoji: typeof category.emoji === 'string' ? category.emoji : '🍽️',
+      ...withoutLegacyEmoji(category),
+      icon: isIconName(category.icon) ? category.icon : iconFromLegacyEmoji(legacyEmoji(category), 'Store'),
+      iconColor: isIconColor(category.iconColor) ? category.iconColor : 'amber',
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
     products: collection<Product>('products', (item): item is Product =>
@@ -187,8 +216,10 @@ const normalizeDb = (value: unknown): Database | null => {
       typeof item.name === 'string' && isFiniteNumber(item.price) && isFiniteNumber(item.cost) &&
       isFiniteNumber(item.stock),
     ).map((product) => ({
-      ...product,
-      emoji: typeof product.emoji === 'string' ? product.emoji : '☕',
+      ...withoutLegacyEmoji(product),
+      icon: isIconName(product.icon) ? product.icon : iconFromLegacyEmoji(legacyEmoji(product), 'Store'),
+      iconColor: isIconColor(product.iconColor) ? product.iconColor : 'amber',
+      image: typeof product.image === 'string' && product.image.length <= 307200 ? product.image : undefined,
       trackStock: Boolean(product.trackStock),
       active: product.active !== false,
       barcode: typeof product.barcode === 'string' ? product.barcode : '',

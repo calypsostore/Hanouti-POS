@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Banknote, CheckCircle2, CreditCard } from 'lucide-react'
 import type { PaymentMethod } from '../../types'
 import { balanceFor } from '../../lib/selectors'
-import { Button, Field, Input, Modal, Segmented, Select } from '../../components/ui'
+import { Button, Field, Input, Modal, Select } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
+import { SEMANTIC_COLORS } from '../../lib/semanticColors'
 
 export function PaymentModal({
   open,
@@ -92,16 +93,27 @@ export function PaymentModal({
       </div>
 
       <div className="mt-4">
-        <Segmented
-          value={method}
-          onChange={setMethod}
-          className="w-full [&>button]:flex-1"
-          options={[
-            { value: 'cash', label: 'Cash' },
-            { value: 'card', label: 'Card' },
-            { value: 'credit', label: allowCredit ? 'On tab' : 'Tab off' },
-          ]}
-        />
+        <div className="glass-subtle grid grid-cols-3 gap-1 rounded-full p-1">
+          {([
+            { value: 'cash', label: 'Cash', color: SEMANTIC_COLORS.payment.cash.light },
+            { value: 'card', label: 'Card', color: SEMANTIC_COLORS.payment.card.light },
+            { value: 'credit', label: allowCredit ? 'On tab' : 'Tab off', color: SEMANTIC_COLORS.payment.credit.light },
+          ] as const).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setMethod(option.value)}
+              aria-pressed={method === option.value}
+              className="rounded-full px-3 py-2 text-[12px] font-bold transition"
+              style={method === option.value
+                ? { color: option.color.text, background: option.color.softBackground, boxShadow: `inset 0 0 0 1px ${option.color.border}` }
+                : { color: 'var(--color-muted)' }}
+            >
+              <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: option.color.solid }} />
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {method === 'cash' && (
@@ -122,7 +134,7 @@ export function PaymentModal({
               <button
                 key={v}
                 onClick={() => setReceived(String(v))}
-                className="h-9 rounded-lg border border-line bg-white text-[12px] font-semibold tabular transition hover:border-accent-foreground/50 hover:bg-cream-100"
+                className="glass-subtle h-9 rounded-xl border border-line/70 bg-transparent text-[12px] font-semibold tabular transition hover:border-brand-amber/50"
               >
                 {v === Math.ceil(total) ? 'Exact' : v}
               </button>
@@ -131,7 +143,9 @@ export function PaymentModal({
           <div
             className={cn(
               'mt-3 flex items-center justify-between rounded-xl px-3.5 py-3',
-              change >= 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-cream-100 text-muted',
+              change >= 0
+                ? 'bg-[var(--semantic-green-soft)] text-[var(--semantic-green-text)]'
+                : 'bg-[var(--semantic-slate-soft)] text-[var(--semantic-slate-text)]',
             )}
           >
             <span className="text-[12px] font-semibold">Change due</span>
@@ -143,8 +157,8 @@ export function PaymentModal({
       )}
 
       {method === 'card' && (
-        <div className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-cream-50 p-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-accent-foreground ring-1 ring-line">
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-[var(--semantic-blue-border)] bg-[var(--semantic-blue-soft)] p-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--semantic-blue-soft)] text-[var(--semantic-blue-text)] ring-1 ring-[var(--semantic-blue-border)]">
             <CreditCard className="h-4 w-4" />
           </div>
           <div>

@@ -63,7 +63,11 @@ function Kpi({
       <div
         className={cn(
           'mt-2 text-[20px] font-extrabold tracking-tight tabular',
-          tone === 'good' ? 'text-emerald-600' : tone === 'bad' ? 'text-red-500' : 'text-ink',
+          tone === 'good'
+            ? 'text-[var(--semantic-green-text)]'
+            : tone === 'bad'
+              ? 'text-[var(--semantic-red-text)]'
+              : 'text-ink',
         )}
       >
         {value}

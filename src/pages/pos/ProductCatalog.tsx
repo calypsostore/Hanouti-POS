@@ -5,6 +5,7 @@ import { Button, EmptyState, Input, Segmented } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
 import { getProductImage } from '../../lib/productDisplay'
 import { CategoryChip } from './CartPanel'
+import { AppIcon } from '../../components/AppIcon'
 
 type ProductCatalogProps = {
   categories: Category[]
@@ -32,7 +33,7 @@ export function ProductCatalog({
   const [scanCode, setScanCode] = useState('')
   return (
         <section className="flex min-w-0 flex-1 flex-col">
-          <div className="shrink-0 space-y-3 border-b border-line/70 px-4 pb-3 pt-4 sm:px-5">
+          <div className="glass-subtle shrink-0 space-y-3 border-b border-line/70 px-4 pb-3 pt-4 sm:px-5">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
@@ -84,7 +85,7 @@ export function ProductCatalog({
                   active={categoryId === c.id}
                   onClick={() => setCategoryId(c.id)}
                 >
-                  <span>{c.emoji}</span> {c.name}
+                  <AppIcon name={c.icon} color={c.iconColor} size={14} className="h-6 w-6 rounded-lg" /> {c.name}
                 </CategoryChip>
               ))}
             </div>
@@ -112,18 +113,18 @@ export function ProductCatalog({
                       onClick={() => addItem(p.id)}
                       disabled={out}
                       className={cn(
-                        'group relative flex flex-col rounded-2xl border bg-white p-3 text-left transition-all duration-150',
+                        'glass-tile group relative flex flex-col rounded-2xl p-3 text-left transition-all duration-150',
                         'hover:-translate-y-0.5 hover:border-accent-foreground/80 hover:shadow-[0_6px_20px_rgba(17,27,48,0.09)]',
                         qty > 0 ? 'border-accent-foreground ring-2 ring-accent-foreground/30' : 'border-line/80',
                         out && 'cursor-not-allowed hover:translate-y-0',
                       )}
                     >
                       <div className="mb-2 flex w-full items-start justify-between">
-                        <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-brand-tint text-[20px] text-brand-navy">
-                          {image ? <img src={image} alt={p.name} className="h-full w-full object-cover" /> : p.emoji || p.name.slice(0, 1).toUpperCase()}
-                        </span>
+                        {image
+                          ? <img src={image} alt="" className="h-11 w-11 rounded-xl object-cover" />
+                          : <AppIcon name={p.icon} color={p.iconColor} size={21} className="h-11 w-11 rounded-xl" />}
                         {out && (
-                          <span className="rounded-md bg-danger-strong px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          <span className="rounded-md bg-[var(--semantic-red-solid)] px-1.5 py-0.5 text-[9px] font-bold text-white">
                             Out of stock
                           </span>
                         )}
@@ -133,7 +134,7 @@ export function ProductCatalog({
                           </span>
                         )}
                         {low && !out && (
-                          <span className="rounded-md bg-brand-amber-soft px-1.5 py-0.5 text-[9px] font-bold text-brand-navy">
+                          <span className="rounded-md bg-[var(--semantic-amber-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--semantic-amber-text)]">
                             {p.stock} left
                           </span>
                         )}
@@ -155,7 +156,7 @@ export function ProductCatalog({
           </div>
 
           {/* Mobile cart bar */}
-          <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-white p-3 lg:hidden">
+          <div className="glass-strong fixed bottom-0 left-0 right-0 z-30 rounded-t-3xl border-t border-line p-3 lg:hidden">
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 <div className="text-[11px] text-muted">{count} item{count === 1 ? '' : 's'}</div>

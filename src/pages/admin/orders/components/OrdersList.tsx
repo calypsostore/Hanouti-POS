@@ -92,7 +92,7 @@ export default function OrdersList({
         <>
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left">
-              <thead>
+              <thead className="glass-subtle sticky top-0 z-10">
                 <tr className="border-b border-line/70 text-[10.5px] uppercase tracking-wider text-muted">
                   <th className="px-4 py-2.5 font-semibold">Order</th>
                   <th className="px-4 py-2.5 font-semibold">Customer</th>
@@ -107,7 +107,7 @@ export default function OrdersList({
                 {filtered.slice(0, limit).map((order) => (
                   <tr
                     key={order.id}
-                    className="cursor-pointer border-b border-line/50 text-[12.5px] transition hover:bg-cream-50"
+                    className="glass-row cursor-pointer border-b border-line/50 text-[12.5px]"
                     onClick={() => onSelect(order)}
                   >
                     <td className="px-4 py-3">

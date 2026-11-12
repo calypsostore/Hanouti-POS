@@ -1,0 +1,36 @@
+:root {
+  --semantic-green-solid: #059669; --semantic-green-soft: rgb(16 185 129 / 12%); --semantic-green-border: rgb(5 150 105 / 28%); --semantic-green-text: #047857; --semantic-green-gradient: linear-gradient(135deg, #059669, #0d9488);
+  --semantic-blue-solid: #2563eb; --semantic-blue-soft: rgb(59 130 246 / 12%); --semantic-blue-border: rgb(37 99 235 / 26%); --semantic-blue-text: #1d4ed8; --semantic-blue-gradient: linear-gradient(135deg, #2563eb, #0ea5e9);
+  --semantic-amber-solid: #d97706; --semantic-amber-soft: rgb(245 158 11 / 15%); --semantic-amber-border: rgb(217 119 6 / 28%); --semantic-amber-text: #92400e; --semantic-amber-gradient: linear-gradient(135deg, #d97706, #f59e0b);
+  --semantic-rose-solid: #e11d48; --semantic-rose-soft: rgb(244 63 94 / 12%); --semantic-rose-border: rgb(225 29 72 / 25%); --semantic-rose-text: #be123c; --semantic-rose-gradient: linear-gradient(135deg, #e11d48, #f43f5e);
+  --semantic-violet-solid: #7c3aed; --semantic-violet-soft: rgb(139 92 246 / 12%); --semantic-violet-border: rgb(124 58 237 / 25%); --semantic-violet-text: #6d28d9; --semantic-violet-gradient: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  --semantic-teal-solid: #0d9488; --semantic-teal-soft: rgb(20 184 166 / 12%); --semantic-teal-border: rgb(13 148 136 / 25%); --semantic-teal-text: #0f766e; --semantic-teal-gradient: linear-gradient(135deg, #059669, #0d9488);
+  --semantic-slate-solid: #64748b; --semantic-slate-soft: rgb(100 116 139 / 12%); --semantic-slate-border: rgb(100 116 139 / 25%); --semantic-slate-text: #475569; --semantic-slate-gradient: linear-gradient(135deg, #64748b, #94a3b8);
+  --semantic-orange-solid: #ea580c; --semantic-orange-soft: rgb(249 115 22 / 12%); --semantic-orange-border: rgb(234 88 12 / 25%); --semantic-orange-text: #c2410c; --semantic-orange-gradient: linear-gradient(135deg, #ea580c, #f97316);
+  --semantic-red-solid: #dc2626; --semantic-red-soft: rgb(239 68 68 / 12%); --semantic-red-border: rgb(220 38 38 / 26%); --semantic-red-text: #b91c1c; --semantic-red-gradient: linear-gradient(135deg, #dc2626, #ef4444);
+  --semantic-pink-solid: #db2777; --semantic-pink-soft: rgb(236 72 153 / 12%); --semantic-pink-border: rgb(219 39 119 / 26%); --semantic-pink-text: #be185d; --semantic-pink-gradient: linear-gradient(135deg, #db2777, #ec4899);
+
+  --semantic-green-solid-dark: #34d399; --semantic-green-soft-dark: rgb(52 211 153 / 14%); --semantic-green-border-dark: rgb(52 211 153 / 34%); --semantic-green-text-dark: #a7f3d0; --semantic-green-gradient-dark: linear-gradient(135deg, #10b981, #2dd4bf);
+  --semantic-blue-solid-dark: #60a5fa; --semantic-blue-soft-dark: rgb(96 165 250 / 14%); --semantic-blue-border-dark: rgb(96 165 250 / 34%); --semantic-blue-text-dark: #bfdbfe; --semantic-blue-gradient-dark: linear-gradient(135deg, #3b82f6, #38bdf8);
+  --semantic-amber-solid-dark: #fbbf24; --semantic-amber-soft-dark: rgb(251 191 36 / 14%); --semantic-amber-border-dark: rgb(251 191 36 / 34%); --semantic-amber-text-dark: #fde68a; --semantic-amber-gradient-dark: linear-gradient(135deg, #f59e0b, #fbbf24);
+  --semantic-rose-solid-dark: #fb7185; --semantic-rose-soft-dark: rgb(251 113 133 / 14%); --semantic-rose-border-dark: rgb(251 113 133 / 34%); --semantic-rose-text-dark: #fecdd3; --semantic-rose-gradient-dark: linear-gradient(135deg, #f43f5e, #fb7185);
+  --semantic-violet-solid-dark: #a78bfa; --semantic-violet-soft-dark: rgb(167 139 250 / 14%); --semantic-violet-border-dark: rgb(167 139 250 / 34%); --semantic-violet-text-dark: #ddd6fe; --semantic-violet-gradient-dark: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  --semantic-teal-solid-dark: #5eead4; --semantic-teal-soft-dark: rgb(94 234 212 / 14%); --semantic-teal-border-dark: rgb(94 234 212 / 34%); --semantic-teal-text-dark: #99f6e4; --semantic-teal-gradient-dark: linear-gradient(135deg, #10b981, #2dd4bf);
+  --semantic-slate-solid-dark: #cbd5e1; --semantic-slate-soft-dark: rgb(203 213 225 / 12%); --semantic-slate-border-dark: rgb(203 213 225 / 28%); --semantic-slate-text-dark: #e2e8f0; --semantic-slate-gradient-dark: linear-gradient(135deg, #64748b, #94a3b8);
+  --semantic-orange-solid-dark: #fb923c; --semantic-orange-soft-dark: rgb(251 146 60 / 14%); --semantic-orange-border-dark: rgb(251 146 60 / 34%); --semantic-orange-text-dark: #fed7aa; --semantic-orange-gradient-dark: linear-gradient(135deg, #f97316, #fb923c);
+  --semantic-red-solid-dark: #f87171; --semantic-red-soft-dark: rgb(248 113 113 / 14%); --semantic-red-border-dark: rgb(248 113 113 / 34%); --semantic-red-text-dark: #fecaca; --semantic-red-gradient-dark: linear-gradient(135deg, #ef4444, #f87171);
+  --semantic-pink-solid-dark: #f472b6; --semantic-pink-soft-dark: rgb(244 114 182 / 14%); --semantic-pink-border-dark: rgb(244 114 182 / 34%); --semantic-pink-text-dark: #fbcfe8; --semantic-pink-gradient-dark: linear-gradient(135deg, #ec4899, #f472b6);
+}
+
+html.dark {
+  --semantic-green-solid: #34d399; --semantic-green-soft: rgb(52 211 153 / 14%); --semantic-green-border: rgb(52 211 153 / 34%); --semantic-green-text: #a7f3d0; --semantic-green-gradient: linear-gradient(135deg, #10b981, #2dd4bf);
+  --semantic-blue-solid: #60a5fa; --semantic-blue-soft: rgb(96 165 250 / 14%); --semantic-blue-border: rgb(96 165 250 / 34%); --semantic-blue-text: #bfdbfe; --semantic-blue-gradient: linear-gradient(135deg, #3b82f6, #38bdf8);
+  --semantic-amber-solid: #fbbf24; --semantic-amber-soft: rgb(251 191 36 / 14%); --semantic-amber-border: rgb(251 191 36 / 34%); --semantic-amber-text: #fde68a; --semantic-amber-gradient: linear-gradient(135deg, #f59e0b, #fbbf24);
+  --semantic-rose-solid: #fb7185; --semantic-rose-soft: rgb(251 113 133 / 14%); --semantic-rose-border: rgb(251 113 133 / 34%); --semantic-rose-text: #fecdd3; --semantic-rose-gradient: linear-gradient(135deg, #f43f5e, #fb7185);
+  --semantic-violet-solid: #a78bfa; --semantic-violet-soft: rgb(167 139 250 / 14%); --semantic-violet-border: rgb(167 139 250 / 34%); --semantic-violet-text: #ddd6fe; --semantic-violet-gradient: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  --semantic-teal-solid: #5eead4; --semantic-teal-soft: rgb(94 234 212 / 14%); --semantic-teal-border: rgb(94 234 212 / 34%); --semantic-teal-text: #99f6e4; --semantic-teal-gradient: linear-gradient(135deg, #10b981, #2dd4bf);
+  --semantic-slate-solid: #cbd5e1; --semantic-slate-soft: rgb(203 213 225 / 12%); --semantic-slate-border: rgb(203 213 225 / 28%); --semantic-slate-text: #e2e8f0; --semantic-slate-gradient: linear-gradient(135deg, #64748b, #94a3b8);
+  --semantic-orange-solid: #fb923c; --semantic-orange-soft: rgb(251 146 60 / 14%); --semantic-orange-border: rgb(251 146 60 / 34%); --semantic-orange-text: #fed7aa; --semantic-orange-gradient: linear-gradient(135deg, #f97316, #fb923c);
+  --semantic-red-solid: #f87171; --semantic-red-soft: rgb(248 113 113 / 14%); --semantic-red-border: rgb(248 113 113 / 34%); --semantic-red-text: #fecaca; --semantic-red-gradient: linear-gradient(135deg, #ef4444, #f87171);
+  --semantic-pink-solid: #f472b6; --semantic-pink-soft: rgb(244 114 182 / 14%); --semantic-pink-border: rgb(244 114 182 / 34%); --semantic-pink-text: #fbcfe8; --semantic-pink-gradient: linear-gradient(135deg, #ec4899, #f472b6);
+}

@@ -26,7 +26,9 @@ export function StockAlertsCard({ data }: { data: AdminDashboardData }) {
             <div key={product.id} className="flex items-center gap-2.5 py-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-[12px] font-extrabold text-brand-navy">{product.name.slice(0, 1).toUpperCase()}</span>
               <span className="min-w-0 flex-1 truncate text-xs font-semibold">{product.name}</span>
-              <span className={product.stock <= 0 ? 'rounded-full bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 dark:bg-red-950/60 dark:text-red-300' : 'rounded-full bg-brand-amber-soft px-2 py-1 text-[10px] font-bold text-brand-navy'}>
+              <span className={product.stock <= 0
+                ? 'rounded-full bg-[var(--semantic-red-soft)] px-2 py-1 text-[10px] font-bold text-[var(--semantic-red-text)]'
+                : 'rounded-full bg-[var(--semantic-amber-soft)] px-2 py-1 text-[10px] font-bold text-[var(--semantic-amber-text)]'}>
                 {product.stock <= 0 ? 'Out of stock' : `${product.stock} left`}
               </span>
             </div>

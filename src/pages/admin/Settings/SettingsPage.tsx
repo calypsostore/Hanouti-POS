@@ -14,7 +14,7 @@ import RegisterTab from './RegisterTab'
 import ReceiptTab from './ReceiptTab'
 
 type Tab = 'profile' | 'register' | 'receipt'
-type StoreProfile = Pick<Store, 'name' | 'emoji' | 'phone' | 'address' | 'city' | 'ownerName'>
+type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
@@ -24,7 +24,9 @@ export default function SettingsPage() {
   const [resetOpen, setResetOpen] = useState(false)
   const [form, setForm] = useState<StoreProfile>({
     name: store?.name ?? '',
-    emoji: store?.emoji ?? '☕',
+    icon: store?.icon ?? 'Coffee',
+    iconColor: store?.iconColor ?? 'amber',
+    logo: store?.logo,
     phone: store?.phone ?? '',
     address: store?.address ?? '',
     city: store?.city ?? '',

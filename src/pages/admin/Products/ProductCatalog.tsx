@@ -3,6 +3,7 @@ import type { Category, Product } from '../../../types'
 import { Badge, Button, Card, EmptyState, Input } from '../../../components/ui'
 import { cn, money } from '../../../lib/utils'
 import { getProductImage } from '../../../lib/productDisplay'
+import { AppIcon } from '../../../components/AppIcon'
 
 export default function ProductCatalog({
   categories,
@@ -68,7 +69,7 @@ export default function ProductCatalog({
                   onClick={() => onCategoryFilter(category.id)}
                   className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-[12.5px] font-medium"
                 >
-                  <span>{category.emoji}</span>
+                  <AppIcon name={category.icon} color={category.iconColor} size={14} className="h-6 w-6 rounded-lg" />
                   <span className="min-w-0 flex-1 truncate">{category.name}</span>
                   <span className="text-[10.5px] font-semibold text-muted/60">{count}</span>
                 </button>
@@ -127,7 +128,7 @@ export default function ProductCatalog({
           <>
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left">
-                <thead>
+                <thead className="glass-subtle sticky top-0 z-10">
                   <tr className="border-b border-line/70 text-[10.5px] uppercase tracking-wider text-muted">
                     <th className="px-4 py-2.5 font-semibold">Product</th>
                     <th className="px-4 py-2.5 font-semibold">Category</th>
@@ -148,9 +149,9 @@ export default function ProductCatalog({
                       <tr key={product.id} className="border-b border-line/50 text-[12.5px]">
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-brand-tint text-sm font-bold text-brand-navy">
-                              {image ? <img src={image} alt={product.name} className="h-full w-full object-cover" /> : product.emoji || product.name.slice(0, 1).toUpperCase()}
-                            </span>
+                            {image
+                              ? <img src={image} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                              : <AppIcon name={product.icon} color={product.iconColor} size={15} className="h-8 w-8 rounded-lg" />}
                             <span className="font-semibold text-ink">{product.name}</span>
                           </div>
                         </td>
@@ -220,9 +221,9 @@ export default function ProductCatalog({
                   onClick={() => onEditProduct(product)}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left"
                 >
-                  <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-brand-tint text-sm font-bold text-brand-navy">
-                    {image ? <img src={image} alt={product.name} className="h-full w-full object-cover" /> : product.emoji || product.name.slice(0, 1).toUpperCase()}
-                  </span>
+                  {image
+                    ? <img src={image} alt="" className="h-9 w-9 rounded-xl object-cover" />
+                    : <AppIcon name={product.icon} color={product.iconColor} size={17} className="h-9 w-9 rounded-xl" />}
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-semibold">{product.name}</div>
                     <div className="text-[10.5px] text-muted">

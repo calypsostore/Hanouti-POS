@@ -14,7 +14,7 @@ export function AppShell() {
 
   const sidebarWidth = collapsed ? 'lg:pl-[78px]' : 'lg:pl-[258px]'
   return (
-    <div className="min-h-screen bg-cream-100 transition-[padding] dark:bg-brand-navy-dark">
+    <div className="min-h-screen transition-[padding]">
       <aside className={`fixed inset-y-0 left-0 z-30 hidden transition-[width] lg:block ${collapsed ? 'w-[78px]' : 'w-[258px]'}`}>
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       </aside>
@@ -31,7 +31,7 @@ export function AppShell() {
 
       <div className={`min-h-screen ${sidebarWidth}`}>
         <TopBar onMenu={() => setMobileOpen(true)} onToggleSidebar={() => setCollapsed((value) => !value)} />
-        <main className="mx-auto min-h-[calc(100vh-68px)] max-w-[1680px] px-3 py-4 pb-28 sm:px-5 sm:py-6 lg:px-7 lg:py-7 lg:pb-10">
+        <main className="mx-auto min-h-[calc(100vh-68px)] max-w-[1680px] px-3 py-4 pb-36 sm:px-5 sm:py-6 sm:pb-28 lg:px-7 lg:py-7 lg:pb-10">
           <Outlet />
         </main>
       </div>

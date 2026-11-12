@@ -9,12 +9,12 @@ type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    'bg-brand-amber text-brand-navy shadow-sm hover:bg-brand-amber-hover active:bg-brand-amber-pressed active:translate-y-px disabled:opacity-50',
+    'bg-gradient-to-br from-brand-amber to-brand-amber-hover text-brand-navy shadow-[0_8px_24px_rgba(248,168,26,0.2)] hover:brightness-105 active:translate-y-px active:brightness-95 disabled:opacity-50',
   secondary:
-    'border border-brand-navy bg-white text-ink shadow-sm hover:bg-brand-tint active:translate-y-px disabled:opacity-50',
-  ghost: 'text-muted hover:bg-cream-200/70 hover:text-ink disabled:opacity-40',
-  danger: 'bg-danger-strong text-white shadow-sm hover:brightness-90 active:translate-y-px disabled:opacity-50',
-  dark: 'bg-espresso-900 text-cream-50 shadow-sm hover:bg-espresso-800 active:translate-y-px disabled:opacity-50',
+    'glass-subtle border border-line/70 bg-transparent text-ink hover:border-brand-amber/50 active:translate-y-px disabled:opacity-50',
+  ghost: 'text-muted hover:bg-white/40 hover:text-ink disabled:opacity-40 dark:hover:bg-white/5',
+  danger: 'bg-[var(--semantic-rose-solid)] text-white shadow-sm hover:brightness-105 active:translate-y-px disabled:opacity-50',
+  dark: 'glass-strong bg-transparent text-ink hover:brightness-105 active:translate-y-px disabled:opacity-50',
   outline: 'border border-white/25 text-white hover:bg-white/10 disabled:opacity-40',
 }
 
@@ -40,7 +40,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center font-medium transition-colors duration-150 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center font-medium transition-all duration-200 ease-out disabled:cursor-not-allowed',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber-focus focus-visible:ring-offset-2',
         buttonVariants[variant],
         buttonSizes[size],
@@ -63,7 +63,7 @@ export function Card({
 }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-2xl border border-line/80 bg-white shadow-[0_2px_8px_rgba(17,27,48,0.06)]', className)}
+      className={cn('glass rounded-3xl', className)}
       {...rest}
     >
       {children}
@@ -96,12 +96,12 @@ export function SectionTitle({
 type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'accent' | 'info' | 'dark'
 
 const badgeTones: Record<BadgeTone, string> = {
-  neutral: 'bg-cream-200 text-muted',
-  success: 'bg-emerald-50 text-success-strong ring-1 ring-success/20',
-  warning: 'bg-brand-amber-soft text-brand-navy ring-1 ring-brand-amber/40',
-  danger: 'bg-red-50 text-danger-text ring-1 ring-danger/20',
-  accent: 'bg-accent-50 text-accent-foreground ring-1 ring-accent-foreground/25',
-  info: 'bg-sky-50 text-info-strong ring-1 ring-info/20',
+  neutral: 'bg-[var(--semantic-slate-soft)] text-[var(--semantic-slate-text)] ring-1 ring-[var(--semantic-slate-border)]',
+  success: 'bg-[var(--semantic-green-soft)] text-[var(--semantic-green-text)] ring-1 ring-[var(--semantic-green-border)]',
+  warning: 'bg-[var(--semantic-amber-soft)] text-[var(--semantic-amber-text)] ring-1 ring-[var(--semantic-amber-border)]',
+  danger: 'bg-[var(--semantic-red-soft)] text-[var(--semantic-red-text)] ring-1 ring-[var(--semantic-red-border)]',
+  accent: 'bg-[var(--semantic-amber-soft)] text-[var(--semantic-amber-text)] ring-1 ring-[var(--semantic-amber-border)]',
+  info: 'bg-[var(--semantic-blue-soft)] text-[var(--semantic-blue-text)] ring-1 ring-[var(--semantic-blue-border)]',
   dark: 'bg-espresso-900 text-cream-50',
 }
 
@@ -134,7 +134,7 @@ export function Dot({ className }: { className?: string }) {
 /* ---------------------------------- Inputs --------------------------------- */
 
 export const inputClass =
-  'h-10 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-brand-amber-focus focus:ring-4 focus:ring-brand-amber-focus/20 disabled:bg-cream-100'
+  'glass-subtle h-10 w-full rounded-2xl border border-line/80 bg-transparent px-3 text-sm text-ink placeholder:text-muted/70 outline-none transition focus:border-brand-amber-focus focus:ring-4 focus:ring-brand-amber-focus/20 disabled:opacity-65'
 
 export function Field({
   label,
@@ -251,12 +251,10 @@ const avatarPalette = [
 export function Avatar({
   name,
   size = 'md',
-  emoji,
   className,
 }: {
   name: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
-  emoji?: string
   className?: string
 }) {
   const idx = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % avatarPalette.length
@@ -270,12 +268,12 @@ export function Avatar({
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full font-bold',
-        emoji ? 'bg-cream-200 text-lg' : avatarPalette[idx],
+        avatarPalette[idx],
         sizes[size],
         className,
       )}
     >
-      {emoji ?? initials(name)}
+      {initials(name)}
     </span>
   )
 }
@@ -324,7 +322,7 @@ export function Modal({
       />
       <div
         className={cn(
-          'relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl',
+          'glass-strong relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl shadow-2xl sm:rounded-3xl',
           'animate-[slideUp_.22s_cubic-bezier(0.16,1,0.3,1)]',
           widths[size],
         )}
@@ -347,7 +345,7 @@ export function Modal({
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
-        {footer && <div className="border-t border-line/70 bg-cream-50 px-5 py-4 sm:px-6">{footer}</div>}
+        {footer && <div className="glass-subtle border-t border-line/70 px-5 py-4 sm:px-6">{footer}</div>}
       </div>
     </div>
   )
@@ -393,11 +391,11 @@ export function Drawer({
       />
       <div
         className={cn(
-          'relative flex h-full w-full flex-col bg-cream-50 shadow-2xl animate-[slideLeft_.25s_cubic-bezier(0.16,1,0.3,1)]',
+          'glass-strong relative flex h-full w-full flex-col shadow-2xl animate-[slideLeft_.25s_cubic-bezier(0.16,1,0.3,1)]',
           width,
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line bg-white px-6 py-5">
+        <div className="glass-subtle flex items-start justify-between gap-4 border-b border-line px-6 py-5">
           <div>
             {title && <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[13px] text-muted">{subtitle}</p>}
@@ -411,7 +409,7 @@ export function Drawer({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-        {footer && <div className="border-t border-line bg-white px-6 py-4">{footer}</div>}
+        {footer && <div className="glass-subtle border-t border-line px-6 py-4">{footer}</div>}
       </div>
     </div>
   )
@@ -435,7 +433,7 @@ export function Segmented<T extends string>({
   return (
     <div
       className={cn(
-        'inline-flex items-center rounded-xl border border-line bg-cream-100 p-0.5',
+        'glass-subtle inline-flex items-center rounded-full border border-line/70 p-1',
         className,
       )}
     >
@@ -444,10 +442,10 @@ export function Segmented<T extends string>({
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'rounded-[9px] font-semibold transition',
+            'rounded-full font-semibold transition-all duration-200',
             size === 'sm' ? 'px-2.5 py-1 text-[12px]' : 'px-3.5 py-1.5 text-[13px]',
             value === o.value
-              ? 'bg-white text-ink shadow-sm ring-1 ring-line/60'
+              ? 'glass bg-white/70 text-ink shadow-sm ring-1 ring-white/70 dark:bg-white/10 dark:ring-white/10'
               : 'text-muted hover:text-ink',
           )}
         >
@@ -476,10 +474,10 @@ export function StatCard({
   className?: string
 }) {
   const tones = {
-    neutral: 'bg-cream-200 text-ink',
-    accent: 'bg-accent-50 text-accent-foreground',
-    success: 'bg-emerald-50 text-emerald-600',
-    danger: 'bg-red-50 text-red-500',
+    neutral: 'bg-[var(--semantic-slate-soft)] text-[var(--semantic-slate-text)]',
+    accent: 'bg-[var(--semantic-amber-soft)] text-[var(--semantic-amber-text)]',
+    success: 'bg-[var(--semantic-green-soft)] text-[var(--semantic-green-text)]',
+    danger: 'bg-[var(--semantic-rose-soft)] text-[var(--semantic-rose-text)]',
   }
   return (
     <Card className={cn('p-4 sm:p-5', className)}>

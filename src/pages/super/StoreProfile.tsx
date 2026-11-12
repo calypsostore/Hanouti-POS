@@ -20,6 +20,9 @@ import { Avatar, Badge, Button, Drawer, Select } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { balanceFor } from '../../lib/selectors'
 import { cn, dateKey, fmtDate, fmtDateTime, money, sum } from '../../lib/utils'
+import { AppIcon } from '../../components/AppIcon'
+import { ChartLegend } from '../../components/charts'
+import { SEMANTIC_COLORS } from '../../lib/semanticColors'
 
 export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | null; onClose: () => void }) {
   const { db, setStoreStatus, changePlan } = useApp()
@@ -83,9 +86,9 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
         {/* Identity */}
         <div className="rounded-2xl bg-espresso-900 p-5 text-cream-50 grain">
           <div className="flex items-start gap-3.5">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-3xl">
-              {store.emoji}
-            </div>
+            {store.logo
+              ? <img src={store.logo} alt="" className="h-14 w-14 rounded-2xl object-cover" />
+              : <AppIcon name={store.icon} color={store.iconColor} size={25} className="h-14 w-14 rounded-2xl" />}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-[19px] font-extrabold tracking-tight">{store.name}</h3>
@@ -212,8 +215,11 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
               <div key={i} className="group flex flex-1 flex-col items-center gap-1">
                 <div className="flex h-12 w-full items-end">
                   <div
-                    className="w-full rounded-sm bg-accent-foreground/80 transition group-hover:bg-accent-foreground"
-                    style={{ height: `${Math.max(4, (d.value / maxDay) * 100)}%` }}
+                    className="w-full rounded-t-md transition"
+                    style={{
+                      background: SEMANTIC_COLORS.moneyFlow.revenue.light.gradient,
+                      height: `${Math.max(4, (d.value / maxDay) * 100)}%`,
+                    }}
                     title={money(d.value)}
                   />
                 </div>
@@ -221,6 +227,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
               </div>
             ))}
           </div>
+          <ChartLegend items={[{ label: 'Revenue', color: SEMANTIC_COLORS.moneyFlow.revenue.light.solid }]} />
         </div>
 
         {/* Commercials */}
@@ -233,7 +240,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
               <Line
                 label="Net · 30d"
                 value={money(revenue30 - expenses30)}
-                valueClass={revenue30 - expenses30 >= 0 ? 'text-emerald-600' : 'text-red-500'}
+                valueClass={revenue30 - expenses30 >= 0 ? 'text-[var(--semantic-green-text)]' : 'text-[var(--semantic-rose-text)]'}
               />
               <Line label="Average ticket" value={money(last30.length ? revenue30 / last30.length : 0)} />
               <Line label="MRR" value={money(PLAN_INFO[store.plan].price)} />

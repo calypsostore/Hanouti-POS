@@ -12,7 +12,7 @@ type Props = {
 }
 
 const className =
-  'group flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl bg-gradient-to-br p-3 text-center text-sm font-bold shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber-focus focus-visible:ring-offset-2'
+  'glass quick-glass-tile group flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-3xl border border-white/30 p-3 text-center text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber-focus focus-visible:ring-offset-2'
 
 export function QuickActionTile({ icon: Icon, tone, label, href, onClick }: Props) {
   const colors = DASHBOARD_PALETTE[tone]

@@ -51,7 +51,6 @@ export function useProductCart(
           lineId: uid('line'),
           productId: product.id,
           name: product.name,
-          emoji: product.emoji,
           price,
           qty: selection.qty,
           variantId: variant?.id,

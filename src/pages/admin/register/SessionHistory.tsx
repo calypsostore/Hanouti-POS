@@ -110,7 +110,9 @@ export function SessionHistory({
                 <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">Difference</div>
                 <div
                   className={`mt-1 text-[18px] font-extrabold tabular ${
-                    (viewing.difference ?? 0) === 0 ? 'text-emerald-600' : 'text-red-600'
+                    (viewing.difference ?? 0) === 0
+                      ? 'text-[var(--semantic-green-text)]'
+                      : 'text-[var(--semantic-red-text)]'
                   }`}
                 >
                   {(viewing.difference ?? 0) >= 0 ? '+' : ''}

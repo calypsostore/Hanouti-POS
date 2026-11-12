@@ -110,7 +110,6 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           lineId: uid('line'),
           productId: product.id,
           name: product.name,
-          emoji: product.emoji,
           price,
           qty,
           variantId: variant?.id,

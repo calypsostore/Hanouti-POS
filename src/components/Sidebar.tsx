@@ -23,6 +23,7 @@ import { useApp } from '../store/AppStore'
 import { getOutstandingBalance } from '../lib/dashboard'
 import { BrandLogo } from './BrandLogo'
 import { Avatar, Badge } from './ui'
+import { AppIcon } from './AppIcon'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; tone: DashboardTone; end?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
@@ -97,9 +98,11 @@ export function Sidebar({
 
       <div className={cn('relative mx-3 mt-3 rounded-xl border border-white/10 bg-white/[0.06] p-3', collapsed && !mobile && 'mx-2 px-2')}>
         <div className={cn('flex items-center gap-2.5', collapsed && !mobile && 'justify-center')}>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-lg" aria-hidden="true">
-            {isSuper ? <ShieldCheck className="h-4.5 w-4.5 text-brand-amber" /> : store?.emoji ?? <StoreIcon className="h-4.5 w-4.5 text-brand-amber" />}
-          </span>
+          {isSuper
+            ? <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10"><ShieldCheck className="h-4.5 w-4.5 text-brand-amber" /></span>
+            : store?.logo
+              ? <img src={store.logo} alt="" className="h-9 w-9 shrink-0 rounded-xl object-cover" />
+              : store && <AppIcon name={store.icon} color={store.iconColor} size={17} className="h-9 w-9 rounded-xl" />}
           {(!collapsed || mobile) && (
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12px] font-bold">{isSuper ? 'Platform console' : store?.name}</div>

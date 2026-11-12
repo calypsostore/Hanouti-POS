@@ -19,8 +19,8 @@ export function CategoryChip({
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition',
         active
-          ? 'border-espresso-900 bg-espresso-900 text-cream-50'
-          : 'border-line bg-white text-muted hover:border-accent-foreground/40 hover:text-ink',
+        ? 'border-brand-amber/70 bg-[var(--semantic-amber-soft)] text-[var(--semantic-amber-text)] shadow-sm'
+        : 'border-line/70 bg-transparent text-muted hover:border-brand-amber/50 hover:text-ink dark:bg-white/[0.04]',
       )}
     >
       {children}
@@ -78,7 +78,7 @@ export function CartPanel({
 }) {
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col', embedded && 'min-h-[50vh]')}>
-      <div className="flex shrink-0 items-center justify-between border-b border-brand-navy-light bg-brand-navy px-4 py-3 text-white">
+      <div className="glass-sidebar flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 text-white">
         <div className="flex items-center gap-2">
           <ShoppingBag className="h-4 w-4 text-brand-amber" />
           <span className="text-[13.5px] font-bold">Current order</span>
@@ -159,7 +159,7 @@ export function CartPanel({
             {cart.map((item) => (
               <li
                 key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
-                className="group flex items-center gap-2.5 rounded-xl px-1.5 py-2 transition hover:bg-white"
+                className="glass-row group flex items-center gap-2.5 rounded-xl px-1.5 py-2"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
                   {item.name.slice(0, 1).toUpperCase()}
@@ -211,7 +211,7 @@ export function CartPanel({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-line bg-white px-4 py-3">
+      <div className="glass-subtle shrink-0 border-t border-line/70 px-4 py-3">
         <details className="group mb-2 rounded-lg">
           <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-muted transition hover:text-ink">
             <span>Add note{note ? ' · added' : ''}</span>
@@ -249,7 +249,7 @@ export function CartPanel({
               </div>
             </div>
           )}
-          <div className="flex items-baseline justify-between border-t border-dashed border-line pt-2">
+          <div className="glass-tint-green flex items-baseline justify-between rounded-2xl border-t border-dashed border-line px-3 py-2.5">
             <span className="text-[13px] font-bold text-ink">Total</span>
             <span className="text-[20px] font-extrabold tracking-tight text-ink tabular">
               {money(totals.total)}
@@ -258,7 +258,13 @@ export function CartPanel({
         </div>
 
         <div className="mt-3 space-y-2">
-          <Button size="lg" className="w-full" disabled={!cart.length} onClick={onCheckout}>
+          <Button
+            size="lg"
+            className="w-full rounded-full shadow-[0_8px_24px_var(--semantic-green-soft)]"
+            style={{ background: 'var(--semantic-green-gradient)', color: 'white' }}
+            disabled={!cart.length}
+            onClick={onCheckout}
+          >
             {quick ? (
               <>
                 <CheckCircle2 className="h-4 w-4" /> Complete order · {money(totals.total)}

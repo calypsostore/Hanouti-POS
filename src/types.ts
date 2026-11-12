@@ -11,6 +11,16 @@ export type PrintMode = 'auto' | 'manual'
 export type PrinterConnection = 'webserial' | 'browser'
 export type BusinessType = 'cafe' | 'restaurant' | 'bakery' | 'snack' | 'retail' | 'salon'
 export type SaleUnit = 'kg' | 'g' | 'piece'
+export type IconColor = 'green' | 'blue' | 'amber' | 'rose' | 'violet' | 'teal' | 'slate' | 'orange'
+export const ICON_NAMES = [
+  'Coffee', 'CupSoda', 'Cake', 'Croissant', 'Cookie', 'IceCream', 'Sandwich',
+  'Pizza', 'Soup', 'Salad', 'Utensils', 'UtensilsCrossed', 'Beef', 'Fish',
+  'Wine', 'Beer', 'Milk', 'Apple', 'Candy', 'Store', 'ShoppingBasket',
+  'ShoppingBag', 'Shirt', 'Gift', 'Pill', 'Scissors', 'Flower2', 'Book',
+  'Smartphone', 'Wrench', 'Package', 'Star', 'Heart', 'Flame', 'Leaf',
+  'Sparkles', 'Tag',
+] as const
+export type IconName = typeof ICON_NAMES[number]
 
 export interface StoreFeatures {
   tables: boolean
@@ -52,7 +62,9 @@ export interface Store {
   phone: string
   address: string
   city: string
-  emoji: string
+  icon: IconName
+  iconColor: IconColor
+  logo?: string
   plan: Plan
   status: StoreStatus
   businessType: BusinessType
@@ -87,7 +99,8 @@ export interface Category {
   id: string
   storeId: string
   name: string
-  emoji: string
+  icon: IconName
+  iconColor: IconColor
   sort: number
 }
 
@@ -96,7 +109,9 @@ export interface Product {
   storeId: string
   categoryId: string
   name: string
-  emoji: string
+  icon: IconName
+  iconColor: IconColor
+  image?: string
   price: number
   cost: number
   trackStock: boolean
@@ -150,7 +165,6 @@ export interface OrderItem {
   lineId?: string
   productId: string
   name: string
-  emoji: string
   price: number
   qty: number
   variantId?: string

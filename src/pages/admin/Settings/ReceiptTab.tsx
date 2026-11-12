@@ -6,7 +6,7 @@ import { accentPalettes } from '../../../lib/theme'
 import { cn } from '../../../lib/utils'
 import PrinterCard from './PrinterCard'
 
-type StoreProfile = Pick<Store, 'name' | 'emoji' | 'phone' | 'address' | 'city' | 'ownerName'>
+type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function ReceiptTab({
@@ -98,7 +98,6 @@ export default function ReceiptTab({
           </div>
           <div className="overflow-hidden rounded-xl bg-white p-4 text-[11px] shadow-sm">
             <div className="text-center">
-              <div className="text-lg">{form.emoji}</div>
               <div className="text-[13px] font-extrabold">{form.name}</div>
               <div className="mt-0.5 text-[9.5px] text-neutral-500">{form.address}</div>
               <div className="text-[9.5px] text-neutral-500">

@@ -96,7 +96,7 @@ export function RegisterDialogs({
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11.5px] text-muted">
               Difference{' '}
-              <span className={cn('font-bold tabular', difference === 0 ? 'text-emerald-600' : 'text-red-600')}>
+              <span className={cn('font-bold tabular', difference === 0 ? 'text-[var(--semantic-green-text)]' : 'text-[var(--semantic-red-text)]')}>
                 {difference >= 0 ? '+' : ''}
                 {money(difference)}
               </span>

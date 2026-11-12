@@ -47,7 +47,7 @@ export function TopTabsAndOrders({ data }: { data: AdminDashboardData }) {
             { key: 'name', header: 'Customer', render: (row) => <span className="font-bold text-ink">{row.name}</span> },
             { key: 'balance', header: 'Balance', render: (row) => <span className="font-bold tabular">{money(row.balance)}</span> },
             { key: 'due', header: 'Due', render: (row) => <span className="text-muted">{nextDueLabel(row.cycle)}</span> },
-            { key: 'action', header: '', className: 'text-right', render: (row) => <button type="button" onClick={() => setSettleId(row.customerId)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-brand-amber-focus">Collect</button> },
+            { key: 'action', header: '', className: 'text-right', render: (row) => <button type="button" onClick={() => setSettleId(row.customerId)} className="rounded-lg bg-[var(--semantic-green-solid)] px-2.5 py-1.5 text-[10px] font-bold text-white hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-amber-focus">Collect</button> },
           ]}
         />
       </SectionCard>

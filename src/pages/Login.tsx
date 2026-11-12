@@ -92,7 +92,7 @@ export default function Login() {
       <div className="relative hidden w-[52%] flex-col justify-between overflow-hidden bg-espresso-900 p-10 text-cream-50 brand-gradient grain lg:flex xl:p-14">
         <div className="relative flex items-center gap-3">
           <BrandLogo size="md" variant="dark" />
-          <span className="text-[9.5px] font-semibold uppercase tracking-[0.2em] text-white/40">Point of sale</span>
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.2em] text-white/55">7anouti-POS</span>
         </div>
 
         <div className="relative max-w-lg">
@@ -134,7 +134,7 @@ export default function Login() {
                   {money(842.5)}
                 </div>
               </div>
-              <div className="rounded-lg bg-emerald-400/10 px-2 py-1 text-[10px] font-bold text-emerald-400">
+              <div className="rounded-lg bg-[var(--semantic-green-soft)] px-2 py-1 text-[10px] font-bold text-[var(--semantic-green-text)]">
                 +12.4%
               </div>
             </div>
@@ -161,12 +161,12 @@ export default function Login() {
 
       {/* Form panel */}
       <div className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
-        <div className="w-full max-w-[420px]">
+        <div className="glass-strong w-full max-w-[500px] rounded-[30px] p-5 sm:p-8">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <BrandLogo size="md" />
           </div>
 
-          <h2 className="text-[26px] font-extrabold tracking-tight text-ink">Welcome back</h2>
+          <h2 className="text-[28px] font-extrabold tracking-[-0.03em] text-ink">Welcome back</h2>
           <p className="mt-1.5 text-[13.5px] text-muted">
             Sign in to your workspace to start the day.
           </p>
@@ -224,7 +224,7 @@ export default function Login() {
                 </div>
               </Field>
               {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-[12.5px] font-medium text-red-700">
+                <div className="rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
                   {error}
                 </div>
               )}
@@ -253,7 +253,7 @@ export default function Login() {
                 />
               </Field>
               {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-[12.5px] font-medium text-red-700">
+                <div className="rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
                   {error}
                 </div>
               )}
@@ -280,7 +280,7 @@ export default function Login() {
                 key={a.email}
                 onClick={() => quickLogin(a.email, a.role)}
                 className={cn(
-                  'group flex w-full items-center gap-3 rounded-xl border border-line bg-white px-3 py-2.5 text-left transition',
+                  'glass-subtle group flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-transparent px-3 py-2.5 text-left transition',
                   'hover:border-accent-foreground/40 hover:shadow-sm',
                 )}
               >

@@ -10,7 +10,7 @@ export function PlanCard({ store, now, onUpgrade }: { store: Store; now: Date; o
     : null
   const tone = store.status === 'active' ? 'success' : store.status === 'trial' ? 'warning' : 'danger'
   return (
-    <article className="rounded-2xl border border-line bg-white p-4 shadow-sm dark:bg-espresso-800">
+    <article className="glass rounded-3xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

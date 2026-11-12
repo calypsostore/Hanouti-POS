@@ -2,11 +2,11 @@ import { Check, Copy, ReceiptText, Sparkles, Store as StoreIcon } from 'lucide-r
 import type { Store, User } from '../../../types'
 import { Badge, Card, Field, Input } from '../../../components/ui'
 import { PLAN_INFO } from '../../../data/seed'
-import { cn, fmtDate, money } from '../../../lib/utils'
+import { fmtDate, money } from '../../../lib/utils'
+import { IconPicker } from '../../../components/IconPicker'
+import { ImageUpload } from '../../../components/ImageUpload'
 
-type StoreProfile = Pick<Store, 'name' | 'emoji' | 'phone' | 'address' | 'city' | 'ownerName'>
-
-const STORE_EMOJIS = ['☕', '🧁', '🫖', '🌿', '🥐', '🍰', '🍵', '🥤', '🫘', '🍽️']
+type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 
 export default function ProfileTab({
   store,
@@ -34,24 +34,17 @@ export default function ProfileTab({
         </div>
 
         <div className="space-y-3.5">
-          <div>
-            <span className="mb-1.5 block text-[12.5px] font-semibold">Store icon</span>
-            <div className="flex flex-wrap gap-1.5">
-              {STORE_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => setForm((current) => ({ ...current, emoji }))}
-                  className={cn(
-                    'flex h-10 w-10 items-center justify-center rounded-xl border text-lg transition',
-                    form.emoji === emoji
-                      ? 'border-accent-foreground/50 bg-accent-50 ring-2 ring-accent-foreground/20'
-                      : 'border-line bg-white hover:bg-cream-100',
-                  )}
-                >
-                  {emoji}
-                </button>
-              ))}
+          <div className="space-y-3">
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold">Store icon</span>
+              <IconPicker
+                value={form.icon}
+                color={form.iconColor}
+                onChange={(icon) => setForm((current) => ({ ...current, icon }))}
+                onColorChange={(iconColor) => setForm((current) => ({ ...current, iconColor }))}
+              />
             </div>
+            <ImageUpload value={form.logo} label="Upload store logo" onChange={(logo) => setForm((current) => ({ ...current, logo }))} />
           </div>
 
           <div className="grid gap-3.5 sm:grid-cols-2">

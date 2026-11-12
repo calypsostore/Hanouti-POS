@@ -9,6 +9,7 @@ import { balanceFor } from '../../lib/selectors'
 import { cn, money, sum } from '../../lib/utils'
 import { useToast } from '../../components/toast'
 import { NewStoreModal } from './NewStoreModal'
+import { AppIcon } from '../../components/AppIcon'
 
 export default function SuperStores() {
   const { db, createStore } = useApp()
@@ -146,9 +147,9 @@ export default function SuperStores() {
               className="group rounded-2xl border border-line/80 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-accent-foreground/40 hover:shadow-[0_8px_24px_rgba(17,27,48,0.08)]"
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cream-100 text-2xl">
-                  {store.emoji}
-                </div>
+                {store.logo
+                  ? <img src={store.logo} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+                  : <AppIcon name={store.icon} color={store.iconColor} size={20} className="h-11 w-11 rounded-xl" />}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-[14px] font-bold text-ink">{store.name}</span>
