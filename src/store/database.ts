@@ -3,7 +3,6 @@ import type {
   Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit, Store, StoreSettings, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { buildSeed } from '../data/seed'
 import { normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
@@ -83,9 +82,8 @@ const isOrderModifier = (value: unknown): value is OrderModifier =>
   typeof value.optionId === 'string' && typeof value.optionName === 'string' &&
   isFiniteNumber(value.priceDelta)
 
-const normalizeDb = (value: unknown): Database | null => {
+const normalizeDb = (value: unknown, seed: Database): Database | null => {
   if (!isRecord(value)) return null
-  const seed = buildSeed()
   const stores = Array.isArray(value.stores)
     ? value.stores.filter((s): s is Store =>
         isRecord(s) && typeof s.id === 'string' && typeof s.name === 'string' &&
@@ -260,16 +258,16 @@ const normalizeDb = (value: unknown): Database | null => {
   }
 }
 
-export const loadDb = async (): Promise<Database> => {
+export const loadDb = async (seed: Database): Promise<Database> => {
   let db: Database | null = null
   for (const key of [DB_KEY, ...LEGACY_DB_KEYS]) {
     try {
       const raw = localStorage.getItem(key)
-      if (raw) db = normalizeDb(JSON.parse(raw))
+      if (raw) db = normalizeDb(JSON.parse(raw), seed)
     } catch { /* Try the next key when local data is corrupted. */ }
     if (db) break
   }
-  const source = db ?? buildSeed()
+  const source = db ?? seed
   const users = await Promise.all(source.users.map(async (user) => ({
     ...user,
     password: isSecretHash(user.password) ? user.password : await hashSecret(user.password),

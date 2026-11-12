@@ -26,7 +26,7 @@ export function useDatabase(): DatabaseRuntime {
 
   useEffect(() => {
     let active = true
-    void loadDb().then((loaded) => {
+    void loadDb(dbRef.current).then((loaded) => {
       if (!active) return
       dbRef.current = loaded
       setDbState(loaded)

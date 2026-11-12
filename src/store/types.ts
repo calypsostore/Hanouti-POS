@@ -31,6 +31,8 @@ export interface CreateStoreInput {
 
 export interface AppContextValue {
   db: Database
+  databaseReady: boolean
+  databaseError: string
   user: User | null
   store: Store | null
   login: (email: string, password: string) => Promise<Result>

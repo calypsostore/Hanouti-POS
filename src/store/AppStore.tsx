@@ -47,6 +47,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: AppContextValue = {
     db,
+    databaseReady: database.ready,
+    databaseError: database.loadError,
     user,
     store,
     login: auth.login,

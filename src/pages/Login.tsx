@@ -45,7 +45,7 @@ const demoAccounts = [
 ]
 
 export default function Login() {
-  const { login, loginPin } = useApp()
+  const { login, loginPin, databaseReady, databaseError } = useApp()
   const navigate = useNavigate()
   const [method, setMethod] = useState<'email' | 'pin'>('email')
   const [email, setEmail] = useState('sami@cafeyasmine.tn')
@@ -54,6 +54,8 @@ export default function Login() {
   const [slug, setSlug] = useState('yasmine')
   const [pin, setPin] = useState('1234')
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const canSubmit = databaseReady && !databaseError && !isSubmitting
 
   const go = (role: string) => {
     if (role === 'super') navigate('/super')
@@ -63,26 +65,59 @@ export default function Login() {
 
   const submitEmail = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canSubmit) return
     setError('')
-    const res = await login(email, password)
-    if (!res.ok) return setError(res.error)
-    const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : email.includes('amine') ? 'staff' : 'admin'
-    go(target)
+    setIsSubmitting(true)
+    try {
+      const res = await login(email, password)
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : email.includes('amine') ? 'staff' : 'admin'
+      go(target)
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const submitPin = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canSubmit) return
     setError('')
-    const res = await loginPin(slug, pin)
-    if (!res.ok) return setError(res.error)
-    go('staff')
+    setIsSubmitting(true)
+    try {
+      const res = await loginPin(slug, pin)
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      go('staff')
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const quickLogin = async (accountEmail: string, role: string) => {
+    if (!canSubmit) return
     setError('')
-    const res = await login(accountEmail, 'password')
-    if (!res.ok) return setError(res.error)
-    go(role === 'Super admin' ? 'super' : role === 'Staff' ? 'staff' : 'admin')
+    setIsSubmitting(true)
+    try {
+      const res = await login(accountEmail, 'password')
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      go(role === 'Super admin' ? 'super' : role === 'Staff' ? 'staff' : 'admin')
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -186,6 +221,20 @@ export default function Login() {
             />
           </div>
 
+          {databaseError ? (
+            <div role="alert" className="mt-4 rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
+              Could not load the local database: {databaseError}
+            </div>
+          ) : !databaseReady ? (
+            <p role="status" className="mt-4 text-center text-xs text-muted">
+              Preparing the demo workspace. Sign-in will be available shortly.
+            </p>
+          ) : error ? (
+            <div role="alert" className="mt-4 rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
+              {error}
+            </div>
+          ) : null}
+
           {method === 'email' ? (
             <form onSubmit={submitEmail} className="mt-5 space-y-4">
               <Field label="Email address">
@@ -223,13 +272,8 @@ export default function Login() {
                   </button>
                 </div>
               </Field>
-              {error && (
-                <div className="rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
-                  {error}
-                </div>
-              )}
-              <Button type="submit" size="lg" className="w-full">
-                Sign in <ArrowRight className="h-4 w-4" />
+              <Button type="submit" size="lg" className="w-full" disabled={!canSubmit} loading={!databaseReady || isSubmitting}>
+                {databaseReady ? 'Sign in' : 'Preparing demo…'} {!isSubmitting && databaseReady && <ArrowRight className="h-4 w-4" />}
               </Button>
             </form>
           ) : (
@@ -252,13 +296,8 @@ export default function Login() {
                   required
                 />
               </Field>
-              {error && (
-                <div className="rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-2.5 text-[12.5px] font-medium text-[var(--semantic-rose-text)]">
-                  {error}
-                </div>
-              )}
-              <Button type="submit" size="lg" className="w-full">
-                Open register <ArrowRight className="h-4 w-4" />
+              <Button type="submit" size="lg" className="w-full" disabled={!canSubmit} loading={!databaseReady || isSubmitting}>
+                {databaseReady ? 'Open register' : 'Preparing demo…'} {!isSubmitting && databaseReady && <ArrowRight className="h-4 w-4" />}
               </Button>
               <p className="text-center text-[11.5px] text-muted">
                 Staff PINs are created by your store admin.
@@ -279,8 +318,9 @@ export default function Login() {
               <button
                 key={a.email}
                 onClick={() => quickLogin(a.email, a.role)}
+                disabled={!canSubmit}
                 className={cn(
-                  'glass-subtle group flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-transparent px-3 py-2.5 text-left transition',
+                  'glass-subtle group flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-transparent px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50',
                   'hover:border-accent-foreground/40 hover:shadow-sm',
                 )}
               >

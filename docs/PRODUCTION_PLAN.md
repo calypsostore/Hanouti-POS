@@ -67,6 +67,9 @@ stored; no demo values are presented as production data.
   text-only.
 - Vercel rewrites client-side routes to the app entry point so direct visits
   and refreshes on paths such as `/login` load the SPA instead of a 404.
+- First-load seed initialization reuses its fallback database rather than
+  generating demo data twice; sign-in controls stay disabled until migration
+  and credential hashing finish.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
   settings viewport had no horizontal overflow. The local v9 database contains
