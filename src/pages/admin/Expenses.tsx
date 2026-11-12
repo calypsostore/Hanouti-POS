@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Plus, Receipt, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { Download, Pencil, Plus, Receipt, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import type { Expense } from '../../types'
 import {
@@ -30,9 +30,10 @@ const categoryColor: Record<string, string> = {
 }
 
 export default function Expenses() {
-  const { db, store, user, addExpense, deleteExpense } = useApp()
+  const { db, store, user, addExpense, updateExpense, deleteExpense } = useApp()
   const { push } = useToast()
   const [open, setOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Expense | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
   const [month, setMonth] = useState(() => dateKey(new Date()).slice(0, 7))
   const [category, setCategory] = useState('all')
@@ -104,7 +105,7 @@ export default function Expenses() {
           <Button variant="secondary" onClick={exportCsv}>
             <Download className="h-4 w-4" /> Export
           </Button>
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
             <Plus className="h-4 w-4" /> Add expense
           </Button>
         </div>
@@ -215,7 +216,19 @@ export default function Expenses() {
                     </div>
                     <span className="text-[13px] font-bold tabular">{money(e.amount)}</span>
                     <button
+                      type="button"
+                      onClick={() => { setEditTarget(e); setOpen(true) }}
+                      aria-label={`Edit ${e.category} expense`}
+                      title="Edit expense"
+                      className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-brand-tint hover:text-brand-navy group-hover:opacity-100"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setDeleteTarget(e)}
+                      aria-label={`Delete ${e.category} expense`}
+                      title="Delete expense"
                       className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -256,15 +269,20 @@ export default function Expenses() {
 
       {open && (
         <ExpenseEditor
-          onClose={() => setOpen(false)}
+          key={editTarget?.id ?? 'new'}
+          initialExpense={editTarget ?? undefined}
+          onClose={() => { setOpen(false); setEditTarget(null) }}
           onSave={(data) => {
-            const result = addExpense(store.id, data)
+            const result = editTarget
+              ? updateExpense(editTarget.id, data)
+              : addExpense(store.id, data)
             if (!result.ok) {
               push(result.error, 'error')
               return
             }
-            push('Expense recorded')
+            push(editTarget ? 'Expense updated' : 'Expense recorded')
             setOpen(false)
+            setEditTarget(null)
           }}
         />
       )}
@@ -306,16 +324,18 @@ export default function Expenses() {
 }
 
 function ExpenseEditor({
+  initialExpense,
   onClose,
   onSave,
 }: {
+  initialExpense?: Expense
   onClose: () => void
   onSave: (data: { category: string; note: string; amount: number; date: string }) => void
 }) {
-  const [category, setCategory] = useState('Supplies')
-  const [note, setNote] = useState('')
-  const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(dateKey(new Date()))
+  const [category, setCategory] = useState(initialExpense?.category ?? 'Supplies')
+  const [note, setNote] = useState(initialExpense?.note ?? '')
+  const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '')
+  const [date, setDate] = useState(initialExpense ? dateKey(initialExpense.date) : dateKey(new Date()))
 
   const value = Number(amount) || 0
 
@@ -323,8 +343,8 @@ function ExpenseEditor({
     <Modal
       open
       onClose={onClose}
-      title="Add expense"
-      subtitle="Record a cost against this store."
+      title={initialExpense ? 'Edit expense' : 'Add expense'}
+      subtitle={initialExpense ? 'Update this store expense.' : 'Record a cost against this store.'}
       size="sm"
       footer={
         <div className="flex justify-end gap-2">
@@ -342,7 +362,7 @@ function ExpenseEditor({
               })
             }
           >
-            <Plus className="h-4 w-4" /> Record {money(value)}
+            {initialExpense ? 'Save changes' : <><Plus className="h-4 w-4" /> Record {money(value)}</>}
           </Button>
         </div>
       }

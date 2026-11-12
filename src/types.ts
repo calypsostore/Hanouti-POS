@@ -1,4 +1,42 @@
 export type Role = 'super' | 'admin' | 'staff'
+export type AuditRole = Role | 'unknown'
+export type AuditEntity =
+  | 'order'
+  | 'product'
+  | 'category'
+  | 'customer'
+  | 'staff'
+  | 'expense'
+  | 'register'
+  | 'settings'
+  | 'auth'
+  | 'payroll'
+export type AuditAction =
+  | 'created'
+  | 'edited'
+  | 'deleted'
+  | 'voided'
+  | 'discount_applied'
+  | 'refund_applied'
+  | 'debt_payment'
+  | 'activated'
+  | 'deactivated'
+  | 'pin_reset'
+  | 'register_opened'
+  | 'register_closed'
+  | 'settings_updated'
+  | 'login_success'
+  | 'login_failure'
+  | 'logout'
+  | 'demo_reset'
+export type AuditJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | AuditJsonValue[]
+  | { [key: string]: AuditJsonValue }
+
 export type PosMode = 'quick' | 'cashier'
 export type Plan = 'starter' | 'growth' | 'pro'
 export type StoreStatus = 'active' | 'trial' | 'suspended'
@@ -270,6 +308,21 @@ export interface RegisterSession {
   snapshot?: RegisterSnapshot
 }
 
+export interface AuditLog {
+  id: string
+  storeId: string
+  userId: string
+  userName: string
+  role: AuditRole
+  action: AuditAction
+  entity: AuditEntity
+  entityId?: string
+  summary: string
+  before?: Record<string, AuditJsonValue>
+  after?: Record<string, AuditJsonValue>
+  createdAt: string
+}
+
 export interface Database {
   stores: Store[]
   users: User[]
@@ -280,4 +333,5 @@ export interface Database {
   ledger: LedgerEntry[]
   expenses: Expense[]
   registerSessions: RegisterSession[]
+  auditLogs: AuditLog[]
 }

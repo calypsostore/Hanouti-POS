@@ -1,5 +1,5 @@
 import type {
-  BusinessType, Category, Customer, Database, Expense, IconColor, IconName, Order, OrderModifier,
+  AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, Category, Customer, Database, Expense, IconColor, IconName, Order, OrderModifier,
   Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit, Store, StoreSettings, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
@@ -10,10 +10,10 @@ import { readIndexedValue } from '../lib/storage'
 import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 
-export const DB_KEY = '7anouti.db.v11'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v12'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -49,6 +49,45 @@ const withoutLegacyEmoji = <T extends object>(record: T): Omit<T, 'emoji'> => {
 }
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
+const auditActions: AuditAction[] = [
+  'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
+  'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
+  'register_closed', 'settings_updated', 'login_success', 'login_failure', 'logout', 'demo_reset',
+]
+const auditEntities: AuditEntity[] = [
+  'order', 'product', 'category', 'customer', 'staff', 'expense',
+  'register', 'settings', 'auth', 'payroll',
+]
+const auditRoles: AuditRole[] = ['super', 'admin', 'staff', 'unknown']
+const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
+  if (value === null || typeof value === 'boolean' || isFiniteNumber(value)) return value
+  if (typeof value === 'string') return value.slice(0, 500)
+  if (depth >= 3) return undefined
+  if (Array.isArray(value)) {
+    return value.slice(0, 30)
+      .map((item) => normalizeAuditValue(item, depth + 1))
+      .filter((item): item is AuditJsonValue => item !== undefined)
+  }
+  if (!isRecord(value)) return undefined
+  return Object.fromEntries(
+    Object.entries(value).slice(0, 30)
+      .flatMap(([key, item]) => {
+        const normalized = normalizeAuditValue(item, depth + 1)
+        return normalized === undefined ? [] : [[key.slice(0, 80), normalized]]
+      }),
+  )
+}
+const normalizeAuditChanges = (value: unknown): Record<string, AuditJsonValue> | undefined => {
+  const normalized = normalizeAuditValue(value)
+  return isRecord(normalized) ? normalized as Record<string, AuditJsonValue> : undefined
+}
+const isAuditLog = (value: unknown): value is AuditLog =>
+  isRecord(value) && typeof value.id === 'string' && typeof value.storeId === 'string' &&
+  typeof value.userId === 'string' && typeof value.userName === 'string' &&
+  auditRoles.includes(value.role as AuditRole) && auditActions.includes(value.action as AuditAction) &&
+  auditEntities.includes(value.entity as AuditEntity) && typeof value.summary === 'string' &&
+  typeof value.createdAt === 'string' &&
+  (value.entityId === undefined || typeof value.entityId === 'string')
 const isBusinessType = (value: unknown): value is BusinessType =>
   value === 'cafe' || value === 'restaurant' || value === 'bakery' ||
   value === 'snack' || value === 'retail' || value === 'salon'
@@ -230,6 +269,18 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     typeof item.date === 'string' && typeof item.category === 'string' &&
     typeof item.createdBy === 'string',
   )
+  const auditCounts = new Map<string, number>()
+  const auditLogs = collection<AuditLog>('auditLogs', isAuditLog).map((log) => ({
+    ...log,
+    summary: log.summary.slice(0, 500),
+    before: normalizeAuditChanges(log.before),
+    after: normalizeAuditChanges(log.after),
+  })).reverse().filter((log) => {
+    const count = auditCounts.get(log.storeId) ?? 0
+    if (count >= 3000) return false
+    auditCounts.set(log.storeId, count + 1)
+    return true
+  }).reverse()
   return {
     stores,
     users,
@@ -287,6 +338,7 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
         ? session.snapshot as RegisterSession['snapshot']
         : undefined,
     })),
+    auditLogs,
   }
 }
 

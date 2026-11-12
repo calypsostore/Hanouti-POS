@@ -48,7 +48,7 @@ export interface AppContextValue {
   loginPin: (username: string, pin: string) => Promise<Result>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
-  voidOrder: (orderId: string, managerPin?: string) => Promise<Result>
+  voidOrder: (orderId: string, managerPin?: string, reason?: string) => Promise<Result>
   openRegister: (storeId: string, openingCash: number) => Result
   closeRegister: (sessionId: string, countedCash: number, note?: string) => Result
   settleCredit: (customerId: string, amount: number, method: 'cash' | 'card', note?: string) => Result
@@ -68,6 +68,7 @@ export interface AppContextValue {
   updateCustomer: (id: string, patch: Partial<Customer>) => Result
   deleteCustomer: (id: string) => Result
   addExpense: (storeId: string, data: { category: string; note: string; amount: number; date: string }) => Result
+  updateExpense: (id: string, data: { category: string; note: string; amount: number; date: string }) => Result
   deleteExpense: (id: string) => Result
   updateSettings: (storeId: string, patch: Partial<StoreSettings>) => Result
   completeBusinessSetup: (storeId: string, businessType: BusinessType) => Result

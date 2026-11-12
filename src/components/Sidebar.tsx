@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Calculator,
+  ClipboardList,
   LayoutDashboard,
   LogOut,
   Package,
@@ -74,7 +75,10 @@ export function Sidebar({
             { to: '/admin/expenses', label: 'Expenses', icon: Wallet, tone: 'rose' },
             { to: '/admin/register', label: 'Register', icon: Calculator, tone: 'teal' },
           ] },
-          { label: 'SYSTEM', items: [{ to: '/admin/settings', label: 'Settings', icon: Settings, tone: 'blue' }] },
+          { label: 'SYSTEM', items: [
+            { to: '/admin/logs', label: 'Activity log', icon: ClipboardList, tone: 'purple' },
+            { to: '/admin/settings', label: 'Settings', icon: Settings, tone: 'blue' },
+          ] },
         ]
 
   const outstanding = store ? getOutstandingBalance(db, store.id) : 0

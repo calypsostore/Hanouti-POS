@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../types'
 import { verifySecret } from '../lib/hash'
+import { addLog } from './audit'
 import type { Result } from './types'
 import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
 
@@ -26,10 +27,11 @@ type AuthSliceDependencies = {
   dbRef: { current: Database }
   ready: boolean
   loadError: string
+  commitDb: (update: (prev: Database) => Database) => Database
 }
 
 export function useAuthSlice(dependencies: AuthSliceDependencies) {
-  const { dbRef, ready, loadError } = dependencies
+  const { dbRef, ready, loadError, commitDb } = dependencies
   const [userId, setStoredUserId] = useState<string | null>(readStoredUserId)
   const userIdRef = useRef<string | null>(userId)
   const pinFailures = useRef(new Map<string, { count: number; lockedUntil: number }>())
@@ -37,6 +39,19 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
     userIdRef.current = next
     setStoredUserId(next)
   }, [])
+  const recordFailure = useCallback((identifier: string, user?: Database['users'][number]) => {
+    const label = identifier.slice(0, 254)
+    const actor = user
+      ? { id: user.id, name: user.name, role: user.role }
+      : { id: 'unknown', name: label, role: 'unknown' as const }
+    commitDb((prev) => addLog(prev, actor, {
+      storeId: user?.storeId ?? 'system',
+      action: 'login_failure',
+      entity: 'auth',
+      entityId: user?.id,
+      summary: `Sign-in failed for ${label}`,
+    }))
+  }, [commitDb])
   useEffect(() => {
     try {
       if (userId) localStorage.setItem(SESSION_KEY, userId)
@@ -54,20 +69,32 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
       )
       if (!found || !(await verifySecret(password, found.password))) {
+        recordFailure(normalizedEmail, found)
         return { ok: false, error: 'Incorrect email or password.' }
       }
-      if (!found.active) return { ok: false, error: 'This account has been deactivated.' }
+      if (!found.active) {
+        recordFailure(normalizedEmail, found)
+        return { ok: false, error: 'This account has been deactivated.' }
+      }
       if (found.storeId) {
         const owner = current.stores.find((s) => s.id === found.storeId)
         if (owner?.status === 'suspended') {
+          recordFailure(normalizedEmail, found)
           return { ok: false, error: 'This store is suspended. Contact the platform owner.' }
         }
       }
+      commitDb((prev) => addLog(prev, found, {
+        storeId: found.storeId ?? 'system',
+        action: 'login_success',
+        entity: 'auth',
+        entityId: found.id,
+        summary: `Signed in with email ${normalizedEmail.slice(0, 254)}`,
+      }))
       userIdRef.current = found.id
       setSessionUserId(found.id)
       return { ok: true }
     },
-    [dbRef, ready, loadError, setSessionUserId],
+    [dbRef, ready, loadError, recordFailure, commitDb, setSessionUserId],
   )
 
   const loginPin = useCallback(
@@ -76,14 +103,15 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
       if (!needle) return { ok: false, error: 'Enter your username.' }
       const current = dbRef.current
-      const failure = pinFailures.current.get(needle)
-      if (failure?.lockedUntil && failure.lockedUntil > Date.now()) {
-        const seconds = Math.ceil((failure.lockedUntil - Date.now()) / 1000)
-        return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
-      }
       const found = current.users.find(
         (user) => user.role === 'staff' && user.username?.toLowerCase() === needle,
       )
+      const failure = pinFailures.current.get(needle)
+      if (failure?.lockedUntil && failure.lockedUntil > Date.now()) {
+        const seconds = Math.ceil((failure.lockedUntil - Date.now()) / 1000)
+        recordFailure(needle, found)
+        return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
+      }
       const enteredPin = pin.trim()
       const validPin = found && /^\d{4,6}$/.test(enteredPin)
         ? await verifySecret(enteredPin, found.pin)
@@ -92,6 +120,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         const latestFailure = pinFailures.current.get(needle)
         if (latestFailure?.lockedUntil && latestFailure.lockedUntil > Date.now()) {
           const seconds = Math.ceil((latestFailure.lockedUntil - Date.now()) / 1000)
+          recordFailure(needle, found)
           return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
         }
         const attempts = (latestFailure?.count ?? 0) + 1
@@ -99,6 +128,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
           count: attempts >= 5 ? 0 : attempts,
           lockedUntil: attempts >= 5 ? Date.now() + 30_000 : 0,
         })
+        recordFailure(needle, found)
         return {
           ok: false,
           error: attempts >= 5
@@ -107,25 +137,49 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         }
       }
       pinFailures.current.delete(needle)
-      if (!found.active) return { ok: false, error: 'This account has been deactivated.' }
+      if (!found.active) {
+        recordFailure(needle, found)
+        return { ok: false, error: 'This account has been deactivated.' }
+      }
       const store = found.storeId
         ? current.stores.find((candidate) => candidate.id === found.storeId)
         : undefined
-      if (!store) return { ok: false, error: 'This staff account is not linked to a store.' }
+      if (!store) {
+        recordFailure(needle, found)
+        return { ok: false, error: 'This staff account is not linked to a store.' }
+      }
       if (store.status === 'suspended') {
+        recordFailure(needle, found)
         return { ok: false, error: 'This store is suspended. Contact your manager.' }
       }
+      commitDb((prev) => addLog(prev, found, {
+        storeId: store.id,
+        action: 'login_success',
+        entity: 'auth',
+        entityId: found.id,
+        summary: `Signed in with username ${needle.slice(0, 254)}`,
+      }))
       userIdRef.current = found.id
       setSessionUserId(found.id)
       return { ok: true }
     },
-    [dbRef, ready, loadError, pinFailures, setSessionUserId],
+    [dbRef, ready, loadError, pinFailures, recordFailure, commitDb, setSessionUserId],
   )
 
   const logout = useCallback(() => {
+    const actor = dbRef.current.users.find((candidate) => candidate.id === userIdRef.current)
+    if (actor) {
+      commitDb((prev) => addLog(prev, actor, {
+        storeId: actor.storeId ?? 'system',
+        action: 'logout',
+        entity: 'auth',
+        entityId: actor.id,
+        summary: 'Logged out',
+      }))
+    }
     userIdRef.current = null
     setSessionUserId(null)
-  }, [setSessionUserId])
+  }, [commitDb, dbRef, setSessionUserId])
 
 
   return { userId, userIdRef, setUserId: setSessionUserId, login, loginPin, logout }

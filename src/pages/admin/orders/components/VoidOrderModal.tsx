@@ -1,13 +1,15 @@
 import { KeyRound, Trash2 } from 'lucide-react'
 import type { Order } from '../../../../types'
-import { Button, Field, Input, Modal } from '../../../../components/ui'
+import { Button, Field, Input, Modal, Textarea } from '../../../../components/ui'
 import { money } from '../../../../lib/utils'
 
 type Props = {
   order: Order | null
   isAdmin: boolean
   pin: string
+  reason: string
   onPinChange: (pin: string) => void
+  onReasonChange: (reason: string) => void
   onClose: () => void
   onConfirm: () => void
 }
@@ -16,7 +18,9 @@ export default function VoidOrderModal({
   order,
   isAdmin,
   pin,
+  reason,
   onPinChange,
+  onReasonChange,
   onClose,
   onConfirm,
 }: Props) {
@@ -34,7 +38,7 @@ export default function VoidOrderModal({
           </Button>
           <Button
             variant="danger"
-            disabled={!isAdmin && !/^\d{4,6}$/.test(pin.trim())}
+            disabled={!reason.trim() || (!isAdmin && !/^\d{4,6}$/.test(pin.trim()))}
             onClick={onConfirm}
           >
             <Trash2 className="h-4 w-4" /> Void order
@@ -47,6 +51,15 @@ export default function VoidOrderModal({
           The sale will be marked as void and excluded from reports. If it was charged to a tab,
           the charge is reversed automatically. This cannot be undone.
         </p>
+        <Field label="Reason" hint={`${reason.length}/240`}>
+          <Textarea
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value.slice(0, 240))}
+            placeholder="Why is this order being voided?"
+            rows={3}
+            autoFocus={isAdmin}
+          />
+        </Field>
         {isAdmin ? (
           <div className="flex items-center gap-2 rounded-lg bg-cream-100 px-3 py-2 text-[11.5px] text-muted">
             <KeyRound className="h-3.5 w-3.5" />

@@ -55,6 +55,8 @@ The login screen has one-click demo buttons for the first three.
 - Orders history with filters, detail drawer, receipt reprint (`*** REPRINT ***`
   marker), CSV export and voids — staff voids require a manager PIN and record
   who authorized them
+- Admin-only activity log with user/entity/date/search filters, before/after
+  details, CSV export and 50-entry pagination
 - Regulars & tabs: monthly customer cards with credit limits, settlement cycle,
   running balances, full ledger and partial or full payments. Staff can start
   orders and take payments; only admins can edit profiles or remove customers.
@@ -64,7 +66,7 @@ The login screen has one-click demo buttons for the first three.
   tabs, settlements, register, reports, shift supervisor), activation
 - Reports: today / week / month / year, sales chart, payment split, top
   products, categories, staff performance, tab charges vs settlements, expenses
-- Expenses: add/delete, monthly totals, category breakdown, CSV export
+- Expenses: add/edit/delete, monthly totals, category breakdown, CSV export
 - **Cash register (X/Z)**: X report any time without closing; Z closing with
   counted cash and cash-difference; sessions are unique and become immutable
   once closed; full Z history can be viewed and re-printed exactly as closed.

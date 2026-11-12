@@ -824,5 +824,5 @@ export function buildSeed(): Database {
     }
   }
 
-  return { stores, users, categories, products, customers, orders, ledger, expenses, registerSessions }
+  return { stores, users, categories, products, customers, orders, ledger, expenses, registerSessions, auditLogs: [] }
 }

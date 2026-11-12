@@ -1,13 +1,21 @@
 import { useCallback } from 'react'
-import type { User } from '../types'
+import type { AuditJsonValue, User } from '../types'
 import { uid } from '../lib/utils'
 import { hashRandomSecret, hashSecret } from '../lib/hash'
 import { isValidUsername, normalizeUsername } from '../lib/staff'
+import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
 const isValidPhoto = (photo: string | undefined) =>
   photo === undefined || (photo.startsWith('data:image/') && photo.length <= 307200)
+
+const staffSnapshot = (user: User): Record<string, AuditJsonValue> => ({
+  name: user.name,
+  username: user.username ?? '',
+  active: user.active,
+  permissions: { ...user.permissions },
+})
 
 export function useStaffSlice(dependencies: StoreSliceDependencies) {
   const { dbRef, commitDb, requireAdmin } = dependencies
@@ -38,23 +46,28 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       if (dbRef.current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
         return { ok: false, error: 'That username is already in use.' }
       }
-      commitDb((prev) => ({
+      const member: User = {
+        ...data,
+        name: data.name.trim(),
+        username,
+        email: '',
+        password,
+        pin,
+        role: 'staff',
+        id: uid('usr'),
+        storeId,
+        createdAt: new Date().toISOString(),
+      }
+      commitDb((prev) => addLog({
         ...prev,
-        users: [
-          ...prev.users,
-          {
-            ...data,
-            name: data.name.trim(),
-            username,
-            email: '',
-            password,
-            pin,
-            role: 'staff',
-            id: uid('usr'),
-            storeId,
-            createdAt: new Date().toISOString(),
-          },
-        ],
+        users: [...prev.users, member],
+      }, actorResult.actor, {
+        storeId,
+        action: 'created',
+        entity: 'staff',
+        entityId: member.id,
+        summary: `Added staff member ${member.name} (${username})`,
+        after: staffSnapshot(member),
       }))
       return { ok: true }
     },
@@ -65,7 +78,8 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     const current = dbRef.current
     const member = current.users.find((candidate) => candidate.id === id)
     if (!member?.storeId) return { ok: false, error: 'Team member not found.' }
-    const actorResult = requireAdmin(member.storeId)
+    const storeId = member.storeId
+    const actorResult = requireAdmin(storeId)
     if (!actorResult.ok) return actorResult
     if (patch.storeId !== undefined && patch.storeId !== member.storeId) {
       return { ok: false, error: 'A team member cannot be moved to another store.' }
@@ -96,6 +110,8 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     }
     const nextRole = patch.role ?? member.role
     const nextActive = patch.active ?? member.active
+    const activeChanged = nextActive !== member.active
+    const pinReset = Boolean(patch.pin)
     const activeAdmins = current.users.filter((u) => u.storeId === member.storeId && u.role === 'admin' && u.active)
     if (member.role === 'admin' && member.active && (nextRole !== 'admin' || !nextActive) && activeAdmins.length <= 1) {
       return { ok: false, error: 'You cannot demote or deactivate the last active store admin.' }
@@ -122,10 +138,44 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (username !== undefined && dbRef.current.users.some((user) =>
       user.id !== id && normalizeUsername(user.username ?? '') === username,
     )) return { ok: false, error: 'That username is already in use.' }
-    commitDb((prev) => ({
-      ...prev,
-      users: prev.users.map((u) => (u.id === id ? { ...u, ...safePatch } : u)),
-    }))
+    const updated = { ...member, ...safePatch }
+    const changes = changedAuditFields(staffSnapshot(member), staffSnapshot(updated))
+    commitDb((prev) => {
+      let next = { ...prev, users: prev.users.map((u) => (u.id === id ? updated : u)) }
+      if (changes.fields.some((field) => field !== 'active')) {
+        next = addLog(next, latestActor.actor, {
+          storeId,
+          action: 'edited',
+          entity: 'staff',
+          entityId: id,
+          summary: `Edited staff member ${member.name} (${changes.fields.filter((field) => field !== 'active').join(', ')})`,
+          before: Object.fromEntries(changes.fields.filter((field) => field !== 'active').map((field) => [field, changes.before[field]])),
+          after: Object.fromEntries(changes.fields.filter((field) => field !== 'active').map((field) => [field, changes.after[field]])),
+        })
+      }
+      if (activeChanged) {
+        next = addLog(next, latestActor.actor, {
+          storeId,
+          action: nextActive ? 'activated' : 'deactivated',
+          entity: 'staff',
+          entityId: id,
+          summary: `${nextActive ? 'Activated' : 'Deactivated'} staff member ${member.name}`,
+          before: { active: member.active },
+          after: { active: nextActive },
+        })
+      }
+      if (pinReset) {
+        next = addLog(next, latestActor.actor, {
+          storeId,
+          action: 'pin_reset',
+          entity: 'staff',
+          entityId: id,
+          summary: `Reset PIN for staff member ${member.name}`,
+          after: { pinReset: true },
+        })
+      }
+      return next
+    })
     return { ok: true }
   }, [commitDb, requireAdmin])
 
@@ -133,7 +183,8 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     (id) => {
       const member = dbRef.current.users.find((candidate) => candidate.id === id)
       if (!member?.storeId) return { ok: false, error: 'Team member not found.' }
-      const actorResult = requireAdmin(member.storeId)
+      const storeId = member.storeId
+      const actorResult = requireAdmin(storeId)
       if (!actorResult.ok) return actorResult
       if (actorResult.actor.id === id) return { ok: false, error: 'You cannot delete your own account.' }
       const remainingAdmins = dbRef.current.users.filter(
@@ -142,7 +193,17 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       if (member.role === 'admin' && member.active && remainingAdmins.length <= 1) {
         return { ok: false, error: 'You cannot remove the only active store admin.' }
       }
-      commitDb((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }))
+      commitDb((prev) => addLog({
+        ...prev,
+        users: prev.users.filter((u) => u.id !== id),
+      }, actorResult.actor, {
+        storeId,
+        action: 'deleted',
+        entity: 'staff',
+        entityId: id,
+        summary: `Deleted team member ${member.name}`,
+        before: staffSnapshot(member),
+      }))
       return { ok: true }
     },
     [commitDb, requireAdmin],

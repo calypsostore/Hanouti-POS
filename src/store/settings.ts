@@ -1,14 +1,50 @@
 import { useCallback } from 'react'
-import type { Store, User } from '../types'
+import type { AuditJsonValue, Database, Expense, Store, StoreSettings, User } from '../types'
 import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
 import { DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
+import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { CreateStoreInput } from './types'
 import type { SettingsSliceDependencies } from './sliceTypes'
+
+const expenseSnapshot = (expense: Expense): Record<string, AuditJsonValue> => ({
+  category: expense.category,
+  note: expense.note.slice(0, 120),
+  amount: expense.amount,
+  date: dateKey(expense.date),
+})
+
+const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValue> => ({
+  posMode: settings.posMode,
+  currency: settings.currency,
+  taxRate: settings.taxRate,
+  taxInclusive: settings.taxInclusive,
+  serviceCharge: settings.serviceCharge,
+  allowCredit: settings.allowCredit,
+  requireCustomerForCredit: settings.requireCustomerForCredit,
+  receiptFooter: settings.receiptFooter,
+  lowStockThreshold: settings.lowStockThreshold,
+  accent: settings.accent,
+  colorMode: settings.colorMode,
+  printer: { ...settings.printer },
+  features: { ...settings.features },
+})
+
+const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => ({
+  name: store.name,
+  ownerName: store.ownerName,
+  ownerEmail: store.ownerEmail,
+  phone: store.phone,
+  address: store.address,
+  city: store.city,
+  icon: store.icon,
+  iconColor: store.iconColor,
+  logo: store.logo ? 'set' : 'not set',
+})
 
 export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
   const { dbRef, commitDb, requireActor, requireAdmin, userIdRef, setUserId } = dependencies
@@ -24,54 +60,115 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const timestamp = datePart === dateKey(new Date())
       ? new Date().toISOString()
       : date.toISOString()
-    commitDb((prev) => ({
+    const expense: Expense = {
+      id: uid('exp'),
+      storeId,
+      category: data.category,
+      note: data.note,
+      amount: round(data.amount),
+      date: timestamp,
+      createdAt: new Date().toISOString(),
+      createdBy: actorResult.actor.id,
+    }
+    commitDb((prev) => addLog({
       ...prev,
-      expenses: [
-        {
-          id: uid('exp'),
-          storeId,
-          category: data.category,
-          note: data.note,
-          amount: round(data.amount),
-          date: timestamp,
-          createdAt: new Date().toISOString(),
-          createdBy: actorResult.actor.id,
-        },
-        ...prev.expenses,
-      ],
+      expenses: [expense, ...prev.expenses],
+    }, actorResult.actor, {
+      storeId,
+      action: 'created',
+      entity: 'expense',
+      entityId: expense.id,
+      summary: `Recorded ${expense.category} expense of ${expense.amount.toFixed(3)} DT`,
+      after: expenseSnapshot(expense),
     }))
     return { ok: true }
   }, [commitDb, requireAdmin])
+
+  const updateExpense = useCallback<AppContextValue['updateExpense']>((id, data) => {
+    const expense = dbRef.current.expenses.find((candidate) => candidate.id === id)
+    if (!expense) return { ok: false, error: 'Expense not found.' }
+    const actorResult = requireAdmin(expense.storeId)
+    if (!actorResult.ok) return actorResult
+    if (!Number.isFinite(data.amount) || data.amount <= 0) return { ok: false, error: 'Enter an amount greater than zero.' }
+    const datePart = data.date.slice(0, 10)
+    const date = new Date(`${datePart}T12:00:00`)
+    if (!Number.isFinite(date.getTime()) || dateKey(date) !== datePart) {
+      return { ok: false, error: 'Choose a valid expense date.' }
+    }
+    const timestamp = datePart === dateKey(new Date())
+      ? new Date().toISOString()
+      : date.toISOString()
+    const updated: Expense = {
+      ...expense,
+      category: data.category,
+      note: data.note,
+      amount: round(data.amount),
+      date: timestamp,
+    }
+    const changes = changedAuditFields(expenseSnapshot(expense), expenseSnapshot(updated))
+    commitDb((prev) => addLog({
+      ...prev,
+      expenses: prev.expenses.map((entry) => (entry.id === id ? updated : entry)),
+    }, actorResult.actor, {
+      storeId: expense.storeId,
+      action: 'edited',
+      entity: 'expense',
+      entityId: id,
+      summary: `Edited ${expense.category} expense${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      before: changes.before,
+      after: changes.after,
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireAdmin])
 
   const deleteExpense = useCallback<AppContextValue['deleteExpense']>((id) => {
     const expense = dbRef.current.expenses.find((candidate) => candidate.id === id)
     if (!expense) return { ok: false, error: 'Expense not found.' }
     const actorResult = requireAdmin(expense.storeId)
     if (!actorResult.ok) return actorResult
-    commitDb((prev) => ({ ...prev, expenses: prev.expenses.filter((e) => e.id !== id) }))
+    commitDb((prev) => addLog({
+      ...prev,
+      expenses: prev.expenses.filter((e) => e.id !== id),
+    }, actorResult.actor, {
+      storeId: expense.storeId,
+      action: 'deleted',
+      entity: 'expense',
+      entityId: id,
+      summary: `Deleted ${expense.category} expense of ${expense.amount.toFixed(3)} DT`,
+      before: expenseSnapshot(expense),
+    }))
     return { ok: true }
   }, [commitDb, requireAdmin])
 
   const updateSettings = useCallback<AppContextValue['updateSettings']>((storeId, patch) => {
     const actorResult = requireAdmin(storeId)
     if (!actorResult.ok) return actorResult
-    if (!dbRef.current.stores.some((store) => store.id === storeId)) {
-      return { ok: false, error: 'Store not found.' }
-    }
     if (patch.features) {
       const featureValues = Object.values(patch.features)
       if (featureValues.length !== 4 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
         return { ok: false, error: 'Business feature settings must be enabled or disabled.' }
       }
     }
-    commitDb((prev) => ({
+    const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    const updated = { ...store, settings: { ...store.settings, ...patch } }
+    const changes = changedAuditFields(settingsSnapshot(store.settings), settingsSnapshot(updated.settings))
+    commitDb((prev) => addLog({
       ...prev,
       stores: prev.stores.map((s) =>
-        s.id === storeId ? { ...s, settings: { ...s.settings, ...patch } } : s,
+        s.id === storeId ? updated : s,
       ),
+    }, actorResult.actor, {
+      storeId,
+      action: 'settings_updated',
+      entity: 'settings',
+      entityId: storeId,
+      summary: `Updated store settings${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      before: changes.before,
+      after: changes.after,
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, dbRef, requireAdmin])
 
   const completeBusinessSetup = useCallback<AppContextValue['completeBusinessSetup']>((storeId, businessType) => {
     const actorResult = requireAdmin(storeId)
@@ -84,34 +181,69 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const template = businessTemplate(businessType)
     commitDb((prev) => {
       const hasProducts = prev.products.some((product) => product.storeId === storeId)
+      const createdCategories = hasProducts
+        ? []
+        : template.categories.map((category, sort) => ({
+            ...category,
+            id: uid('cat'),
+            storeId,
+            sort,
+          }))
       const categories = hasProducts
         ? prev.categories
         : [
             ...prev.categories.filter((category) => category.storeId !== storeId),
-            ...template.categories.map((category, sort) => ({
-              ...category,
-              id: uid('cat'),
-              storeId,
-              sort,
-            })),
+            ...createdCategories,
           ]
-      return {
+      const currentStore = prev.stores.find((candidate) => candidate.id === storeId)
+      const updatedStore = currentStore ? {
+        ...currentStore,
+        businessType,
+        setupComplete: true,
+        settings: {
+          ...currentStore.settings,
+          posMode: template.posMode,
+          receiptFooter: template.receiptFooter,
+          features: template.features,
+        },
+      } : undefined
+      const next: Database = {
         ...prev,
         categories,
-        stores: prev.stores.map((candidate) => candidate.id === storeId
-          ? {
-              ...candidate,
-              businessType,
-              setupComplete: true,
-              settings: {
-                ...candidate.settings,
-                posMode: template.posMode,
-                receiptFooter: template.receiptFooter,
-                features: template.features,
-              },
-            }
-          : candidate),
+        stores: updatedStore
+          ? prev.stores.map((candidate) => candidate.id === storeId ? updatedStore : candidate)
+          : prev.stores,
       }
+      if (!currentStore || !updatedStore) return next
+      const changes = changedAuditFields(
+        { businessType: currentStore.businessType, ...settingsSnapshot(currentStore.settings) },
+        { businessType: updatedStore.businessType, ...settingsSnapshot(updatedStore.settings) },
+      )
+      let logged = addLog(next, actorResult.actor, {
+        storeId,
+        action: 'settings_updated',
+        entity: 'settings',
+        entityId: storeId,
+        summary: `Completed ${businessType} business setup`,
+        before: changes.before,
+        after: changes.after,
+      })
+      for (const category of createdCategories) {
+        logged = addLog(logged, actorResult.actor, {
+          storeId,
+          action: 'created',
+          entity: 'category',
+          entityId: category.id,
+          summary: `Created category ${category.name}`,
+          after: {
+            name: category.name,
+            icon: category.icon,
+            iconColor: category.iconColor,
+            sort: category.sort,
+          },
+        })
+      }
+      return logged
     })
     return { ok: true }
   }, [commitDb, dbRef, requireAdmin])
@@ -200,7 +332,18 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         features: template.features,
       },
     }
-    commitDb((prev) => ({ ...prev, stores: [...prev.stores, store], users: [...prev.users, admin] }))
+    commitDb((prev) => addLog({
+      ...prev,
+      stores: [...prev.stores, store],
+      users: [...prev.users, admin],
+    }, currentActor.actor, {
+      storeId,
+      action: 'created',
+      entity: 'settings',
+      entityId: storeId,
+      summary: `Created store ${store.name}`,
+      after: { name: store.name, slug: store.slug, plan: store.plan, status: store.status },
+    }))
     return { ok: true }
   }, [commitDb, dbRef, requireActor])
 
@@ -211,7 +354,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (actor.role !== 'super' && (actor.role !== 'admin' || actor.storeId !== storeId)) {
       return { ok: false, error: 'Only a store admin can edit this store profile.' }
     }
-    if (!dbRef.current.stores.some((s) => s.id === storeId)) return { ok: false, error: 'Store not found.' }
+    const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
     if (patch.logo !== undefined && patch.logo.length > 307200) {
       return { ok: false, error: 'Store logos must be no larger than 300 KB.' }
     }
@@ -222,36 +366,68 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     delete safePatch.plan
     delete safePatch.createdAt
     delete safePatch.trialEndsAt
-    commitDb((prev) => ({
+    const updated = { ...store, ...safePatch }
+    const changes = changedAuditFields(storeProfileSnapshot(store), storeProfileSnapshot(updated))
+    const logoChanged = safePatch.logo !== undefined && safePatch.logo !== store.logo
+    const before = logoChanged ? { ...changes.before, logo: store.logo ? 'set' : 'not set' } : changes.before
+    const after = logoChanged ? { ...changes.after, logo: safePatch.logo ? 'updated' : 'removed' } : changes.after
+    const changedFields = [...changes.fields, ...(logoChanged ? ['logo'] : [])]
+    commitDb((prev) => addLog({
       ...prev,
-      stores: prev.stores.map((s) => (s.id === storeId ? { ...s, ...safePatch } : s)),
+      stores: prev.stores.map((s) => (s.id === storeId ? updated : s)),
+    }, actor, {
+      storeId,
+      action: 'settings_updated',
+      entity: 'settings',
+      entityId: storeId,
+      summary: `Updated store profile${changedFields.length ? ` (${changedFields.join(', ')})` : ''}`,
+      before,
+      after,
     }))
     return { ok: true as const }
-  }, [commitDb, requireActor])
+  }, [commitDb, dbRef, requireActor])
 
   const setStoreStatus = useCallback<AppContextValue['setStoreStatus']>((storeId, status) => {
     const actorResult = requireActor()
     if (!actorResult.ok) return actorResult
     if (actorResult.actor.role !== 'super') return { ok: false, error: 'Only the platform owner can change store status.' }
-    if (!dbRef.current.stores.some((s) => s.id === storeId)) return { ok: false, error: 'Store not found.' }
-    commitDb((prev) => ({
+    const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    commitDb((prev) => addLog({
       ...prev,
       stores: prev.stores.map((s) => (s.id === storeId ? { ...s, status } : s)),
+    }, actorResult.actor, {
+      storeId,
+      action: 'settings_updated',
+      entity: 'settings',
+      entityId: storeId,
+      summary: `Changed store status to ${status}`,
+      before: { status: store.status },
+      after: { status },
     }))
     return { ok: true as const }
-  }, [commitDb, requireActor])
+  }, [commitDb, dbRef, requireActor])
 
   const changePlan = useCallback<AppContextValue['changePlan']>((storeId, plan) => {
     const actorResult = requireActor()
     if (!actorResult.ok) return actorResult
     if (actorResult.actor.role !== 'super') return { ok: false, error: 'Only the platform owner can change a store plan.' }
-    if (!dbRef.current.stores.some((s) => s.id === storeId)) return { ok: false, error: 'Store not found.' }
-    commitDb((prev) => ({
+    const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    commitDb((prev) => addLog({
       ...prev,
       stores: prev.stores.map((s) => (s.id === storeId ? { ...s, plan } : s)),
+    }, actorResult.actor, {
+      storeId,
+      action: 'settings_updated',
+      entity: 'settings',
+      entityId: storeId,
+      summary: `Changed store plan to ${plan}`,
+      before: { plan: store.plan },
+      after: { plan },
     }))
     return { ok: true }
-  }, [commitDb, requireActor])
+  }, [commitDb, dbRef, requireActor])
 
   const resetDemo = useCallback(async () => {
     const actorResult = requireActor()
@@ -269,7 +445,22 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     }
     const latestActor = requireActor()
     if (!latestActor.ok) return latestActor
-    commitDb(() => ({ ...fresh, users }))
+    commitDb((prev) => {
+      const initial = { ...fresh, users, auditLogs: prev.auditLogs }
+      const storeId = latestActor.actor.storeId ?? 'system'
+      const reset = addLog(initial, latestActor.actor, {
+        storeId,
+        action: 'demo_reset',
+        entity: 'settings',
+        summary: 'Reset demo data',
+      })
+      return addLog(reset, latestActor.actor, {
+        storeId,
+        action: 'logout',
+        entity: 'auth',
+        summary: 'Logged out after demo reset',
+      })
+    })
     userIdRef.current = null
     setUserId(null)
     return { ok: true as const }
@@ -278,6 +469,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
 
   return {
     addExpense,
+    updateExpense,
     deleteExpense,
     updateSettings,
     completeBusinessSetup,

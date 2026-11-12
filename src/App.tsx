@@ -14,6 +14,7 @@ import Products from './pages/admin/Products'
 import Staff from './pages/admin/Staff'
 import Reports from './pages/admin/Reports'
 import Expenses from './pages/admin/Expenses'
+import ActivityLog from './pages/admin/ActivityLog'
 import Settings from './pages/admin/Settings'
 import SetupWizard from './pages/admin/SetupWizard'
 import SuperOverview from './pages/super/Overview'
@@ -35,7 +36,10 @@ function ScrollToTop() {
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { user } = useApp()
+  const { user, databaseReady, databaseError } = useApp()
+  if (!databaseReady && !databaseError) {
+    return <div className="grid min-h-screen place-items-center text-sm text-muted">Loading your workspace…</div>
+  }
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -170,6 +174,14 @@ export default function App() {
                 element={
                   <RoleGate roles={['admin']}>
                     <Settings />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="logs"
+                element={
+                  <RoleGate roles={['admin']}>
+                    <ActivityLog />
                   </RoleGate>
                 }
               />

@@ -32,6 +32,7 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState<Order | null>(null)
   const [voidTarget, setVoidTarget] = useState<Order | null>(null)
   const [voidPin, setVoidPin] = useState('')
+  const [voidReason, setVoidReason] = useState('')
   const [printJob, setPrintJob] = useState<PrintJob | null>(null)
   const [limit, setLimit] = useState(20)
 
@@ -112,7 +113,7 @@ export default function OrdersPage() {
 
   const confirmVoid = async () => {
     if (!voidTarget) return
-    const result = await voidOrder(voidTarget.id, user.role === 'admin' ? undefined : voidPin)
+    const result = await voidOrder(voidTarget.id, user.role === 'admin' ? undefined : voidPin, voidReason)
     if (!result.ok) {
       push(result.error, 'error')
       return
@@ -120,6 +121,7 @@ export default function OrdersPage() {
     push(`Order #${voidTarget.number} voided`, 'info')
     setVoidTarget(null)
     setVoidPin('')
+    setVoidReason('')
     setSelected(null)
   }
 
@@ -177,6 +179,7 @@ export default function OrdersPage() {
         onVoid={() => {
           if (!selected) return
           setVoidPin('')
+          setVoidReason('')
           setVoidTarget(selected)
         }}
         onReprint={reprint}
@@ -186,8 +189,13 @@ export default function OrdersPage() {
         order={voidTarget}
         isAdmin={user.role === 'admin'}
         pin={voidPin}
+        reason={voidReason}
         onPinChange={setVoidPin}
-        onClose={() => setVoidTarget(null)}
+        onReasonChange={setVoidReason}
+        onClose={() => {
+          setVoidTarget(null)
+          setVoidReason('')
+        }}
         onConfirm={confirmVoid}
       />
       <PrintModal job={printJob} onClose={() => setPrintJob(null)} />

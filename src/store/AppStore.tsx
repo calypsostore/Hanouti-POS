@@ -19,6 +19,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dbRef: database.dbRef,
     ready: database.ready,
     loadError: database.loadError,
+    commitDb: database.commitDb,
   })
   const guards = useActorGuards({
     dbRef: database.dbRef,

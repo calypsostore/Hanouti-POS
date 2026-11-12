@@ -57,7 +57,7 @@ stored; no demo values are presented as production data.
   legends.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during the
-  `7anouti.db.v11` local database normalization; the legacy emoji property is
+  `7anouti.db.v12` local database normalization; the legacy emoji property is
   removed. Store logos and product images can be uploaded and resized to 256 px
   client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -76,9 +76,14 @@ stored; no demo values are presented as production data.
   upload their profile photo, and edit team photos alongside existing name,
   username, PIN, permission, and active-status controls. Staff sign in with a
   unique username and PIN; admin accounts retain email/password login.
+- Store admins have an append-only, per-store activity log for sign-ins,
+  orders, catalog, customers, staff, expenses, registers, and settings. The
+  admin page supports filters, before/after details, CSV export, and
+  50-entry pagination. Entries are capped at 3,000 per store and remain
+  browser-local demo data, not tamper-resistant audit history.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
-  settings viewport had no horizontal overflow. The local v11 database contains
+  settings viewport had no horizontal overflow. The local v12 database contains
   icon keys on every store/category/product and no remaining legacy emoji
   fields.
 - This remains a browser-local demo: image data and business records live in
@@ -102,7 +107,7 @@ stored; no demo values are presented as production data.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v11` in IndexedDB migrates the previous v10 IndexedDB/localStorage
+- `7anouti.db.v12` in IndexedDB migrates the previous v11/v10 IndexedDB/localStorage
   data and legacy `7anouti.db.v9`, v8, `cafepos.db.v8`, v7 and v6 databases with
   safe defaults for new fields, including staff usernames. Seed data includes
   realistic sample stores for all six business types.
@@ -113,8 +118,8 @@ stored; no demo values are presented as production data.
 ### Requested feature phases 2–9 ⏳ not started
 
 Restaurant open orders and tables; returns and labels; Tunisia VAT/fiscal
-compliance; ingredients and inventory; shifts, permissions and activity
-history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
+compliance; ingredients and inventory; shifts, payroll, and trusted server-side
+activity history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
 polish remain planned work.
 
 ---
@@ -129,12 +134,13 @@ polish remain planned work.
 | Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
 | Reports | Daily/monthly charts, CSV export | + X/Z register reports (new page) |
 | Register | **None** — no session concept | X report, Z close with counted cash + difference, immutable history |
+| Activity log | Derived dashboard notices only | Append-only browser-local log, admin filters, details, CSV and pagination |
 | Printing | Browser print dialog only | + real ESC/POS over WebSerial (58/80 mm), test print, kitchen tickets |
 | Inventory | Product stock counters only | Unchanged (Phase 5) |
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v11`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v12`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is
@@ -221,10 +227,12 @@ on every movement), low-stock alerts, valuation, suppliers + purchases.
 
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 
-Unique PINs, store-scoped access, granular permissions, PBKDF2 credential
-hashing in local storage, and a 30-second lock after five failed store-PIN
-attempts are implemented in the demo. Phase 2 must add server-side hashing,
-authoritative rate limiting, session timeout, and activity tracking.
+Store-scoped access, granular permissions, PBKDF2 credential hashing,
+username-based staff PIN login, and a 30-second lock after five failed
+username attempts are implemented in the demo. The browser-local activity log
+records relevant actions but is not tamper-resistant. Phase 2 must add
+server-side hashing, authoritative rate limiting, session timeout, and a
+trusted server-side audit log.
 
 ### Phase 7 — Offline-first ⏳ not started (needs Phase 2 API design)
 

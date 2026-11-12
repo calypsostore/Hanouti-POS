@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
-import type { Category, Product } from '../types'
+import type { AuditJsonValue, Category, Product } from '../types'
 import { uid } from '../lib/utils'
+import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -49,28 +50,56 @@ const validateOptions = (
   return null
 }
 
+const categorySnapshot = (category: Category): Record<string, AuditJsonValue> => ({
+  name: category.name,
+  icon: category.icon,
+  iconColor: category.iconColor,
+  sort: category.sort,
+})
+
+const productSnapshot = (product: Product): Record<string, AuditJsonValue> => ({
+  name: product.name,
+  categoryId: product.categoryId,
+  price: product.price,
+  cost: product.cost,
+  stock: product.stock,
+  trackStock: product.trackStock,
+  active: product.active,
+  variants: (product.variants ?? []).map((variant) => ({
+    name: variant.name,
+    price: variant.price,
+    stock: variant.stock,
+    trackStock: variant.trackStock,
+  })),
+})
+
 export function useCatalogSlice(dependencies: StoreSliceDependencies) {
   const { dbRef, commitDb, requireAdmin } = dependencies
   const addCategory = useCallback<AppContextValue['addCategory']>((storeId, data) => {
     const actorResult = requireAdmin(storeId)
     if (!actorResult.ok) return actorResult
     if (!data.name.trim()) return { ok: false, error: 'Enter a category name.' }
-    commitDb((prev) => ({
+    const category: Category = {
+      id: uid('cat'),
+      storeId,
+      name: data.name.trim(),
+      icon: data.icon,
+      iconColor: data.iconColor,
+      sort: dbRef.current.categories.filter((c) => c.storeId === storeId).length,
+    }
+    commitDb((prev) => addLog({
       ...prev,
-      categories: [
-        ...prev.categories,
-        {
-          id: uid('cat'),
-          storeId,
-          name: data.name.trim(),
-          icon: data.icon,
-          iconColor: data.iconColor,
-          sort: prev.categories.filter((c) => c.storeId === storeId).length,
-        },
-      ],
+      categories: [...prev.categories, category],
+    }, actorResult.actor, {
+      storeId,
+      action: 'created',
+      entity: 'category',
+      entityId: category.id,
+      summary: `Created category ${category.name}`,
+      after: categorySnapshot(category),
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, dbRef, requireAdmin])
 
   const updateCategory = useCallback<AppContextValue['updateCategory']>((id, patch) => {
     const category = dbRef.current.categories.find((candidate) => candidate.id === id)
@@ -83,9 +112,19 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     const safePatch: Partial<Category> = { ...patch }
     delete safePatch.id
     delete safePatch.storeId
-    commitDb((prev) => ({
+    const updated = { ...category, ...safePatch }
+    const changes = changedAuditFields(categorySnapshot(category), categorySnapshot(updated))
+    commitDb((prev) => addLog({
       ...prev,
-      categories: prev.categories.map((c) => (c.id === id ? { ...c, ...safePatch } : c)),
+      categories: prev.categories.map((c) => (c.id === id ? updated : c)),
+    }, actorResult.actor, {
+      storeId: category.storeId,
+      action: 'edited',
+      entity: 'category',
+      entityId: id,
+      summary: `Edited category ${category.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      before: changes.before,
+      after: changes.after,
     }))
     return { ok: true }
   }, [commitDb, requireAdmin])
@@ -100,7 +139,17 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       if (products.length) {
         return { ok: false, error: `Move or delete the ${products.length} item(s) in this category first.` }
       }
-      commitDb((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== id) }))
+      commitDb((prev) => addLog({
+        ...prev,
+        categories: prev.categories.filter((c) => c.id !== id),
+      }, actorResult.actor, {
+        storeId: category.storeId,
+        action: 'deleted',
+        entity: 'category',
+        entityId: id,
+        summary: `Deleted category ${category.name}`,
+        before: categorySnapshot(category),
+      }))
       return { ok: true }
     },
     [commitDb, requireAdmin],
@@ -118,9 +167,17 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     }
     const optionsError = validateOptions(dbRef.current.products, storeId, data)
     if (optionsError) return { ok: false, error: optionsError }
-    commitDb((prev) => ({
+    const product: Product = { ...data, id: uid('prd'), storeId }
+    commitDb((prev) => addLog({
       ...prev,
-      products: [...prev.products, { ...data, id: uid('prd'), storeId }],
+      products: [...prev.products, product],
+    }, actorResult.actor, {
+      storeId,
+      action: 'created',
+      entity: 'product',
+      entityId: product.id,
+      summary: `Created product ${product.name}`,
+      after: productSnapshot(product),
     }))
     return { ok: true }
   }, [commitDb, requireAdmin])
@@ -154,9 +211,19 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     const safePatch: Partial<Product> = { ...patch }
     delete safePatch.id
     delete safePatch.storeId
-    commitDb((prev) => ({
+    const updated = { ...product, ...safePatch }
+    const changes = changedAuditFields(productSnapshot(product), productSnapshot(updated))
+    commitDb((prev) => addLog({
       ...prev,
-      products: prev.products.map((p) => (p.id === id ? { ...p, ...safePatch } : p)),
+      products: prev.products.map((p) => (p.id === id ? updated : p)),
+    }, actorResult.actor, {
+      storeId: product.storeId,
+      action: 'edited',
+      entity: 'product',
+      entityId: id,
+      summary: `Edited product ${product.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      before: changes.before,
+      after: changes.after,
     }))
     return { ok: true }
   }, [commitDb, requireAdmin])
@@ -166,7 +233,17 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     if (!product) return { ok: false, error: 'Product not found.' }
     const actorResult = requireAdmin(product.storeId)
     if (!actorResult.ok) return actorResult
-    commitDb((prev) => ({ ...prev, products: prev.products.filter((p) => p.id !== id) }))
+    commitDb((prev) => addLog({
+      ...prev,
+      products: prev.products.filter((p) => p.id !== id),
+    }, actorResult.actor, {
+      storeId: product.storeId,
+      action: 'deleted',
+      entity: 'product',
+      entityId: id,
+      summary: `Deleted product ${product.name}`,
+      before: productSnapshot(product),
+    }))
     return { ok: true }
   }, [commitDb, requireAdmin])
 

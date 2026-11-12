@@ -1,10 +1,11 @@
 import { useCallback } from 'react'
-import type { Database, Order, OrderItem, OrderModifier, User } from '../types'
+import type { AuditJsonValue, Database, Order, OrderItem, OrderModifier, User } from '../types'
 import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { verifySecret } from '../lib/hash'
+import { addLog } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -182,7 +183,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           .filter((existing) => existing.storeId === target.id)
           .reduce((max, existing) => Math.max(max, existing.number), 1000) + 1
         order.number = orderNo
-        return {
+        const next: Database = {
         ...prev,
         orders: [order, ...prev.orders],
         products: prev.products.map((product) => {
@@ -218,6 +219,46 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
               ]
             : prev.ledger,
         }
+        const stockChanges: AuditJsonValue[] = []
+        for (const deduction of stockDeductions.values()) {
+          const product = prev.products.find((candidate) => candidate.id === deduction.productId)
+          if (!product) continue
+          const variant = deduction.variantId
+            ? product.variants?.find((candidate) => candidate.id === deduction.variantId)
+            : undefined
+          const stockBefore = variant?.stock ?? product.stock
+          stockChanges.push({
+            product: product.name,
+            variant: variant?.name ?? '',
+            before: stockBefore,
+            after: round(stockBefore - deduction.qty),
+          })
+        }
+        let logged = addLog(next, seller, {
+          storeId: target.id,
+          action: 'created',
+          entity: 'order',
+          entityId: order.id,
+          summary: `Created order #${order.number} for ${order.total.toFixed(3)} DT`,
+          after: {
+            number: order.number,
+            total: order.total,
+            discount: order.discount,
+            paymentMethod: order.paymentMethod,
+            stockChanges,
+          },
+        })
+        if (discount > 0) {
+          logged = addLog(logged, seller, {
+            storeId: target.id,
+            action: 'discount_applied',
+            entity: 'order',
+            entityId: order.id,
+            summary: `Applied ${discount.toFixed(3)} DT discount to order #${order.number}`,
+            after: { amount: discount, orderTotal: order.total },
+          })
+        }
+        return logged
       })
       return { ok: true, order }
     },
@@ -225,7 +266,10 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
   )
 
   const voidOrder = useCallback<AppContextValue['voidOrder']>(
-    async (orderId, managerPin) => {
+    async (orderId, managerPin, voidReason) => {
+      const reason = voidReason?.trim()
+      if (!reason) return { ok: false, error: 'Enter a reason for voiding this order.' }
+      if (reason.length > 240) return { ok: false, error: 'The void reason must be 240 characters or fewer.' }
       const current = dbRef.current
       const initialOrder = current.orders.find((candidate) => candidate.id === orderId)
       if (!initialOrder) return { ok: false, error: 'Order not found.' }
@@ -268,6 +312,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       const voidedByName = authorizer.name
       commitDb((prev) => {
         const ledgerEntries: Database['ledger'] = []
+        let creditRefund = 0
         if (order.paymentMethod === 'credit' && order.customerId) {
           const outstanding = Math.max(0, balanceFor(prev.ledger, order.customerId))
           const reversedCharge = Math.min(order.total, outstanding)
@@ -286,6 +331,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           }
           const credit = round(order.total - reversedCharge)
           if (credit > 0) {
+            creditRefund = credit
             ledgerEntries.push({
               id: uid('led'),
               storeId: order.storeId,
@@ -300,7 +346,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             })
           }
         }
-        return {
+        const next: Database = {
         ...prev,
         orders: prev.orders.map((o) =>
           o.id === orderId
@@ -327,6 +373,28 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         }),
         ledger: [...ledgerEntries, ...prev.ledger],
         }
+        let logged = addLog(next, authorizer, {
+          storeId: order.storeId,
+          action: 'voided',
+          entity: 'order',
+          entityId: order.id,
+          summary: `Voided order #${order.number}: ${reason}`,
+          before: { status: order.status },
+          after: { status: 'void', reason, total: order.total },
+        })
+        if (order.paymentMethod === 'cash' || creditRefund > 0) {
+          const refundAmount = order.paymentMethod === 'cash' ? order.total : creditRefund
+          const refundMethod = order.paymentMethod === 'cash' ? 'cash' : 'store_credit'
+          logged = addLog(logged, authorizer, {
+            storeId: order.storeId,
+            action: 'refund_applied',
+            entity: 'order',
+            entityId: order.id,
+            summary: `Refunded ${refundAmount.toFixed(3)} DT for order #${order.number} (${refundMethod})`,
+            after: { amount: refundAmount, method: refundMethod },
+          })
+        }
+        return logged
       })
       return { ok: true }
     },

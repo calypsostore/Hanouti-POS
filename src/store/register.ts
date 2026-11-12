@@ -4,6 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { computeRegisterTotals } from '../lib/reports'
+import { addLog } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -32,7 +33,17 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         openedByName: actor.name,
         openingCash: round(openingCash),
       }
-      commitDb((prev) => ({ ...prev, registerSessions: [...prev.registerSessions, session] }))
+      commitDb((prev) => addLog({
+        ...prev,
+        registerSessions: [...prev.registerSessions, session],
+      }, actor, {
+        storeId,
+        action: 'register_opened',
+        entity: 'register',
+        entityId: session.id,
+        summary: `Opened register with ${session.openingCash.toFixed(3)} DT opening cash`,
+        after: { openingCash: session.openingCash },
+      }))
       return { ok: true }
     },
     [commitDb, requireActor],
@@ -71,7 +82,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       )
       const counted = round(countedCash)
 
-      commitDb((prev) => ({
+      const difference = round(counted - snapshot.expectedCash)
+      commitDb((prev) => addLog({
         ...prev,
         registerSessions: prev.registerSessions.map((s) =>
           s.id === sessionId
@@ -82,12 +94,19 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
                 closedById: actor.id,
                 closedByName: actor.name,
                 countedCash: counted,
-                difference: round(counted - snapshot.expectedCash),
+                difference,
                 note: note?.trim() || undefined,
                 snapshot,
               }
             : s,
         ),
+      }, actor, {
+        storeId: session.storeId,
+        action: 'register_closed',
+        entity: 'register',
+        entityId: session.id,
+        summary: `Closed register with ${counted.toFixed(3)} DT counted cash (difference ${difference.toFixed(3)} DT)`,
+        after: { countedCash: counted, difference, expectedCash: snapshot.expectedCash },
       }))
       return { ok: true }
     },
@@ -110,7 +129,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       if (amount > balance + 0.0001) {
         return { ok: false, error: `Amount exceeds the outstanding balance (${balance.toFixed(3)} DT).` }
       }
-      commitDb((prev) => ({
+      const remainingBalance = round(balance - amount)
+      commitDb((prev) => addLog({
         ...prev,
         ledger: [
           {
@@ -126,6 +146,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
           },
           ...prev.ledger,
         ],
+      }, actor, {
+        storeId: customer.storeId,
+        action: 'debt_payment',
+        entity: 'customer',
+        entityId: customerId,
+        summary: `${amount.toFixed(3)} DT tab payment recorded for ${customer.name}`,
+        before: { balance },
+        after: { amount: round(amount), method, balance: remainingBalance },
       }))
       return { ok: true }
     },
