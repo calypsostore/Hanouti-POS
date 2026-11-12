@@ -29,6 +29,15 @@ export interface CreateStoreInput {
   adminPin: string
 }
 
+export interface AddStaffInput {
+  name: string
+  username: string
+  pin: string
+  active: boolean
+  photo?: string
+  permissions: User['permissions']
+}
+
 export interface AppContextValue {
   db: Database
   databaseReady: boolean
@@ -36,7 +45,7 @@ export interface AppContextValue {
   user: User | null
   store: Store | null
   login: (email: string, password: string) => Promise<Result>
-  loginPin: (slug: string, pin: string) => Promise<Result>
+  loginPin: (username: string, pin: string) => Promise<Result>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
   voidOrder: (orderId: string, managerPin?: string) => Promise<Result>
@@ -49,7 +58,7 @@ export interface AppContextValue {
   addProduct: (storeId: string, data: Omit<Product, 'id' | 'storeId'>) => Result
   updateProduct: (id: string, patch: Partial<Product>) => Result
   deleteProduct: (id: string) => Result
-  addStaff: (storeId: string, data: Omit<User, 'id' | 'storeId' | 'createdAt'>) => Promise<Result>
+  addStaff: (storeId: string, data: AddStaffInput) => Promise<Result>
   updateStaff: (id: string, patch: Partial<User>) => Promise<Result>
   deleteStaff: (id: string) => Result
   addCustomer: (

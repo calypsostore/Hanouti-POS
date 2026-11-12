@@ -18,6 +18,13 @@ export const hashSecret = async (value: string): Promise<string> => {
   return `pbkdf2$${ITERATIONS}$${encode(salt)}$${encode(new Uint8Array(bits))}`
 }
 
+export const hashRandomSecret = async (): Promise<string> => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return hashSecret(btoa(binary))
+}
+
 export const verifySecret = async (value: string, stored: string): Promise<boolean> => {
   const [, iterationsValue, saltValue, expectedValue] = stored.split('$')
   if (!iterationsValue || !saltValue || !expectedValue) return false

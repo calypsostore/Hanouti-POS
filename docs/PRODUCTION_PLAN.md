@@ -57,7 +57,7 @@ stored; no demo values are presented as production data.
   legends.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during the
-  `7anouti.db.v10` local database normalization; the legacy emoji property is
+  `7anouti.db.v11` local database normalization; the legacy emoji property is
   removed. Store logos and product images can be uploaded and resized to 256 px
   client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -74,10 +74,11 @@ stored; no demo values are presented as production data.
   block login or in-memory work. A toast warns when changes cannot be persisted.
 - Store owners can manage store branding (logo, accent palette, default theme),
   upload their profile photo, and edit team photos alongside existing name,
-  PIN, permission, and active-status controls.
+  username, PIN, permission, and active-status controls. Staff sign in with a
+  unique username and PIN; admin accounts retain email/password login.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
-  settings viewport had no horizontal overflow. The local v10 database contains
+  settings viewport had no horizontal overflow. The local v11 database contains
   icon keys on every store/category/product and no remaining legacy emoji
   fields.
 - This remains a browser-local demo: image data and business records live in
@@ -101,10 +102,10 @@ stored; no demo values are presented as production data.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v10` in IndexedDB migrates the previous `7anouti.db.v9` localStorage
-  key and legacy `7anouti.db.v8`, `cafepos.db.v8`, v7 and v6 databases with safe
-  defaults for new fields. Seed data includes realistic sample stores for all
-  six business types.
+- `7anouti.db.v11` in IndexedDB migrates the previous v10 IndexedDB/localStorage
+  data and legacy `7anouti.db.v9`, v8, `cafepos.db.v8`, v7 and v6 databases with
+  safe defaults for new fields, including staff usernames. Seed data includes
+  realistic sample stores for all six business types.
 - All of this remains browser-local demo behavior. It is not authoritative or
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
@@ -133,8 +134,8 @@ polish remain planned work.
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v10`, migrated once from the previous
-localStorage key (`7anouti.db.v9`) and legacy `cafepos.db.*` keys. The session identifier remains
+Data lives in IndexedDB under `7anouti.db.v11`, migrated from the previous
+IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is
 funnelled through `AppStore` so a real API can replace it one-for-one.

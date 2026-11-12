@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Database, User } from '../types'
+import type { Database } from '../types'
 import { verifySecret } from '../lib/hash'
 import type { Result } from './types'
 import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
@@ -47,8 +47,12 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
   const login = useCallback(
     async (email: string, password: string): Promise<Result> => {
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
+      const normalizedEmail = email.trim().toLowerCase()
+      if (!normalizedEmail) return { ok: false, error: 'Enter your email address.' }
       const current = dbRef.current
-      const found = current.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+      const found = current.users.find((u) =>
+        u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
+      )
       if (!found || !(await verifySecret(password, found.password))) {
         return { ok: false, error: 'Incorrect email or password.' }
       }
@@ -67,38 +71,31 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
   )
 
   const loginPin = useCallback(
-    async (slug: string, pin: string): Promise<Result> => {
-      const needle = slug.trim().toLowerCase()
+    async (username: string, pin: string): Promise<Result> => {
+      const needle = username.trim().toLowerCase()
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
+      if (!needle) return { ok: false, error: 'Enter your username.' }
       const current = dbRef.current
-      const target = current.stores.find(
-        (s) => s.slug.toLowerCase() === needle || s.id.toLowerCase() === needle,
-      )
-      if (!target) return { ok: false, error: 'Store code not found.' }
-      if (target.status === 'suspended') {
-        return { ok: false, error: 'This store is suspended. Contact your manager.' }
-      }
-      const failure = pinFailures.current.get(target.id)
+      const failure = pinFailures.current.get(needle)
       if (failure?.lockedUntil && failure.lockedUntil > Date.now()) {
         const seconds = Math.ceil((failure.lockedUntil - Date.now()) / 1000)
         return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
       }
-      const candidates = current.users.filter((u) => u.storeId === target.id && u.active)
-      let found: User | undefined
-      for (const candidate of candidates) {
-        if (await verifySecret(pin.trim(), candidate.pin)) {
-          found = candidate
-          break
-        }
-      }
-      if (!found) {
-        const latestFailure = pinFailures.current.get(target.id)
+      const found = current.users.find(
+        (user) => user.role === 'staff' && user.username?.toLowerCase() === needle,
+      )
+      const enteredPin = pin.trim()
+      const validPin = found && /^\d{4,6}$/.test(enteredPin)
+        ? await verifySecret(enteredPin, found.pin)
+        : false
+      if (!found || !validPin) {
+        const latestFailure = pinFailures.current.get(needle)
         if (latestFailure?.lockedUntil && latestFailure.lockedUntil > Date.now()) {
           const seconds = Math.ceil((latestFailure.lockedUntil - Date.now()) / 1000)
           return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
         }
         const attempts = (latestFailure?.count ?? 0) + 1
-        pinFailures.current.set(target.id, {
+        pinFailures.current.set(needle, {
           count: attempts >= 5 ? 0 : attempts,
           lockedUntil: attempts >= 5 ? Date.now() + 30_000 : 0,
         })
@@ -106,10 +103,18 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
           ok: false,
           error: attempts >= 5
             ? 'Too many failed PIN attempts. Try again in 30 seconds.'
-            : 'PIN not recognised for this store.',
+            : 'Username or PIN not recognised.',
         }
       }
-      pinFailures.current.delete(target.id)
+      pinFailures.current.delete(needle)
+      if (!found.active) return { ok: false, error: 'This account has been deactivated.' }
+      const store = found.storeId
+        ? current.stores.find((candidate) => candidate.id === found.storeId)
+        : undefined
+      if (!store) return { ok: false, error: 'This staff account is not linked to a store.' }
+      if (store.status === 'suspended') {
+        return { ok: false, error: 'This store is suspended. Contact your manager.' }
+      }
       userIdRef.current = found.id
       setSessionUserId(found.id)
       return { ok: true }

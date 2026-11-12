@@ -1,4 +1,5 @@
 import type { PrinterSettings, Role, User } from '../types'
+import { isValidUsername, normalizeUsername } from './staff'
 
 export const DEFAULT_PRINTER: PrinterSettings = {
   enabled: true,
@@ -22,8 +23,18 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
 export const normalizeUser = (u: User): User => {
   const base = defaultPermissions(u.role)
   const p = u.permissions ?? base
+  const enteredUsername = typeof u.username === 'string' ? normalizeUsername(u.username) : ''
+  const emailName = u.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '-') ?? ''
+  const fallbackName = `user-${u.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 19)}`
+  const username = isValidUsername(enteredUsername)
+    ? enteredUsername
+    : isValidUsername(emailName.slice(0, 24))
+      ? emailName.slice(0, 24)
+      : fallbackName
   return {
     ...u,
+    email: u.role === 'staff' ? '' : u.email ?? '',
+    username,
     photo: typeof u.photo === 'string' && u.photo.startsWith('data:image/') && u.photo.length <= 307200
       ? u.photo
       : undefined,

@@ -79,7 +79,8 @@ export interface User {
   id: string
   storeId: string | null
   name: string
-  email: string
+  email?: string
+  username?: string
   password: string
   pin: string
   role: Role

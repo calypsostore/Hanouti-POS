@@ -4,13 +4,18 @@ import type {
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePrinter, normalizeUser } from '../lib/defaults'
-import { hashSecret, isSecretHash } from '../lib/hash'
+import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
+import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 
-export const DB_KEY = '7anouti.db.v10'
-const LEGACY_DB_KEYS = ['7anouti.db.v9', '7anouti.db.v8', 'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
+export const DB_KEY = '7anouti.db.v11'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v10']
+const LEGACY_DB_KEYS = [
+  '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
+]
 export const SESSION_KEY = '7anouti.session.v2'
 export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
@@ -147,16 +152,42 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
         },
       })})
     : []
-  const users = Array.isArray(value.users)
+  const normalizedUsers = Array.isArray(value.users)
     ? value.users.filter((u): u is User =>
         isRecord(u) && typeof u.id === 'string' && typeof u.name === 'string' &&
-        typeof u.email === 'string' && typeof u.password === 'string' &&
+        (typeof u.email === 'string' || (u.role === 'staff' && u.email === undefined)) &&
+        typeof u.password === 'string' &&
         typeof u.pin === 'string' && typeof u.active === 'boolean' &&
         typeof u.createdAt === 'string' &&
         (u.storeId === null || typeof u.storeId === 'string') &&
         (u.role === 'super' || u.role === 'admin' || u.role === 'staff'),
-      ).map(normalizeUser)
+      ).map((user) => {
+        const seedUsername = seed.users.find((seedUser) => seedUser.id === user.id)?.username
+        return normalizeUser({
+          ...user,
+          username: typeof user.username === 'string' ? user.username : seedUsername,
+        })
+      })
     : []
+  const usedUsernames = new Set<string>()
+  const users = normalizedUsers.map((user, index) => {
+    const base = user.username ?? `user${index}`
+    const storeSlug = stores.find((store) => store.id === user.storeId)?.slug ?? ''
+    const storeSuffix = storeSlug.toLowerCase().replace(/[^a-z0-9._-]/g, '')
+    const storeCandidate = storeSuffix
+      ? `${base.slice(0, Math.max(3, 23 - storeSuffix.length))}.${storeSuffix}`.slice(0, 24)
+      : ''
+    let username = [base, storeCandidate].find(
+      (candidate) => isValidUsername(candidate) && !usedUsernames.has(candidate),
+    )
+    for (let number = 2; !username; number += 1) {
+      const suffix = String(number)
+      const candidate = `${base.slice(0, 24 - suffix.length)}${suffix}`
+      if (isValidUsername(candidate) && !usedUsernames.has(candidate)) username = candidate
+    }
+    usedUsernames.add(username)
+    return { ...user, username }
+  })
   if (!stores.length || !users.length) return null
   const collection = <T,>(name: string, guard: (item: unknown) => item is T): T[] =>
     Array.isArray(value[name]) ? value[name].filter(guard) : []
@@ -275,18 +306,22 @@ export const loadDb = async (
 ): Promise<Database> => {
   let db: Database | null = null
   let loadedFromIndexedDb = false
-  try {
-    const raw = await readIndexedValue(DB_KEY)
-    if (raw) {
+  for (const key of [DB_KEY, ...INDEXED_DB_MIGRATION_KEYS]) {
+    try {
+      const raw = await readIndexedValue(key)
+      if (!raw) continue
       try {
         db = normalizeDb(JSON.parse(raw), seed)
       } catch {
         db = null
       }
-      loadedFromIndexedDb = db !== null
+      if (db) {
+        loadedFromIndexedDb = true
+        break
+      }
+    } catch (error) {
+      reportStorageError('reading IndexedDB', error)
     }
-  } catch (error) {
-    reportStorageError('reading IndexedDB', error)
   }
 
   if (!db) {
@@ -308,8 +343,15 @@ export const loadDb = async (
   const source = db ?? seed
   const users = await Promise.all(source.users.map(async (user) => ({
     ...user,
-    password: isSecretHash(user.password) ? user.password : await hashSecret(user.password),
-    pin: isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin),
+    email: user.role === 'staff' ? '' : user.email ?? '',
+    password: user.role === 'staff'
+      ? await hashRandomSecret()
+      : user.password
+        ? isSecretHash(user.password) ? user.password : await hashSecret(user.password)
+        : '',
+    pin: user.pin
+      ? isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin)
+      : '',
   })))
   const migrated = { ...source, users }
   if (loadedFromIndexedDb) clearLocalDatabaseCopies()

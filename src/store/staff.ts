@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import type { User } from '../types'
 import { uid } from '../lib/utils'
-import { hashSecret, verifySecret } from '../lib/hash'
+import { hashRandomSecret, hashSecret } from '../lib/hash'
+import { isValidUsername, normalizeUsername } from '../lib/staff'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -15,37 +16,27 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       const actorResult = requireAdmin(storeId)
       if (!actorResult.ok) return actorResult
       const current = dbRef.current
-      if (data.role !== 'admin' && data.role !== 'staff') {
-        return { ok: false, error: 'Choose a valid team member role.' }
+      const username = normalizeUsername(data.username)
+      if (!data.name.trim()) return { ok: false, error: 'Enter the team member’s full name.' }
+      if (!isValidUsername(username)) {
+        return { ok: false, error: 'Username must be 3–24 lowercase letters, digits, dots, underscores or hyphens.' }
       }
-      if (current.users.some((u) => u.email.toLowerCase() === data.email.trim().toLowerCase())) {
-        return { ok: false, error: 'That email is already in use.' }
+      if (current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
+        return { ok: false, error: 'That username is already in use.' }
       }
       if (!/^\d{4,6}$/.test(data.pin)) return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
-      if (data.password.length < 4) return { ok: false, error: 'Password must be at least 4 characters.' }
       if (!isValidPhoto(data.photo)) return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
-      for (const existing of current.users.filter((u) => u.storeId === storeId)) {
-        if (await verifySecret(data.pin, existing.pin)) {
-          return { ok: false, error: 'That PIN is already used by another team member.' }
-        }
-      }
       let password: string
       let pin: string
       try {
-        password = await hashSecret(data.password)
-        pin = await hashSecret(data.pin)
+        ;[password, pin] = await Promise.all([hashRandomSecret(), hashSecret(data.pin)])
       } catch {
         return { ok: false, error: 'Could not securely save the credentials. Please try again.' }
       }
       const latestActor = requireAdmin(storeId)
       if (!latestActor.ok) return latestActor
-      if (dbRef.current.users.some((u) => u.email.toLowerCase() === data.email.trim().toLowerCase())) {
-        return { ok: false, error: 'That email is already in use.' }
-      }
-      for (const existing of dbRef.current.users.filter((u) => u.storeId === storeId)) {
-        if (await verifySecret(data.pin, existing.pin)) {
-          return { ok: false, error: 'That PIN is already used by another team member.' }
-        }
+      if (dbRef.current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
+        return { ok: false, error: 'That username is already in use.' }
       }
       commitDb((prev) => ({
         ...prev,
@@ -53,9 +44,12 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
           ...prev.users,
           {
             ...data,
+            name: data.name.trim(),
+            username,
+            email: '',
             password,
             pin,
-            email: data.email.trim(),
+            role: 'staff',
             id: uid('usr'),
             storeId,
             createdAt: new Date().toISOString(),
@@ -76,30 +70,29 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (patch.storeId !== undefined && patch.storeId !== member.storeId) {
       return { ok: false, error: 'A team member cannot be moved to another store.' }
     }
-    if (patch.email && current.users.some((u) =>
-      u.id !== id && u.email.toLowerCase() === patch.email?.trim().toLowerCase(),
-    )) return { ok: false, error: 'That email is already in use.' }
-    if (patch.email !== undefined && (!patch.email.trim().includes('@') || !patch.email.trim())) {
-      return { ok: false, error: 'Enter a valid email address.' }
+    if (patch.role !== undefined && patch.role !== member.role) {
+      return { ok: false, error: 'Team member roles cannot be changed here.' }
     }
-    if (patch.role !== undefined && patch.role !== 'admin' && patch.role !== 'staff') {
-      return { ok: false, error: 'Choose a valid team member role.' }
+    const username = patch.username === undefined ? undefined : normalizeUsername(patch.username)
+    if (username !== undefined) {
+      if (!isValidUsername(username)) {
+        return { ok: false, error: 'Username must be 3–24 lowercase letters, digits, dots, underscores or hyphens.' }
+      }
+      if (current.users.some((user) =>
+        user.id !== id && normalizeUsername(user.username ?? '') === username,
+      )) return { ok: false, error: 'That username is already in use.' }
     }
     if (patch.pin && !/^\d{4,6}$/.test(patch.pin)) {
       return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
+    }
+    if (member.role === 'staff' && patch.password) {
+      return { ok: false, error: 'Staff accounts use a PIN, not a password.' }
     }
     if (patch.password && patch.password.length < 4) {
       return { ok: false, error: 'Password must be at least 4 characters.' }
     }
     if (!isValidPhoto(patch.photo)) {
       return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
-    }
-    if (patch.pin) {
-      for (const other of current.users.filter((u) => u.storeId === member.storeId && u.id !== id)) {
-        if (await verifySecret(patch.pin, other.pin)) {
-          return { ok: false, error: 'That PIN is already used by another team member.' }
-        }
-      }
     }
     const nextRole = patch.role ?? member.role
     const nextActive = patch.active ?? member.active
@@ -108,19 +101,27 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       return { ok: false, error: 'You cannot demote or deactivate the last active store admin.' }
     }
     const safePatch: Partial<User> = { ...patch }
+    if (username !== undefined) safePatch.username = username
     delete safePatch.id
     delete safePatch.storeId
     delete safePatch.createdAt
+    if (member.role === 'staff') {
+      safePatch.email = ''
+      delete safePatch.password
+    }
     try {
       if (patch.pin) safePatch.pin = await hashSecret(patch.pin)
       else delete safePatch.pin
-      if (patch.password) safePatch.password = await hashSecret(patch.password)
+      if (patch.password && member.role !== 'staff') safePatch.password = await hashSecret(patch.password)
       else delete safePatch.password
     } catch {
       return { ok: false, error: 'Could not securely save the credentials. Please try again.' }
     }
     const latestActor = requireAdmin(member.storeId)
     if (!latestActor.ok) return latestActor
+    if (username !== undefined && dbRef.current.users.some((user) =>
+      user.id !== id && normalizeUsername(user.username ?? '') === username,
+    )) return { ok: false, error: 'That username is already in use.' }
     commitDb((prev) => ({
       ...prev,
       users: prev.users.map((u) => (u.id === id ? { ...u, ...safePatch } : u)),

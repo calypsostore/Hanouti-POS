@@ -308,9 +308,9 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
                     <Badge tone={u.role === 'admin' ? 'dark' : 'neutral'}>{u.role}</Badge>
                     {!u.active && <Badge tone="danger">inactive</Badge>}
                   </div>
-                  <div className="text-[10px] text-muted">{u.email}</div>
+                  <div className="text-[10px] text-muted">{u.role === 'staff' ? u.username : u.email}</div>
                 </div>
-                <span className="text-[10.5px] text-muted">PIN {u.pin}</span>
+                <span className="text-[10.5px] text-muted">{u.role === 'staff' ? 'PIN login' : 'Email login'}</span>
               </div>
             ))}
           </div>

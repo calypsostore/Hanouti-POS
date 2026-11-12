@@ -20,18 +20,17 @@ npm run preview   # preview the build
 
 ## Demo accounts
 
-| Role | Email | Password |
+| Role | Login | Credential |
 | --- | --- | --- |
-| Super admin (platform owner) | `owner@cafepos.tn` | `password` |
-| Store admin — Café Yasmine | `sami@cafeyasmine.tn` | `password` |
-| Staff — Café Yasmine | `amine@cafeyasmine.tn` | `password` |
+| Super admin (platform owner) | `owner@cafepos.tn` | Password `password` |
+| Store admin — Café Yasmine | `sami@cafeyasmine.tn` | Password `password` |
+| Staff — Café Yasmine | `amine.yasmine` | PIN `1234` |
+| Staff — Café Yasmine | `salma.yasmine` | PIN `2345` |
+| Staff — Le Petit Coin | `karim.petitcoin` | PIN `4321` |
+| Staff — Dar Chai | `hedi.darchai` | PIN `5678` |
 
-Staff can also sign in with **Staff PIN** using the store code:
-
-- Café Yasmine → `yasmine` · PIN `1234` (Amine) / `2345` (Salma)
-- Le Petit Coin → `petitcoin` · PIN `4321` (Karim)
-- Dar Chai → `darchai` · PIN `5678` (Hedi)
-- Café Nour (suspended demo) → `cafe-nour` · PIN `4444`
+Staff sign in with their username and PIN; no store code, email, or password is
+required.
 
 The login screen has one-click demo buttons for the first three.
 
@@ -78,7 +77,7 @@ The login screen has one-click demo buttons for the first three.
 
 ### Staff
 - Scoped to their own store only
-- Quick PIN login with store code
+- Staff sign in with their unique username and PIN (no email or password)
 - POS, order history and regular customer cards
 - Add a new order to a regular's card or take a tab payment
 - Customer profiles are read-only for staff; admin-only editing is enforced

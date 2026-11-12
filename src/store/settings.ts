@@ -134,7 +134,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (latest.stores.some((store) => store.slug.toLowerCase() === slug)) {
       return { ok: false, error: 'That store code is already in use.' }
     }
-    if (latest.users.some((user) => user.email.toLowerCase() === adminEmail)) {
+    if (latest.users.some((user) => user.email?.toLowerCase() === adminEmail)) {
       return { ok: false, error: 'That administrator email is already in use.' }
     }
     let password: string
@@ -150,7 +150,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (dbRef.current.stores.some((store) => store.slug.toLowerCase() === slug)) {
       return { ok: false, error: 'That store code is already in use.' }
     }
-    if (dbRef.current.users.some((user) => user.email.toLowerCase() === adminEmail)) {
+    if (dbRef.current.users.some((user) => user.email?.toLowerCase() === adminEmail)) {
       return { ok: false, error: 'That administrator email is already in use.' }
     }
     const template = businessTemplate('cafe')

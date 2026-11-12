@@ -13,6 +13,7 @@ import {
   Store as StoreIcon,
   Users,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { Button, Field, Input, Segmented } from '../components/ui'
 import { cn, money } from '../lib/utils'
@@ -20,7 +21,17 @@ import { BRAND_NAME } from '../lib/brand'
 import { BrandLogo } from '../components/BrandLogo'
 import { ThemeToggle } from '../components/ThemeToggle'
 
-const demoAccounts = [
+type DemoAccount = {
+  role: 'Super admin' | 'Store admin' | 'Staff'
+  name: string
+  email?: string
+  username?: string
+  pin?: string
+  icon: LucideIcon
+  desc: string
+}
+
+const demoAccounts: DemoAccount[] = [
   {
     role: 'Super admin',
     name: 'Platform Owner',
@@ -38,9 +49,10 @@ const demoAccounts = [
   {
     role: 'Staff',
     name: 'Amine · Café Yasmine',
-    email: 'amine@cafeyasmine.tn',
+    username: 'amine.yasmine',
+    pin: '1234',
     icon: Users,
-    desc: 'Counter, orders & tabs',
+    desc: 'amine.yasmine · PIN 1234',
   },
 ]
 
@@ -51,7 +63,7 @@ export default function Login() {
   const [email, setEmail] = useState('sami@cafeyasmine.tn')
   const [password, setPassword] = useState('password')
   const [showPassword, setShowPassword] = useState(false)
-  const [slug, setSlug] = useState('yasmine')
+  const [username, setUsername] = useState('amine.yasmine')
   const [pin, setPin] = useState('1234')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -74,7 +86,7 @@ export default function Login() {
         setError(res.error)
         return
       }
-      const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : email.includes('amine') ? 'staff' : 'admin'
+      const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : 'admin'
       go(target)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
@@ -89,7 +101,7 @@ export default function Login() {
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await loginPin(slug, pin)
+      const res = await loginPin(username, pin)
       if (!res.ok) {
         setError(res.error)
         return
@@ -102,17 +114,19 @@ export default function Login() {
     }
   }
 
-  const quickLogin = async (accountEmail: string, role: string) => {
+  const quickLogin = async (account: DemoAccount) => {
     if (!canSubmit) return
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await login(accountEmail, 'password')
+      const res = account.role === 'Staff'
+        ? await loginPin(account.username ?? '', account.pin ?? '')
+        : await login(account.email ?? '', 'password')
       if (!res.ok) {
         setError(res.error)
         return
       }
-      go(role === 'Super admin' ? 'super' : role === 'Staff' ? 'staff' : 'admin')
+      go(account.role === 'Super admin' ? 'super' : account.role === 'Staff' ? 'staff' : 'admin')
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
     } finally {
@@ -278,15 +292,16 @@ export default function Login() {
             </form>
           ) : (
             <form onSubmit={submitPin} className="mt-5 space-y-4">
-              <Field label="Store code" hint="e.g. yasmine">
+              <Field label="Username" hint="Demo: amine.yasmine">
                 <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="store code"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                  placeholder="username"
+                  autoComplete="username"
                   required
                 />
               </Field>
-              <Field label="Staff PIN" hint="4–6 digits · Demo: 1234">
+              <Field label="PIN" hint="4–6 digits · Demo: 1234">
                 <Input
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -316,8 +331,8 @@ export default function Login() {
           <div className="space-y-2">
             {demoAccounts.map((a) => (
               <button
-                key={a.email}
-                onClick={() => quickLogin(a.email, a.role)}
+                key={a.role}
+                onClick={() => quickLogin(a)}
                 disabled={!canSubmit}
                 className={cn(
                   'glass-subtle group flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-transparent px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50',
@@ -344,7 +359,7 @@ export default function Login() {
           <p className="mt-5 text-center text-[10.5px] leading-relaxed text-muted/80">
             Demo workspace · all data is stored locally in your browser.
             <br />
-            Passwords are <span className="font-semibold text-muted">password</span>.
+            Owner/admin demo password: <span className="font-semibold text-muted">password</span>.
           </p>
         </div>
       </div>

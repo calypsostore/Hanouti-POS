@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import {
+  AtSign,
   BadgeCheck,
+  Copy,
   Crown,
   KeyRound,
-  Mail,
   Pencil,
   ShieldCheck,
+  Sparkles,
   Trash2,
   UserPlus,
   Users,
@@ -21,17 +23,28 @@ import {
   Field,
   Input,
   Modal,
-  Segmented,
   Toggle,
 } from '../../components/ui'
 import { ImageUpload } from '../../components/ImageUpload'
 import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
+import { isValidUsername, suggestStaffUsername } from '../../lib/staff'
+
+type StaffForm = {
+  name: string
+  username: string
+  pin: string
+  photo?: string
+  active: boolean
+  permissions: User['permissions']
+}
+
 export default function Staff() {
   const { db, store, user, addStaff, updateStaff, deleteStaff } = useApp()
   const { push } = useToast()
   const [editor, setEditor] = useState<{ open: boolean; member?: User }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [loginDetails, setLoginDetails] = useState<{ name: string; username: string; pin: string } | null>(null)
 
   if (!store || !user) return null
 
@@ -78,11 +91,39 @@ export default function Staff() {
             <KeyRound className="h-4 w-4" />
           </div>
           <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Store code</div>
-            <div className="text-[14px] font-extrabold">{store.slug}</div>
+            <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Staff sign-in</div>
+            <div className="text-[14px] font-extrabold">Username + PIN</div>
           </div>
         </Card>
       </div>
+
+      {loginDetails && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border-accent-foreground/30 bg-accent-50/60 p-4">
+          <div>
+            <div className="text-[13px] font-bold text-ink">Login details</div>
+            <div className="mt-1 text-[12px] text-muted">{loginDetails.name}</div>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px]">
+              <span>Username: <strong>{loginDetails.username}</strong></span>
+              <span>PIN: <strong>{loginDetails.pin}</strong></span>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  `Username: ${loginDetails.username}\nPIN: ${loginDetails.pin}`,
+                )
+                push('Login details copied')
+              } catch {
+                push('Could not copy login details. Copy them manually instead.', 'error')
+              }
+            }}
+          >
+            <Copy className="h-4 w-4" /> Copy
+          </Button>
+        </Card>
+      )}
 
       {team.length === 0 ? (
         <Card>
@@ -115,7 +156,7 @@ export default function Staff() {
                       {!m.active && <Badge tone="danger">Inactive</Badge>}
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted">
-                      <Mail className="h-3 w-3" /> {m.email}
+                      <AtSign className="h-3 w-3" /> {m.role === 'staff' ? m.username : m.email}
                     </div>
                   </div>
                 </div>
@@ -185,10 +226,10 @@ export default function Staff() {
       <Card className="flex items-start gap-3 border-accent-foreground/20 bg-accent-50/60 p-4">
         <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-foreground" />
         <div className="text-[12px] leading-relaxed text-accent-foreground">
-          <span className="font-semibold">How staff access works:</span> each person gets their own
-          email + password, plus a 4–6 digit PIN for fast register login using the store code{' '}
-          <span className="rounded bg-white/70 px-1 font-mono font-bold">{store.slug}</span>. Data is
-          always scoped to this store.
+          <span className="font-semibold">Staff sign in with a unique username and 4–6 digit PIN.</span>
+          {' '}Usernames are unique across all stores, so no store code, email, or password is needed.
+          PINs can be reused and are stored hashed; share the login details securely when they are
+          shown after creation or reset. Staff only see this store’s data.
         </div>
       </Card>
 
@@ -197,6 +238,8 @@ export default function Staff() {
           key={editor.member?.id ?? 'new'}
           member={editor.member}
           isSelf={editor.member?.id === user.id}
+          storeSlug={store.slug}
+          users={db.users}
           onClose={() => setEditor({ open: false })}
           onSave={async (data) => {
             if (editor.member) {
@@ -206,6 +249,9 @@ export default function Staff() {
                 return
               }
               push('Team member updated')
+              if (data.pin && editor.member.role === 'staff') {
+                setLoginDetails({ name: data.name, username: data.username, pin: data.pin })
+              }
             } else {
               const res = await addStaff(store.id, data)
               if (!res.ok) {
@@ -213,6 +259,7 @@ export default function Staff() {
                 return
               }
               push(`${data.name} added to the team`)
+              setLoginDetails({ name: data.name, username: data.username, pin: data.pin })
             }
             setEditor({ open: false })
           }}
@@ -256,35 +303,28 @@ export default function Staff() {
   )
 }
 
-type StaffForm = {
-  name: string
-  email: string
-  password: string
-  pin: string
-  photo?: string
-  active: boolean
-  role: User['role']
-  permissions: User['permissions']
-}
-
 function StaffEditor({
   member,
   isSelf,
+  storeSlug,
+  users,
   onClose,
   onSave,
 }: {
   member?: User
   isSelf?: boolean
+  storeSlug: string
+  users: User[]
   onClose: () => void
   onSave: (data: StaffForm) => void
 }) {
   const [name, setName] = useState(member?.name ?? '')
-  const [email, setEmail] = useState(member?.email ?? '')
-  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState(
+    () => member?.username ?? '',
+  )
   const [pin, setPin] = useState('')
   const [photo, setPhoto] = useState(member?.photo)
   const [active, setActive] = useState(member?.active ?? true)
-  const [role, setRole] = useState<'admin' | 'staff'>(member?.role === 'admin' ? 'admin' : 'staff')
   const [permissions, setPermissions] = useState(member?.permissions ?? {
     discount: false,
     credit: true,
@@ -295,10 +335,9 @@ function StaffEditor({
   })
 
   const valid =
-    name.trim() &&
-    email.trim().includes('@') &&
-    (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin)) &&
-    (member ? !password || password.length >= 4 : password.length >= 4)
+    !!name.trim() &&
+    isValidUsername(username) &&
+    (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin))
 
   return (
     <Modal
@@ -316,12 +355,10 @@ function StaffEditor({
             onClick={() =>
               onSave({
                 name: name.trim(),
-                email: email.trim(),
-                password,
+                username,
                 pin,
                 photo,
                 active,
-                role,
                 permissions,
               })
             }
@@ -333,33 +370,26 @@ function StaffEditor({
     >
       <div className="space-y-3.5">
         <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field label="Full name">
+          <Field label="Full name" className="sm:col-span-2">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amine Jebali" autoFocus />
           </Field>
-          <Field label="Role">
-            <Segmented
-              value={role}
-              onChange={setRole}
-              className="h-10 w-full [&>button]:flex-1"
-              size="md"
-              options={[
-                { value: 'staff', label: 'Staff' },
-                { value: 'admin', label: 'Admin' },
-              ]}
-            />
+          <Field label="Username" hint="3–24 lowercase letters, digits, dots, underscores or hyphens">
+            <div className="flex gap-2">
+              <Input
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                placeholder="amine.yasmine"
+                autoComplete="username"
+              />
+              <Button
+                variant="secondary"
+                onClick={() => setUsername(suggestStaffUsername(name, storeSlug, users, member?.id))}
+              >
+                <Sparkles className="h-4 w-4" /> Generate
+              </Button>
+            </div>
           </Field>
-          <Field label="Email" className="sm:col-span-2">
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@yourcafe.tn"
-            />
-          </Field>
-          <Field label={member ? 'Set/reset password' : 'Password'} hint={member ? 'Leave blank to keep current password' : 'Min 4 characters'}>
-            <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={member ? 'Leave unchanged' : ''} />
-          </Field>
-          <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? 'Leave blank to keep current PIN · 4–6 digits' : 'Register login · 4–6 digits'}>
+          <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? 'Leave blank to keep the current PIN · 4–6 digits' : '4–6 digits · PINs can be reused'}>
             <Input
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -368,6 +398,15 @@ function StaffEditor({
               className="font-mono tracking-[0.3em]"
             />
           </Field>
+          <div className="sm:col-span-2">
+            <Toggle
+              checked={active}
+              onChange={setActive}
+              label="Account active"
+              description={isSelf ? 'You cannot deactivate your own account.' : 'Inactive accounts cannot sign in.'}
+              disabled={isSelf}
+            />
+          </div>
         </div>
 
         <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
@@ -414,23 +453,8 @@ function StaffEditor({
           </div>
         </div>
 
-        <Toggle
-          checked={active}
-          onChange={setActive}
-          label="Account active"
-          description={isSelf ? 'You cannot deactivate your own account.' : 'Inactive accounts cannot sign in.'}
-          disabled={isSelf}
-        />
-
-        {role === 'admin' && (
-          <p className="rounded-lg bg-brand-amber-soft px-3 py-2 text-[11.5px] text-brand-navy">
-            Admins get full access to settings, products, staff and finances.
-          </p>
-        )}
-
         <p className="text-[11px] leading-relaxed text-muted">
-          Share these credentials with the team member. They can change their password later — PIN
-          changes stay with the store admin.
+          PINs are securely hashed. You will only see the PIN again when you reset it.
         </p>
       </div>
     </Modal>
