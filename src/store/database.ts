@@ -282,17 +282,15 @@ export const loadDb = async (seed: Database): Promise<Database> => {
     localStorage.setItem(DB_KEY, serialized)
   } catch (error) {
     if (!isQuotaExceeded(error)) throw error
-    const legacyValues = LEGACY_DB_KEYS.flatMap((key) => {
-      const value = localStorage.getItem(key)
-      return value === null ? [] : [{ key, value }]
-    })
-    if (legacyValues.length === 0) throw error
-    for (const { key } of legacyValues) localStorage.removeItem(key)
+    // Storage is full: drop old keys and retry. If it still does not fit, keep
+    // running from memory so login keeps working instead of blocking the app.
+    for (const key of [...LEGACY_DB_KEYS, DB_KEY]) localStorage.removeItem(key)
     try {
       localStorage.setItem(DB_KEY, serialized)
     } catch (retryError) {
-      for (const { key, value } of legacyValues) localStorage.setItem(key, value)
-      throw retryError
+      if (!isQuotaExceeded(retryError)) throw retryError
+      console.warn('7anouti: local storage quota exceeded, running in memory only.')
+      return migrated
     }
   }
   for (const key of LEGACY_DB_KEYS) localStorage.removeItem(key)

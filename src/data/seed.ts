@@ -579,7 +579,7 @@ export function buildSeed(): Database {
 
     const staff = users.filter((u) => u.storeId === store.id)
     const staffPool = staff.length ? staff : users.filter((u) => u.storeId === store.id)
-    const historyDays = store.status === 'trial' ? 22 : 88
+    const historyDays = store.status === 'trial' ? 10 : 30
     const settings = store.settings
 
     if (store.status !== 'suspended') {
