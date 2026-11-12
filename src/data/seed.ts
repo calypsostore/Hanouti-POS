@@ -7,12 +7,15 @@ import type {
   Order,
   Plan,
   Product,
+  RegisterSession,
+  RegisterSnapshot,
   SettlementCycle,
   Store,
   StoreSettings,
   User,
 } from '../types'
 import { isoDaysAgo, uid } from '../lib/utils'
+import { DEFAULT_PRINTER } from '../lib/defaults'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
   starter: { label: 'Starter', price: 29, blurb: 'Single counter, up to 3 staff' },
@@ -31,6 +34,7 @@ const defaultSettings = (over: Partial<StoreSettings> = {}): StoreSettings => ({
   receiptFooter: 'Thank you for your visit — شكراً لزيارتكم',
   lowStockThreshold: 10,
   accent: 'caramel',
+  printer: { ...DEFAULT_PRINTER },
   ...over,
 })
 
@@ -155,7 +159,7 @@ const users: User[] = [
     role: 'super',
     active: true,
     createdAt: '2024-01-01T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true },
+    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
   },
   {
     id: 'u_sami',
@@ -167,7 +171,7 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2024-06-12T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true },
+    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
   },
   {
     id: 'u_amine',
@@ -179,7 +183,7 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-03-18T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false },
+    permissions: { discount: false, credit: true, settle: true, reports: false, register: true },
   },
   {
     id: 'u_salma',
@@ -191,7 +195,7 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-08-02T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: false, reports: false },
+    permissions: { discount: true, credit: true, settle: false, reports: false, register: false },
   },
   {
     id: 'u_ines',
@@ -203,7 +207,7 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2025-02-03T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true },
+    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
   },
   {
     id: 'u_karim',
@@ -215,7 +219,7 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2025-06-21T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false },
+    permissions: { discount: false, credit: true, settle: true, reports: false, register: true },
   },
   {
     id: 'u_mehdi',
@@ -227,7 +231,7 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2026-10-20T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true },
+    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
   },
   {
     id: 'u_hedi',
@@ -239,7 +243,7 @@ const users: User[] = [
     role: 'staff',
     active: true,
     createdAt: '2026-10-22T09:00:00.000Z',
-    permissions: { discount: false, credit: true, settle: true, reports: false },
+    permissions: { discount: false, credit: true, settle: true, reports: false, register: false },
   },
   {
     id: 'u_nour',
@@ -251,7 +255,7 @@ const users: User[] = [
     role: 'admin',
     active: true,
     createdAt: '2025-09-11T09:00:00.000Z',
-    permissions: { discount: true, credit: true, settle: true, reports: true },
+    permissions: { discount: true, credit: true, settle: true, reports: true, register: true },
   },
 ]
 
@@ -311,6 +315,7 @@ export function buildSeed(): Database {
   const orders: Order[] = []
   const ledger: LedgerEntry[] = []
   const expenses: Expense[] = []
+  const registerSessions: RegisterSession[] = []
 
   const rng = mulberry32(20260214)
 
@@ -491,6 +496,97 @@ export function buildSeed(): Database {
           })
         }
       }
+
+      // Register sessions: two closed Z days plus the register that is open now.
+      const admin = staff.find((u) => u.role === 'admin') ?? staff[0]
+      if (admin) {
+        const openingCash = store.id === 'st_yasmine' ? 120 : store.id === 'st_petitcoin' ? 80 : 60
+
+        const snapFor = (startISO: string, endISO: string, opening: number): RegisterSnapshot => {
+          const start = new Date(startISO).getTime()
+          const end = new Date(endISO).getTime()
+          const inWindow = orders.filter((o) => {
+            const t = new Date(o.createdAt).getTime()
+            return o.storeId === store.id && t >= start && t <= end
+          })
+          const done = inWindow.filter((o) => o.status === 'completed')
+          const voided = inWindow.filter((o) => o.status === 'void')
+          const cashSales = round(done.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0))
+          const cardSales = round(done.filter((o) => o.paymentMethod === 'card').reduce((a, o) => a + o.total, 0))
+          const creditSales = round(done.filter((o) => o.paymentMethod === 'credit').reduce((a, o) => a + o.total, 0))
+          const cashRefunds = round(
+            voided.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0),
+          )
+          const payments = ledger.filter((l) => {
+            const t = new Date(l.createdAt).getTime()
+            return l.storeId === store.id && l.type === 'payment' && t >= start && t <= end
+          })
+          const cashSettlements = round(payments.filter((l) => l.method === 'cash').reduce((a, l) => a + l.amount, 0))
+          const cardSettlements = round(payments.filter((l) => l.method === 'card').reduce((a, l) => a + l.amount, 0))
+          const exp = round(
+            expenses
+              .filter((e) => {
+                const t = new Date(e.date).getTime()
+                return e.storeId === store.id && t >= start && t <= end
+              })
+              .reduce((a, e) => a + e.amount, 0),
+          )
+          return {
+            salesTotal: round(cashSales + cardSales + creditSales),
+            cashSales,
+            cardSales,
+            creditSales,
+            ordersCount: done.length,
+            voidedCount: voided.length,
+            voidedTotal: round(voided.reduce((a, o) => a + o.total, 0)),
+            cashRefunds,
+            discounts: round(done.reduce((a, o) => a + o.discount, 0)),
+            tax: round(done.reduce((a, o) => a + o.tax, 0)),
+            service: round(done.reduce((a, o) => a + o.service, 0)),
+            expenses: exp,
+            cashSettlements,
+            cardSettlements,
+            settlementCount: payments.length,
+            expectedCash: round(opening + cashSales + cashSettlements - exp - cashRefunds),
+          }
+        }
+
+        for (const day of [2, 1]) {
+          const openAt = isoDaysAgo(day, 7, 5)
+          const closeAt = isoDaysAgo(day, 20, 30)
+          const snapshot = snapFor(openAt, closeAt, openingCash)
+          const variance = rng() < 0.5 ? 0 : round((rng() - 0.5) * 6)
+          const counted = round(snapshot.expectedCash + variance)
+          registerSessions.push({
+            id: uid('reg'),
+            storeId: store.id,
+            status: 'closed',
+            openedAt: openAt,
+            openedById: admin.id,
+            openedByName: admin.name,
+            openingCash,
+            closedAt: closeAt,
+            closedById: admin.id,
+            closedByName: admin.name,
+            countedCash: counted,
+            difference: round(counted - snapshot.expectedCash),
+            snapshot,
+          })
+        }
+
+        const openToday = new Date(now)
+        openToday.setHours(7, 5, 0, 0)
+        if (openToday > now) openToday.setDate(openToday.getDate() - 1)
+        registerSessions.push({
+          id: uid('reg'),
+          storeId: store.id,
+          status: 'open',
+          openedAt: openToday.toISOString(),
+          openedById: admin.id,
+          openedByName: admin.name,
+          openingCash,
+        })
+      }
     }
 
     // Expenses for last 4 months
@@ -510,5 +606,5 @@ export function buildSeed(): Database {
     }
   }
 
-  return { stores, users, categories, products, customers, orders, ledger, expenses }
+  return { stores, users, categories, products, customers, orders, ledger, expenses, registerSessions }
 }

@@ -6,6 +6,18 @@ export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
 export type PaymentMethod = 'cash' | 'card' | 'credit'
 export type OrderStatus = 'completed' | 'void'
 export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
+export type PrinterWidth = 58 | 80
+export type PrintMode = 'auto' | 'manual'
+export type PrinterConnection = 'webserial' | 'browser'
+
+export interface PrinterSettings {
+  enabled: boolean
+  width: PrinterWidth
+  mode: PrintMode
+  connection: PrinterConnection
+  baudRate: number
+  kitchenTicket: boolean
+}
 
 export interface StoreSettings {
   posMode: PosMode
@@ -18,6 +30,7 @@ export interface StoreSettings {
   receiptFooter: string
   lowStockThreshold: number
   accent: string
+  printer: PrinterSettings
 }
 
 export interface Store {
@@ -52,6 +65,7 @@ export interface User {
     credit: boolean
     settle: boolean
     reports: boolean
+    register: boolean
   }
 }
 
@@ -113,6 +127,8 @@ export interface Order {
   staffName: string
   note?: string
   createdAt: string
+  voidedById?: string
+  voidedByName?: string
 }
 
 export interface LedgerEntry {
@@ -138,6 +154,42 @@ export interface Expense {
   createdBy: string
 }
 
+export interface RegisterSnapshot {
+  salesTotal: number
+  cashSales: number
+  cardSales: number
+  creditSales: number
+  ordersCount: number
+  voidedCount: number
+  voidedTotal: number
+  cashRefunds: number
+  discounts: number
+  tax: number
+  service: number
+  expenses: number
+  cashSettlements: number
+  cardSettlements: number
+  settlementCount: number
+  expectedCash: number
+}
+
+export interface RegisterSession {
+  id: string
+  storeId: string
+  status: 'open' | 'closed'
+  openedAt: string
+  openedById: string
+  openedByName: string
+  openingCash: number
+  closedAt?: string
+  closedById?: string
+  closedByName?: string
+  countedCash?: number
+  difference?: number
+  note?: string
+  snapshot?: RegisterSnapshot
+}
+
 export interface Database {
   stores: Store[]
   users: User[]
@@ -147,4 +199,5 @@ export interface Database {
   orders: Order[]
   ledger: LedgerEntry[]
   expenses: Expense[]
+  registerSessions: RegisterSession[]
 }

@@ -16,6 +16,7 @@ import type {
   OrderItem,
   PaymentMethod,
   Product,
+  RegisterSession,
   Store,
   StoreSettings,
   StoreStatus,
@@ -26,9 +27,11 @@ import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { isoDaysAgo, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
+import { normalizePrinter, normalizeUser } from '../lib/defaults'
+import { computeRegisterTotals } from '../lib/reports'
 import { applyAccent } from '../lib/theme'
 
-const DB_KEY = 'cafepos.db.v5'
+const DB_KEY = 'cafepos.db.v6'
 const SESSION_KEY = 'cafepos.session.v2'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -50,7 +53,9 @@ interface AppContextValue {
   loginPin: (slug: string, pin: string) => Result
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
-  voidOrder: (orderId: string) => void
+  voidOrder: (orderId: string, authorizedBy?: { id: string; name: string }) => void
+  openRegister: (storeId: string, openingCash: number) => Result
+  closeRegister: (sessionId: string, countedCash: number, note?: string) => Result
   settleCredit: (customerId: string, amount: number, method: 'cash' | 'card', note?: string) => Result
   addCategory: (storeId: string, data: { name: string; emoji: string }) => void
   updateCategory: (id: string, patch: Partial<Category>) => void
@@ -83,7 +88,17 @@ const loadDb = (): Database => {
     const raw = localStorage.getItem(DB_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as Database
-      if (parsed?.stores?.length && parsed?.users?.length) return parsed
+      if (parsed?.stores?.length && parsed?.users?.length) {
+        return {
+          ...parsed,
+          registerSessions: parsed.registerSessions ?? [],
+          users: parsed.users.map(normalizeUser),
+          stores: parsed.stores.map((s) => ({
+            ...s,
+            settings: { ...s.settings, printer: normalizePrinter(s.settings?.printer) },
+          })),
+        }
+      }
     }
   } catch {
     /* corrupted cache — rebuild */
@@ -242,34 +257,134 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [db.users, db.stores, db.orders, db.customers, userId],
   )
 
-  const voidOrder = useCallback(
-    (orderId: string) => {
-      setDb((prev) => {
-        const order = prev.orders.find((o) => o.id === orderId)
-        if (!order || order.status === 'void') return prev
-        const reversal =
-          order.paymentMethod === 'credit' && order.customerId
-            ? [
-                {
-                  id: uid('led'),
-                  storeId: order.storeId,
-                  customerId: order.customerId,
-                  type: 'charge' as const,
-                  amount: -order.total,
-                  orderId: order.id,
-                  note: `Voided order #${order.number}`,
-                  createdAt: new Date().toISOString(),
-                },
-              ]
-            : []
-        return {
-          ...prev,
-          orders: prev.orders.map((o) => (o.id === orderId ? { ...o, status: 'void' } : o)),
-          ledger: [...reversal, ...prev.ledger],
-        }
-      })
+  const voidOrder = useCallback<AppContextValue['voidOrder']>(
+    (orderId, authorizedBy) => {
+      const actor = db.users.find((u) => u.id === userId)
+      if (!actor) return
+      const order = db.orders.find((o) => o.id === orderId)
+      if (!order || order.status === 'void') return
+      if (actor.storeId !== order.storeId) return
+      if (actor.role !== 'admin' && !authorizedBy) return
+
+      // The human responsible: whoever authorized the void (manager PIN) or,
+      // for admins voiding directly, the admin themself.
+      const voidedById = authorizedBy?.id ?? actor.id
+      const voidedByName = authorizedBy?.name ?? actor.name
+      const at = new Date().toISOString()
+
+      const reversal =
+        order.paymentMethod === 'credit' && order.customerId
+          ? [
+              {
+                id: uid('led'),
+                storeId: order.storeId,
+                customerId: order.customerId,
+                type: 'charge' as const,
+                amount: -order.total,
+                orderId: order.id,
+                note: `Voided order #${order.number}`,
+                staffName: voidedByName,
+                createdAt: at,
+              },
+            ]
+          : []
+
+      setDb((prev) => ({
+        ...prev,
+        orders: prev.orders.map((o) =>
+          o.id === orderId
+            ? { ...o, status: 'void' as const, voidedById, voidedByName, createdAt: o.createdAt }
+            : o,
+        ),
+        ledger: [...reversal, ...prev.ledger],
+      }))
     },
-    [],
+    [db.orders, db.users, userId],
+  )
+
+  const openRegister = useCallback<AppContextValue['openRegister']>(
+    (storeId, openingCash) => {
+      const actor = db.users.find((u) => u.id === userId)
+      if (!actor) return { ok: false, error: 'No active session.' }
+      if (actor.storeId !== storeId) {
+        return { ok: false, error: 'You can only open the register of your own store.' }
+      }
+      if (actor.role !== 'admin' && !actor.permissions.register) {
+        return { ok: false, error: 'You do not have permission to open the register.' }
+      }
+      if (!Number.isFinite(openingCash) || openingCash < 0) {
+        return { ok: false, error: 'Enter a valid opening cash amount.' }
+      }
+      if (db.registerSessions.some((s) => s.storeId === storeId && s.status === 'open')) {
+        return { ok: false, error: 'A register session is already open for this store.' }
+      }
+      const session: RegisterSession = {
+        id: uid('reg'),
+        storeId,
+        status: 'open',
+        openedAt: new Date().toISOString(),
+        openedById: actor.id,
+        openedByName: actor.name,
+        openingCash: round(openingCash),
+      }
+      setDb((prev) => ({ ...prev, registerSessions: [...prev.registerSessions, session] }))
+      return { ok: true }
+    },
+    [db.registerSessions, db.users, userId],
+  )
+
+  const closeRegister = useCallback<AppContextValue['closeRegister']>(
+    (sessionId, countedCash, note) => {
+      const actor = db.users.find((u) => u.id === userId)
+      if (!actor) return { ok: false, error: 'No active session.' }
+      const session = db.registerSessions.find((s) => s.id === sessionId)
+      if (!session) return { ok: false, error: 'Register session not found.' }
+      if (session.storeId !== actor.storeId) {
+        return { ok: false, error: 'This register session belongs to another store.' }
+      }
+      if (session.status !== 'open') {
+        return { ok: false, error: 'This session was already closed and cannot change.' }
+      }
+      if (actor.role !== 'admin' && !actor.permissions.register) {
+        return { ok: false, error: 'You do not have permission to close the register.' }
+      }
+      if (!Number.isFinite(countedCash) || countedCash < 0) {
+        return { ok: false, error: 'Enter the cash you counted in the drawer.' }
+      }
+
+      // The snapshot is computed once from persisted data and frozen: the
+      // stored Z report never changes even if later orders are voided.
+      const snapshot = computeRegisterTotals(
+        db,
+        session.storeId,
+        session.openedAt,
+        new Date().toISOString(),
+        session.openingCash,
+      )
+      const closedAt = new Date().toISOString()
+      const counted = round(countedCash)
+
+      setDb((prev) => ({
+        ...prev,
+        registerSessions: prev.registerSessions.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                status: 'closed' as const,
+                closedAt,
+                closedById: actor.id,
+                closedByName: actor.name,
+                countedCash: counted,
+                difference: round(counted - snapshot.expectedCash),
+                note: note?.trim() || undefined,
+                snapshot,
+              }
+            : s,
+        ),
+      }))
+      return { ok: true }
+    },
+    [db, userId],
   )
 
   const settleCredit = useCallback<AppContextValue['settleCredit']>(
@@ -548,6 +663,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     logout,
     createOrder,
     voidOrder,
+    openRegister,
+    closeRegister,
     settleCredit,
     addCategory,
     updateCategory,

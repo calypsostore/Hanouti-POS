@@ -8,6 +8,7 @@ import POS from './pages/POS'
 import AdminOverview from './pages/admin/Overview'
 import Orders from './pages/admin/Orders'
 import Customers from './pages/admin/Customers'
+import Register from './pages/admin/Register'
 import Products from './pages/admin/Products'
 import Staff from './pages/admin/Staff'
 import Reports from './pages/admin/Reports'
@@ -97,6 +98,7 @@ export default function App() {
               />
               <Route path="orders" element={<Orders />} />
               <Route path="customers" element={<Customers />} />
+              <Route path="register" element={<Register />} />
               <Route
                 path="products"
                 element={

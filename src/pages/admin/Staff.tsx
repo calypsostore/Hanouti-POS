@@ -140,6 +140,7 @@ export default function Staff() {
                   {m.permissions.discount && <Badge tone="neutral">Discounts</Badge>}
                   {m.permissions.credit && <Badge tone="neutral">Tabs</Badge>}
                   {m.permissions.settle && <Badge tone="neutral">Settlements</Badge>}
+                  {m.permissions.register && <Badge tone="neutral">Register</Badge>}
                   {m.permissions.reports && <Badge tone="neutral">Reports</Badge>}
                 </div>
 
@@ -277,6 +278,7 @@ function StaffEditor({
     credit: true,
     settle: false,
     reports: false,
+    register: false,
   })
 
   const valid = name.trim() && email.trim().includes('@') && /^\d{4}$/.test(pin) && password.length >= 4
@@ -376,6 +378,12 @@ function StaffEditor({
               onChange={(v) => setPermissions((p) => ({ ...p, reports: v }))}
               label="View reports"
               description="Can open the reports and expenses pages."
+            />
+            <Toggle
+              checked={permissions.register}
+              onChange={(v) => setPermissions((p) => ({ ...p, register: v }))}
+              label="Open & close the register"
+              description="Can open a session, print X reports and close the day with a Z report."
             />
           </div>
         </div>

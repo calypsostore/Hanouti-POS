@@ -4,9 +4,11 @@ import {
   CreditCard,
   Download,
   Eye,
+  KeyRound,
   Printer,
   ReceiptText,
   Search,
+  ShieldAlert,
   Trash2,
   UserRound,
   Wallet,
@@ -19,14 +21,17 @@ import {
   Card,
   Drawer,
   EmptyState,
+  Field,
   Input,
   Modal,
   Segmented,
   Select,
 } from '../../components/ui'
+import { PrintModal, type PrintJob } from '../../components/PrintPreview'
 import { ReceiptView } from '../../components/ReceiptView'
 import { useToast } from '../../components/toast'
 import { balanceFor } from '../../lib/selectors'
+import { buildReceiptLines, linesToEscpos } from '../../lib/escpos'
 import { cn, csvDownload, dateKey, fmtDate, fmtTime, money, sum } from '../../lib/utils'
 
 type Range = 'today' | '7d' | '30d' | 'all'
@@ -42,6 +47,8 @@ export default function Orders() {
   const [status, setStatus] = useState<Status>('all')
   const [selected, setSelected] = useState<Order | null>(null)
   const [voidTarget, setVoidTarget] = useState<Order | null>(null)
+  const [voidPin, setVoidPin] = useState('')
+  const [printJob, setPrintJob] = useState<PrintJob | null>(null)
   const [limit, setLimit] = useState(20)
 
   if (!store || !user) return null
@@ -98,6 +105,40 @@ export default function Orders() {
     ]
     csvDownload(`orders-${store.slug}-${range}.csv`, rows)
     push('Orders exported to CSV')
+  }
+
+  const reprint = (o: Order) => {
+    const lines = buildReceiptLines(o, store, {
+      reprint: true,
+      customerName: customerName(o.customerId),
+    })
+    setPrintJob({
+      title: `Reprint · Order #${o.number}`,
+      subtitle: store.name,
+      lines,
+      bytes: linesToEscpos(lines, store.settings.printer.width),
+      kind: 'receipt',
+    })
+  }
+
+  const confirmVoid = () => {
+    if (!voidTarget) return
+    let authorizer = { id: user.id, name: user.name }
+    if (user.role !== 'admin') {
+      const manager = db.users.find(
+        (u) => u.storeId === store.id && u.role === 'admin' && u.active && u.pin === voidPin.trim(),
+      )
+      if (!manager) {
+        push("That PIN doesn't match an active store manager.", 'error')
+        return
+      }
+      authorizer = { id: manager.id, name: manager.name }
+    }
+    voidOrder(voidTarget.id, authorizer)
+    push(`Order #${voidTarget.number} voided · authorized by ${authorizer.name}`, 'info')
+    setVoidTarget(null)
+    setVoidPin('')
+    setSelected(null)
   }
 
   return (
@@ -292,21 +333,22 @@ export default function Orders() {
         footer={
           selected ? (
             <div className="flex items-center justify-between gap-2">
-              {user.role === 'admin' && selected.status === 'completed' ? (
+              {selected.status === 'completed' ? (
                 <Button
                   variant="ghost"
                   onClick={() => {
+                    setVoidPin('')
                     setVoidTarget(selected)
                   }}
                   className="text-red-600 hover:bg-red-50"
                 >
-                  <Trash2 className="h-4 w-4" /> Void order
+                  <Trash2 className="h-4 w-4" /> {user.role === 'admin' ? 'Void order' : 'Request void'}
                 </Button>
               ) : (
                 <span />
               )}
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => window.print()}>
+                <Button variant="secondary" onClick={() => reprint(selected)}>
                   <Printer className="h-4 w-4" /> Print
                 </Button>
                 <Button onClick={() => setSelected(null)}>Done</Button>
@@ -330,6 +372,15 @@ export default function Orders() {
                 </Badge>
               )}
             </div>
+
+            {selected.status === 'void' && selected.voidedByName && (
+              <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-[12px] text-red-800">
+                <ShieldAlert className="h-4 w-4 shrink-0" />
+                <span>
+                  Voided by <span className="font-bold">{selected.voidedByName}</span>
+                </span>
+              </div>
+            )}
 
             <div className="rounded-2xl border border-line bg-white p-4">
               <div className="space-y-2.5">
@@ -428,24 +479,40 @@ export default function Orders() {
             </Button>
             <Button
               variant="danger"
-              onClick={() => {
-                if (!voidTarget) return
-                voidOrder(voidTarget.id)
-                push(`Order #${voidTarget.number} voided`, 'info')
-                setVoidTarget(null)
-                setSelected(null)
-              }}
+              disabled={user.role !== 'admin' && !/^\d{4}$/.test(voidPin.trim())}
+              onClick={confirmVoid}
             >
               <Trash2 className="h-4 w-4" /> Void order
             </Button>
           </div>
         }
       >
-        <p className="text-[13px] leading-relaxed text-muted">
-          The sale will be marked as void and excluded from reports. If it was charged to a tab, the
-          charge is reversed automatically. This cannot be undone.
-        </p>
+        <div className="space-y-3.5">
+          <p className="text-[13px] leading-relaxed text-muted">
+            The sale will be marked as void and excluded from reports. If it was charged to a tab,
+            the charge is reversed automatically. This cannot be undone.
+          </p>
+          {user.role === 'admin' ? (
+            <div className="flex items-center gap-2 rounded-lg bg-cream-100 px-3 py-2 text-[11.5px] text-muted">
+              <KeyRound className="h-3.5 w-3.5" />
+              You are the store admin — the void is recorded under your name.
+            </div>
+          ) : (
+            <Field label="Manager PIN" hint="Ask a manager to authorize this void">
+              <Input
+                value={voidPin}
+                onChange={(e) => setVoidPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                inputMode="numeric"
+                placeholder="••••"
+                className="font-mono text-center text-lg tracking-[0.4em]"
+                autoFocus
+              />
+            </Field>
+          )}
+        </div>
       </Modal>
+
+      <PrintModal job={printJob} onClose={() => setPrintJob(null)} />
     </div>
   )
 }

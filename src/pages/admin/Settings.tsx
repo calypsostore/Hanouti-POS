@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  Cable,
   Check,
   Copy,
   CreditCard,
   Palette,
+  Printer,
   ReceiptText,
   RotateCcw,
   Save,
@@ -24,9 +26,13 @@ import {
   Textarea,
   Toggle,
 } from '../../components/ui'
+import { PrintModal } from '../../components/PrintPreview'
 import { useToast } from '../../components/toast'
 import { accentPalettes } from '../../lib/theme'
+import { DEFAULT_PRINTER } from '../../lib/defaults'
 import { PLAN_INFO } from '../../data/seed'
+import { buildTestLines, columnsFor, linesToEscpos } from '../../lib/escpos'
+import { connectPrinter, disconnectPrinter, onPrinterState, printerState as readPrinterState } from '../../lib/printer'
 import { cn, fmtDate, money } from '../../lib/utils'
 
 const storeEmojis = ['☕', '🧁', '🫖', '🌿', '🥐', '🍰', '🍵', '🥤', '🫘', '🍽️']
@@ -59,9 +65,14 @@ export default function Settings() {
         receiptFooter: '',
         lowStockThreshold: 10,
         accent: 'caramel',
+        printer: { ...DEFAULT_PRINTER },
       },
   )
   const [copied, setCopied] = useState(false)
+  const [pstate, setPstate] = useState(readPrinterState())
+  const [testJob, setTestJob] = useState(false)
+
+  useEffect(() => onPrinterState(setPstate), [])
 
   if (!store) return null
 
@@ -418,8 +429,141 @@ export default function Settings() {
                 </Field>
               </div>
               <div className="mt-3 rounded-xl bg-cream-100 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
-                Receipts print on any 58mm or 80mm thermal printer through the browser print dialog.
-                In cashier mode, a receipt is offered after every completed sale.
+                Receipts print on any 58mm or 80mm thermal printer. Cashier mode offers a receipt
+                after every completed sale.
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Printer className="h-4 w-4 text-accent-600" />
+                  <h3 className="text-[15px] font-semibold tracking-tight">Thermal printer</h3>
+                </div>
+                <Badge tone={pstate.connected ? 'success' : 'neutral'}>
+                  {pstate.connected ? `Connected · ${pstate.label}` : 'Not connected'}
+                </Badge>
+              </div>
+
+              <div className="mt-4 space-y-3.5">
+                <Toggle
+                  checked={settings.printer.enabled}
+                  onChange={(v) => set('printer', { ...settings.printer, enabled: v })}
+                  label="Enable receipt printing"
+                  description="Print receipts after checkout and reprint from Orders."
+                />
+
+                <div className="grid gap-3.5 sm:grid-cols-2">
+                  <div>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold">Paper width</span>
+                    <Segmented
+                      value={String(settings.printer.width)}
+                      onChange={(v) =>
+                        set('printer', { ...settings.printer, width: v === '58' ? 58 : 80 })
+                      }
+                      size="sm"
+                      options={[
+                        { value: '58', label: '58 mm' },
+                        { value: '80', label: '80 mm' },
+                      ]}
+                    />
+                    <p className="mt-1 text-[10.5px] text-muted">
+                      {columnsFor(settings.printer.width)} characters per line
+                    </p>
+                  </div>
+                  <div>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold">Printing mode</span>
+                    <Segmented
+                      value={settings.printer.mode}
+                      onChange={(v) => set('printer', { ...settings.printer, mode: v as 'auto' | 'manual' })}
+                      size="sm"
+                      options={[
+                        { value: 'manual', label: 'Manual' },
+                        { value: 'auto', label: 'Auto-print' },
+                      ]}
+                    />
+                    <p className="mt-1 text-[10.5px] text-muted">
+                      {settings.printer.mode === 'auto'
+                        ? 'Receipts print by themselves at checkout'
+                        : 'You press Print on the receipt'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3.5 sm:grid-cols-2">
+                  <div>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold">Connection</span>
+                    <Segmented
+                      value={settings.printer.connection}
+                      onChange={(v) =>
+                        set('printer', { ...settings.printer, connection: v as 'webserial' | 'browser' })
+                      }
+                      size="sm"
+                      options={[
+                        { value: 'webserial', label: 'USB / WebSerial' },
+                        { value: 'browser', label: 'Browser only' },
+                      ]}
+                    />
+                  </div>
+                  <Field label="Baud rate" hint="Leave 9600 unless your printer says otherwise">
+                    <Input
+                      type="number"
+                      className="tabular"
+                      value={String(settings.printer.baudRate)}
+                      onChange={(e) =>
+                        set('printer', { ...settings.printer, baudRate: Number(e.target.value) || 9600 })
+                      }
+                    />
+                  </Field>
+                </div>
+
+                {settings.printer.connection === 'webserial' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {pstate.connected ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={async () => {
+                          await disconnectPrinter()
+                          push('Printer disconnected', 'info')
+                        }}
+                      >
+                        Disconnect printer
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={async () => {
+                          const res = await connectPrinter(settings.printer.baudRate)
+                          if (res.ok) push(`Printer connected · ${res.label}`, 'success')
+                          else push(res.error, 'error')
+                        }}
+                      >
+                        <Cable className="h-3.5 w-3.5" /> Connect printer
+                      </Button>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={() => setTestJob(true)}>
+                      <Printer className="h-3.5 w-3.5" /> Test print
+                    </Button>
+                  </div>
+                )}
+
+                <Toggle
+                  checked={settings.printer.kitchenTicket}
+                  onChange={(v) => set('printer', { ...settings.printer, kitchenTicket: v })}
+                  label="Kitchen tickets"
+                  description="Print a separate item list for the kitchen on dine-in orders."
+                />
+
+                <div className="rounded-xl bg-cream-100 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
+                  <span className="font-semibold text-ink">How printing works: </span>
+                  USB printers print real ESC/POS bytes through WebSerial — supported on Chrome and
+                  Edge for desktop (Windows, macOS, Linux). Firefox, Safari and iOS do not support
+                  WebSerial; those browsers use the browser print dialog with the same layout.
+                  Arabic characters are not printable on most ESC/POS printers — receipts fall back
+                  to Latin text.
+                </div>
               </div>
             </Card>
           </div>
@@ -501,6 +645,21 @@ export default function Settings() {
           data will be rebuilt fresh.
         </p>
       </Modal>
+
+      <PrintModal
+        job={
+          testJob
+            ? {
+                title: 'Printer test',
+                subtitle: store.name,
+                lines: buildTestLines({ ...store, settings }),
+                bytes: linesToEscpos(buildTestLines({ ...store, settings }), settings.printer.width),
+                kind: 'receipt',
+              }
+            : null
+        }
+        onClose={() => setTestJob(false)}
+      />
     </div>
   )
 }

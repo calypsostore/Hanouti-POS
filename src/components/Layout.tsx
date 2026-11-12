@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
+  Calculator,
   Coffee,
   LayoutDashboard,
   LogOut,
@@ -37,6 +38,7 @@ const titles: Record<string, string> = {
   '/admin/staff': 'Team',
   '/admin/reports': 'Reports',
   '/admin/expenses': 'Expenses',
+  '/admin/register': 'Cash register',
   '/admin/settings': 'Settings',
   '/super': 'Platform overview',
   '/super/stores': 'Stores',
@@ -78,6 +80,9 @@ export function AppShell() {
               { to: '/pos', label: 'Take order', icon: ShoppingBag },
               { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
               { to: '/admin/customers', label: 'Regulars', icon: Users },
+              ...(user.permissions.register
+                ? [{ to: '/admin/register', label: 'Cash register', icon: Calculator }]
+                : []),
             ],
           },
         ]
@@ -103,6 +108,7 @@ export function AppShell() {
             items: [
               { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
               { to: '/admin/expenses', label: 'Expenses', icon: Wallet },
+              { to: '/admin/register', label: 'Cash register', icon: Calculator },
             ],
           },
           {
