@@ -65,6 +65,8 @@ stored; no demo values are presented as production data.
   top bar is sticky at the viewport top; neither uses the floating glass-shell
   treatment. Branding uses the supplied logo image; receipt output remains
   text-only.
+- Vercel rewrites client-side routes to the app entry point so direct visits
+  and refreshes on paths such as `/login` load the SPA instead of a 404.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
   settings viewport had no horizontal overflow. The local v9 database contains
