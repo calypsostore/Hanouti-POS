@@ -195,6 +195,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         receiptFooter: template.receiptFooter,
         lowStockThreshold: 10,
         accent: '7anouti',
+        colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
         features: template.features,
       },
@@ -211,6 +212,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       return { ok: false, error: 'Only a store admin can edit this store profile.' }
     }
     if (!dbRef.current.stores.some((s) => s.id === storeId)) return { ok: false, error: 'Store not found.' }
+    if (patch.logo !== undefined && patch.logo.length > 307200) {
+      return { ok: false, error: 'Store logos must be no larger than 300 KB.' }
+    }
     const safePatch: Partial<Store> = { ...patch }
     delete safePatch.id
     delete safePatch.settings

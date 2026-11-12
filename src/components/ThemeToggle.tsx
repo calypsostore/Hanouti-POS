@@ -3,8 +3,22 @@ import { Moon, Sun } from 'lucide-react'
 import { applyAccent, applyColorMode, COLOR_MODE_KEY, readColorMode, type ColorMode } from '../lib/theme'
 import { cn } from '../lib/utils'
 
-export function ThemeToggle({ accent, className }: { accent?: string; className?: string }) {
-  const [mode, setMode] = useState<ColorMode>(readColorMode)
+export function ThemeToggle({
+  accent,
+  defaultMode,
+  className,
+}: {
+  accent?: string
+  defaultMode?: ColorMode
+  className?: string
+}) {
+  const [selection, setSelection] = useState(() => ({
+    defaultMode,
+    mode: defaultMode ?? readColorMode(),
+  }))
+  const mode = selection.defaultMode === defaultMode
+    ? selection.mode
+    : defaultMode ?? selection.mode
 
   useEffect(() => {
     applyColorMode(mode)
@@ -13,7 +27,7 @@ export function ThemeToggle({ accent, className }: { accent?: string; className?
 
   const toggle = () => {
     const next = mode === 'dark' ? 'light' : 'dark'
-    setMode(next)
+    setSelection({ defaultMode, mode: next })
     applyColorMode(next)
     applyAccent(accent ?? '7anouti')
     try {

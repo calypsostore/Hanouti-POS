@@ -5,6 +5,9 @@ import { hashSecret, verifySecret } from '../lib/hash'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
+const isValidPhoto = (photo: string | undefined) =>
+  photo === undefined || (photo.startsWith('data:image/') && photo.length <= 307200)
+
 export function useStaffSlice(dependencies: StoreSliceDependencies) {
   const { dbRef, commitDb, requireAdmin } = dependencies
   const addStaff = useCallback<AppContextValue['addStaff']>(
@@ -20,6 +23,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       }
       if (!/^\d{4,6}$/.test(data.pin)) return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
       if (data.password.length < 4) return { ok: false, error: 'Password must be at least 4 characters.' }
+      if (!isValidPhoto(data.photo)) return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
       for (const existing of current.users.filter((u) => u.storeId === storeId)) {
         if (await verifySecret(data.pin, existing.pin)) {
           return { ok: false, error: 'That PIN is already used by another team member.' }
@@ -86,6 +90,9 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     }
     if (patch.password && patch.password.length < 4) {
       return { ok: false, error: 'Password must be at least 4 characters.' }
+    }
+    if (!isValidPhoto(patch.photo)) {
+      return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
     }
     if (patch.pin) {
       for (const other of current.users.filter((u) => u.storeId === member.storeId && u.id !== id)) {

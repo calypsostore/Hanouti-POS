@@ -40,6 +40,7 @@ const defaultSettings = (
   receiptFooter: businessTemplate(businessType).receiptFooter,
   lowStockThreshold: 10,
   accent: '7anouti',
+  colorMode: 'light',
   printer: { ...DEFAULT_PRINTER },
   features: businessTemplate(businessType).features,
   ...over,

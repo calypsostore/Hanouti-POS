@@ -162,7 +162,7 @@ export function Sidebar({
           </div>
         )}
         <div className={cn('flex items-center gap-2', collapsed && !mobile && 'justify-center')}>
-          <Avatar name={user.name} size="sm" className="bg-white/15 text-white" />
+          <Avatar name={user.name} photo={user.photo} size="sm" className="bg-white/15 text-white" />
           {(!collapsed || mobile) && <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] font-bold">{user.name}</div>
             <div className="text-[9.5px] capitalize text-white/55">{user.role}</div>

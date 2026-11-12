@@ -24,6 +24,7 @@ import {
   Segmented,
   Toggle,
 } from '../../components/ui'
+import { ImageUpload } from '../../components/ImageUpload'
 import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
 export default function Staff() {
@@ -100,7 +101,7 @@ export default function Staff() {
             return (
               <Card key={m.id} className="group p-4">
                 <div className="flex items-start gap-3">
-                  <Avatar name={m.name} size="md" />
+                  <Avatar name={m.name} photo={m.photo} size="md" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="truncate text-[13.5px] font-bold text-ink">{m.name}</span>
@@ -260,6 +261,7 @@ type StaffForm = {
   email: string
   password: string
   pin: string
+  photo?: string
   active: boolean
   role: User['role']
   permissions: User['permissions']
@@ -280,6 +282,7 @@ function StaffEditor({
   const [email, setEmail] = useState(member?.email ?? '')
   const [password, setPassword] = useState('')
   const [pin, setPin] = useState('')
+  const [photo, setPhoto] = useState(member?.photo)
   const [active, setActive] = useState(member?.active ?? true)
   const [role, setRole] = useState<'admin' | 'staff'>(member?.role === 'admin' ? 'admin' : 'staff')
   const [permissions, setPermissions] = useState(member?.permissions ?? {
@@ -316,6 +319,7 @@ function StaffEditor({
                 email: email.trim(),
                 password,
                 pin,
+                photo,
                 active,
                 role,
                 permissions,
@@ -365,6 +369,8 @@ function StaffEditor({
             />
           </Field>
         </div>
+
+        <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
 
         <div className="rounded-xl border border-line bg-white p-3.5">
           <div className="mb-2 text-[12.5px] font-semibold text-ink">Permissions</div>

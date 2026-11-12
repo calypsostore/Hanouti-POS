@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
-import { applyAccent } from '../lib/theme'
+import { applyAccent, applyColorMode } from '../lib/theme'
 import type { Store, User } from '../types'
 import { useAuthSlice } from './auth'
 import { useCatalogSlice } from './catalog'
@@ -43,7 +43,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => (user?.storeId ? db.stores.find((candidate) => candidate.id === user.storeId) ?? null : null),
     [db.stores, user],
   )
-  useEffect(() => { applyAccent(store?.settings.accent ?? '7anouti') }, [store?.settings.accent])
+  useEffect(() => {
+    applyColorMode(store?.settings.colorMode ?? 'light')
+    applyAccent(store?.settings.accent ?? '7anouti')
+  }, [store?.settings.accent, store?.settings.colorMode])
 
   const value: AppContextValue = {
     db,

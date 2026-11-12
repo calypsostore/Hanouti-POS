@@ -23,9 +23,9 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the folder map and extension
 guidance. The line-count audit also found other existing large files outside
 this refactor's page/store scope; those remain follow-up structure work.
 
-The app is now branded 7anouti-POS. Existing `cafepos.db.*` and
-`cafepos.session.*` local data is copied to the `7anouti.*` keys before the old
-keys are removed.
+The app is now branded 7anouti-POS. Existing local database keys are migrated
+from localStorage into IndexedDB on first load, then removed after the
+IndexedDB save succeeds. The small session key remains in localStorage.
 The default platform palette now follows the logo: navy surfaces, cool light
 backgrounds, amber highlights, and accessible navy-on-amber actions. The
 sidebar, shared controls, POS, reports, and receipt branding use the shared
@@ -57,7 +57,7 @@ stored; no demo values are presented as production data.
   legends.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during the
-  `7anouti.db.v9` local database normalization; the legacy emoji property is
+  `7anouti.db.v10` local database normalization; the legacy emoji property is
   removed. Store logos and product images can be uploaded and resized to 256 px
   client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -70,16 +70,18 @@ stored; no demo values are presented as production data.
 - First-load seed initialization reuses its fallback database rather than
   generating demo data twice; sign-in controls stay disabled until migration
   and credential hashing finish.
-- If a versioned local database migration hits browser storage quota, the app
-  retries after temporarily removing older database keys and restores them if
-  the new database still cannot be saved.
+- IndexedDB persistence is debounced; read/write failures are logged and do not
+  block login or in-memory work. A toast warns when changes cannot be persisted.
+- Store owners can manage store branding (logo, accent palette, default theme),
+  upload their profile photo, and edit team photos alongside existing name,
+  PIN, permission, and active-status controls.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
-  settings viewport had no horizontal overflow. The local v9 database contains
+  settings viewport had no horizontal overflow. The local v10 database contains
   icon keys on every store/category/product and no remaining legacy emoji
   fields.
-- This remains a browser-local demo: image data and all business records live
-  in localStorage. Browser/device QA for both themes, reduced transparency,
+- This remains a browser-local demo: image data and business records live in
+  IndexedDB. Browser/device QA for both themes, reduced transparency,
   end-to-end image uploads, login, order flows, and 200-product POS catalogs
   remains a manual release check.
 
@@ -99,10 +101,10 @@ stored; no demo values are presented as production data.
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v9` migrates the legacy `7anouti.db.v8`, `cafepos.db.v8`, v7 and
-  v6 local databases
-  with safe defaults for the new fields. Seed data includes realistic sample stores for all six business
-  types.
+- `7anouti.db.v10` in IndexedDB migrates the previous `7anouti.db.v9` localStorage
+  key and legacy `7anouti.db.v8`, `cafepos.db.v8`, v7 and v6 databases with safe
+  defaults for new fields. Seed data includes realistic sample stores for all
+  six business types.
 - All of this remains browser-local demo behavior. It is not authoritative or
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
@@ -128,13 +130,14 @@ polish remain planned work.
 | Register | **None** — no session concept | X report, Z close with counted cash + difference, immutable history |
 | Printing | Browser print dialog only | + real ESC/POS over WebSerial (58/80 mm), test print, kitchen tickets |
 | Inventory | Product stock counters only | Unchanged (Phase 5) |
-| Offline | None (localStorage demo DB) | Unchanged (Phase 7) |
+| Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in `localStorage` under `7anouti.db.v9` (with migrations from legacy
-`cafepos.db.*` keys). **This is a demo backend, not production storage** — it exists so the UX can be reviewed without
-infrastructure, and every mutation is funnelled through `AppStore` so a real API
-can replace it one-for-one.
+Data lives in IndexedDB under `7anouti.db.v10`, migrated once from the previous
+localStorage key (`7anouti.db.v9`) and legacy `cafepos.db.*` keys. The session identifier remains
+in localStorage. **This is a demo backend, not production storage** — it exists
+so the UX can be reviewed without infrastructure, and every mutation is
+funnelled through `AppStore` so a real API can replace it one-for-one.
 
 ---
 
@@ -152,9 +155,9 @@ Cannot be completed in this environment: no server, no PostgreSQL. What is
   store ownership checks, admin-only mutation checks, register requirements,
   stock/discount/credit-limit validation, expense ownership, and admin
   protections are currently enforced by the browser store layer (`AppStore`).
-- Client-side controls can be bypassed by a user who can alter localStorage or
-  the running JavaScript. They are defense-in-depth for the demo, not
-  production authorization or tamper-resistant audit history.
+- Client-side controls can be bypassed by a user who can alter IndexedDB,
+  localStorage, or the running JavaScript. They are defense-in-depth for the
+  demo, not production authorization or tamper-resistant audit history.
 
 **Plan (next phase):** Node + Fastify (or NestJS) + PostgreSQL with row-level
 tenancy (`store_id` on every row + RLS), JWT access tokens, server-side

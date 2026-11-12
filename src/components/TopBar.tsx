@@ -15,6 +15,7 @@ import { useApp } from '../store/AppStore'
 import { getDashboardNotices } from '../lib/dashboard'
 import { BRAND_NAME } from '../lib/brand'
 import { fmtDate, fmtTime } from '../lib/utils'
+import { AppIcon } from './AppIcon'
 import { BrandLogo } from './BrandLogo'
 import { ThemeToggle } from './ThemeToggle'
 import { Avatar, Badge } from './ui'
@@ -75,7 +76,11 @@ export function TopBar({
           aria-label="Toggle navigation"
           title="Toggle navigation"
         ><Menu className="h-4 w-4" /></button>
-        <BrandLogo size="sm" markOnly className="hidden h-9 w-9 overflow-hidden sm:flex [&_img]:h-9 [&_img]:w-9" />
+        {!isSuper && store
+          ? store.logo
+            ? <img src={store.logo} alt={`${store.name} logo`} className="hidden h-9 w-9 shrink-0 rounded-xl object-cover sm:block" />
+            : <AppIcon name={store.icon} color={store.iconColor} size={16} className="hidden h-9 w-9 rounded-xl sm:inline-flex" />
+          : <BrandLogo size="sm" markOnly className="hidden h-9 w-9 overflow-hidden sm:flex [&_img]:h-9 [&_img]:w-9" />}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[14px] font-extrabold tracking-tight text-ink sm:text-[16px]">{title}</h1>
           <p className="hidden truncate text-[10.5px] text-muted sm:block">
@@ -94,7 +99,7 @@ export function TopBar({
         <div className="hidden flex-col items-end text-[10.5px] leading-tight text-muted xl:flex">
           <span>{fmtDate(now.toISOString())}</span><span>{fmtTime(now.toISOString())}</span>
         </div>
-        <ThemeToggle accent={store?.settings.accent} />
+        <ThemeToggle accent={store?.settings.accent} defaultMode={store?.settings.colorMode} />
         {user.role === 'admin' && (
           <div className="relative">
             <button type="button" onClick={() => setNoticesOpen(!noticesOpen)} className="relative rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800" aria-label="Notifications" aria-expanded={noticesOpen}>
@@ -123,7 +128,7 @@ export function TopBar({
         )}
         <div className="relative">
           <button type="button" onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-2 rounded-xl border border-line bg-white p-1.5 pr-2 text-left hover:bg-cream-100 dark:bg-espresso-800" aria-label="User menu" aria-expanded={menuOpen}>
-            <Avatar name={user.name} size="sm" />
+            <Avatar name={user.name} photo={user.photo} size="sm" />
             <span className="hidden max-w-24 truncate text-[11px] font-bold text-ink lg:block">{user.name.split(' ')[0]}</span>
           </button>
           {menuOpen && <div className="absolute right-0 top-12 z-40 w-48 rounded-2xl border border-line bg-white p-1.5 shadow-xl dark:bg-espresso-800">

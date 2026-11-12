@@ -78,8 +78,8 @@ function HomeRoute() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <ToastProvider>
+    <ToastProvider>
+      <AppProvider>
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
@@ -192,7 +192,7 @@ export default function App() {
             <Route path="*" element={<HomeRoute />} />
           </Routes>
         </BrowserRouter>
-      </ToastProvider>
-    </AppProvider>
+      </AppProvider>
+    </ToastProvider>
   )
 }

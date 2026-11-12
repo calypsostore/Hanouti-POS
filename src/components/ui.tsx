@@ -250,10 +250,12 @@ const avatarPalette = [
 
 export function Avatar({
   name,
+  photo,
   size = 'md',
   className,
 }: {
   name: string
+  photo?: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
   className?: string
 }) {
@@ -267,13 +269,13 @@ export function Avatar({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full font-bold',
+        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold',
         avatarPalette[idx],
         sizes[size],
         className,
       )}
     >
-      {initials(name)}
+      {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : initials(name)}
     </span>
   )
 }

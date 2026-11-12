@@ -1,6 +1,6 @@
 import { Check, Copy, ReceiptText, Sparkles, Store as StoreIcon } from 'lucide-react'
 import type { Store, User } from '../../../types'
-import { Badge, Card, Field, Input } from '../../../components/ui'
+import { Avatar, Badge, Card, Field, Input } from '../../../components/ui'
 import { PLAN_INFO } from '../../../data/seed'
 import { fmtDate, money } from '../../../lib/utils'
 import { IconPicker } from '../../../components/IconPicker'
@@ -13,6 +13,8 @@ export default function ProfileTab({
   user,
   form,
   setForm,
+  photo,
+  setPhoto,
   copied,
   setCopied,
 }: {
@@ -20,6 +22,8 @@ export default function ProfileTab({
   user: User | null
   form: StoreProfile
   setForm: React.Dispatch<React.SetStateAction<StoreProfile>>
+  photo?: string
+  setPhoto: (photo: string | undefined) => void
   copied: boolean
   setCopied: (copied: boolean) => void
 }) {
@@ -34,7 +38,7 @@ export default function ProfileTab({
         </div>
 
         <div className="space-y-3.5">
-          <div className="space-y-3">
+          <div>
             <div>
               <span className="mb-1.5 block text-[12.5px] font-semibold">Store icon</span>
               <IconPicker
@@ -44,7 +48,6 @@ export default function ProfileTab({
                 onColorChange={(iconColor) => setForm((current) => ({ ...current, iconColor }))}
               />
             </div>
-            <ImageUpload value={form.logo} label="Upload store logo" onChange={(logo) => setForm((current) => ({ ...current, logo }))} />
           </div>
 
           <div className="grid gap-3.5 sm:grid-cols-2">
@@ -121,6 +124,14 @@ export default function ProfileTab({
             <ReceiptText className="h-4 w-4 text-muted" />
             <h3 className="text-[13.5px] font-semibold">Account</h3>
           </div>
+          <div className="mb-4 flex items-center gap-3">
+            <Avatar name={user?.name ?? store.ownerName} photo={photo} size="md" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] font-semibold">Profile photo</div>
+              <p className="text-[10.5px] text-muted">Shown in the top bar and team list.</p>
+            </div>
+          </div>
+          <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
           <div className="space-y-1.5 text-[12px]">
             <div className="flex justify-between">
               <span className="text-muted">Signed in as</span>

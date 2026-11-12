@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../types'
 import { buildSeed } from '../data/seed'
-import { loadDb, DB_KEY } from './database'
+import { useToast } from '../components/toast'
+import { writeIndexedValue } from '../lib/storage'
+import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
 import type { ActorResult } from './types'
 
 type DatabaseRuntime = {
@@ -13,10 +15,18 @@ type DatabaseRuntime = {
 }
 
 export function useDatabase(): DatabaseRuntime {
+  const { push } = useToast()
   const [db, setDbState] = useState<Database>(buildSeed)
   const dbRef = useRef(db)
+  const persistenceWarningShown = useRef(false)
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const reportStorageError = useCallback((operation: string, error: unknown) => {
+    console.error(`7anouti: failed while ${operation}.`, error)
+    if (operation !== 'saving IndexedDB' || persistenceWarningShown.current) return
+    persistenceWarningShown.current = true
+    push('Changes could not be saved in this browser. They will remain available until you close this page.', 'error')
+  }, [push])
   const commitDb = useCallback((update: (prev: Database) => Database) => {
     const next = update(dbRef.current)
     dbRef.current = next
@@ -26,23 +36,37 @@ export function useDatabase(): DatabaseRuntime {
 
   useEffect(() => {
     let active = true
-    void loadDb(dbRef.current).then((loaded) => {
+    void loadDb(dbRef.current, reportStorageError).then((loaded) => {
       if (!active) return
       dbRef.current = loaded
       setDbState(loaded)
       setReady(true)
     }).catch((error: unknown) => {
       if (!active) return
+      console.error('7anouti: database initialization failed.', error)
       setLoadError(error instanceof Error ? error.message : 'Could not load the local database.')
       setReady(true)
     })
     return () => { active = false }
-  }, [])
+  }, [reportStorageError])
 
   useEffect(() => {
     if (!ready || loadError) return
-    try { localStorage.setItem(DB_KEY, JSON.stringify(db)) } catch { /* storage full ? ignore in demo */ }
-  }, [db, loadError, ready])
+    const timeout = window.setTimeout(() => {
+      let serialized: string
+      try {
+        serialized = JSON.stringify(db)
+      } catch (error) {
+        reportStorageError('serializing the database', error)
+        return
+      }
+      void writeIndexedValue(DB_KEY, serialized).then(
+        clearLocalDatabaseCopies,
+        (error: unknown) => reportStorageError('saving IndexedDB', error),
+      )
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [db, loadError, ready, reportStorageError])
 
   return { db, dbRef, ready, loadError, commitDb }
 }

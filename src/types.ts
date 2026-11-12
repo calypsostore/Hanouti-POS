@@ -49,6 +49,7 @@ export interface StoreSettings {
   receiptFooter: string
   lowStockThreshold: number
   accent: string
+  colorMode: 'light' | 'dark'
   printer: PrinterSettings
   features: StoreFeatures
 }
@@ -83,6 +84,7 @@ export interface User {
   pin: string
   role: Role
   active: boolean
+  photo?: string
   createdAt: string
   permissions: {
     discount: boolean

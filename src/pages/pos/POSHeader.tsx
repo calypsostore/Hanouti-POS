@@ -39,7 +39,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle accent={store.settings.accent} />
+          <ThemeToggle accent={store.settings.accent} defaultMode={store.settings.colorMode} />
           {(user.role === 'admin' || user.role === 'staff') && (
             <Link
               to={user.role === 'admin' ? '/admin' : '/staff'}
@@ -67,7 +67,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
             </>
           )}
           <div className="hidden items-center gap-2 rounded-xl border border-line px-2 py-1 sm:flex">
-            <Avatar name={user.name} size="xs" />
+            <Avatar name={user.name} photo={user.photo} size="xs" />
             <span className="pr-1 text-[12px] font-semibold text-ink">{user.name.split(' ')[0]}</span>
           </div>
           <button

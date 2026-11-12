@@ -9,16 +9,17 @@ import { DEFAULT_PRINTER } from '../../../lib/defaults'
 import { buildTestLines, linesToEscpos } from '../../../lib/escpos'
 import { connectPrinter, disconnectPrinter, onPrinterState, printerState as readPrinterState } from '../../../lib/printer'
 import type { PrinterState } from '../../../lib/printer'
+import BrandingTab from './BrandingTab'
 import ProfileTab from './ProfileTab'
 import RegisterTab from './RegisterTab'
 import ReceiptTab from './ReceiptTab'
 
-type Tab = 'profile' | 'register' | 'receipt'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
-  const { store, updateStore, updateSettings, resetDemo, user } = useApp()
+  const { store, updateStore, updateSettings, updateStaff, resetDemo, user } = useApp()
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>('profile')
   const [resetOpen, setResetOpen] = useState(false)
@@ -45,10 +46,12 @@ export default function SettingsPage() {
         receiptFooter: '',
         lowStockThreshold: 10,
         accent: '7anouti',
+        colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
         features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
       },
   )
+  const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)
   const [copied, setCopied] = useState(false)
   const [printer, setPrinter] = useState<PrinterState>(readPrinterState())
   const [testJob, setTestJob] = useState(false)
@@ -60,7 +63,7 @@ export default function SettingsPage() {
   const set: SettingsSetter = (key, value) =>
     setSettings((current) => ({ ...current, [key]: value }))
 
-  const save = () => {
+  const save = async () => {
     const profileResult = updateStore(store.id, form)
     if (!profileResult.ok) {
       push(profileResult.error, 'error')
@@ -70,6 +73,13 @@ export default function SettingsPage() {
     if (!settingsResult.ok) {
       push(settingsResult.error, 'error')
       return
+    }
+    if (user && user.photo !== ownerPhoto) {
+      const photoResult = await updateStaff(user.id, { photo: ownerPhoto })
+      if (!photoResult.ok) {
+        push(photoResult.error, 'error')
+        return
+      }
     }
     push('Settings saved')
   }
@@ -93,8 +103,9 @@ export default function SettingsPage() {
         onChange={setTab}
         options={[
           { value: 'profile', label: 'Store profile' },
+          { value: 'branding', label: 'Branding' },
           { value: 'register', label: 'Register & checkout' },
-          { value: 'receipt', label: 'Receipt & branding' },
+          { value: 'receipt', label: 'Receipt' },
         ]}
       />
 
@@ -104,9 +115,14 @@ export default function SettingsPage() {
           user={user}
           form={form}
           setForm={setForm}
+          photo={ownerPhoto}
+          setPhoto={setOwnerPhoto}
           copied={copied}
           setCopied={setCopied}
         />
+      )}
+      {tab === 'branding' && (
+        <BrandingTab form={form} setForm={setForm} settings={settings} set={set} />
       )}
       {tab === 'register' && <RegisterTab settings={settings} set={set} />}
       {tab === 'receipt' && (

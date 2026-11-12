@@ -66,6 +66,9 @@ export const accentPalettes: AccentPalette[] = [
   },
 ]
 
+export const isAccentPalette = (value: unknown): value is string =>
+  typeof value === 'string' && accentPalettes.some((palette) => palette.id === value)
+
 export function applyAccent(paletteId: string) {
   const palette = accentPalettes.find((p) => p.id === paletteId) ?? accentPalettes[0]
   const shades = document.documentElement.classList.contains('dark') ? palette.darkShades : palette.shades

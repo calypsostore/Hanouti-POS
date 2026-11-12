@@ -1,9 +1,7 @@
-import { Check, Palette, ReceiptText } from 'lucide-react'
+import { ReceiptText } from 'lucide-react'
 import type { Store, StoreSettings } from '../../../types'
 import type { PrinterState } from '../../../lib/printer'
 import { Card, Field, Textarea } from '../../../components/ui'
-import { accentPalettes } from '../../../lib/theme'
-import { cn } from '../../../lib/utils'
 import PrinterCard from './PrinterCard'
 
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
@@ -29,38 +27,6 @@ export default function ReceiptTab({
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       <div className="space-y-5 lg:col-span-2">
-        <Card className="p-5">
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-accent-foreground" />
-            <h3 className="text-[15px] font-semibold tracking-tight">Accent colour</h3>
-          </div>
-          <p className="mt-0.5 text-[12px] text-muted">
-            Used across your dashboard and register.
-          </p>
-          <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {accentPalettes.map((palette) => (
-              <button
-                key={palette.id}
-                onClick={() => set('accent', palette.id)}
-                className={cn(
-                  'group rounded-xl border p-2.5 text-center transition',
-                  settings.accent === palette.id
-                    ? 'border-espresso-900/20 bg-cream-100 ring-2 ring-espresso-900/10'
-                    : 'border-line bg-white hover:bg-cream-100',
-                )}
-              >
-                <span
-                  className="mx-auto flex h-8 w-8 items-center justify-center rounded-full"
-                  style={{ background: palette.shades[600] }}
-                >
-                  {settings.accent === palette.id && <Check className="h-4 w-4 text-white" />}
-                </span>
-                <span className="mt-1.5 block text-[10.5px] font-semibold text-muted">{palette.name}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-
         <Card className="p-5">
           <div className="flex items-center gap-2">
             <ReceiptText className="h-4 w-4 text-accent-foreground" />

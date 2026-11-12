@@ -24,6 +24,9 @@ export const normalizeUser = (u: User): User => {
   const p = u.permissions ?? base
   return {
     ...u,
+    photo: typeof u.photo === 'string' && u.photo.startsWith('data:image/') && u.photo.length <= 307200
+      ? u.photo
+      : undefined,
     permissions: {
       discount: typeof p.discount === 'boolean' ? p.discount : base.discount,
       credit: typeof p.credit === 'boolean' ? p.credit : base.credit,

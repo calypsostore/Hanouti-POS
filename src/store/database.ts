@@ -6,17 +6,16 @@ import { ICON_NAMES } from '../types'
 import { normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
+import { readIndexedValue } from '../lib/storage'
+import { isAccentPalette } from '../lib/theme'
 
-export const DB_KEY = '7anouti.db.v9'
-const LEGACY_DB_KEYS = ['7anouti.db.v8', 'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
+export const DB_KEY = '7anouti.db.v10'
+const LEGACY_DB_KEYS = ['7anouti.db.v9', '7anouti.db.v8', 'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6']
 export const SESSION_KEY = '7anouti.session.v2'
 export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-const isQuotaExceeded = (error: unknown): boolean =>
-  typeof error === 'object' && error !== null && 'name' in error &&
-  (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
 const LEGACY_EMOJI_ICONS: Record<string, IconName> = {
   '☕': 'Coffee', '🧁': 'Cake', '🥐': 'Croissant', '🍰': 'Cake',
   '🥤': 'CupSoda', '🍽️': 'Utensils', '🌿': 'Leaf', '🍵': 'Coffee',
@@ -138,9 +137,8 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
             : true,
           receiptFooter: typeof s.settings.receiptFooter === 'string' ? s.settings.receiptFooter : '',
           lowStockThreshold: isFiniteNumber(s.settings.lowStockThreshold) ? s.settings.lowStockThreshold : 10,
-          accent: typeof s.settings.accent === 'string' && s.settings.accent !== 'caramel'
-            ? s.settings.accent
-            : '7anouti',
+          accent: isAccentPalette(s.settings.accent) ? s.settings.accent : '7anouti',
+          colorMode: s.settings.colorMode === 'dark' ? 'dark' as const : 'light' as const,
           printer: normalizePrinter(
             isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
@@ -261,14 +259,51 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
   }
 }
 
-export const loadDb = async (seed: Database): Promise<Database> => {
-  let db: Database | null = null
+export const clearLocalDatabaseCopies = () => {
   for (const key of [DB_KEY, ...LEGACY_DB_KEYS]) {
     try {
-      const raw = localStorage.getItem(key)
-      if (raw) db = normalizeDb(JSON.parse(raw), seed)
-    } catch { /* Try the next key when local data is corrupted. */ }
-    if (db) break
+      localStorage.removeItem(key)
+    } catch (error) {
+      console.warn('7anouti: could not remove a local database copy.', error)
+    }
+  }
+}
+
+export const loadDb = async (
+  seed: Database,
+  reportStorageError: (operation: string, error: unknown) => void = () => {},
+): Promise<Database> => {
+  let db: Database | null = null
+  let loadedFromIndexedDb = false
+  try {
+    const raw = await readIndexedValue(DB_KEY)
+    if (raw) {
+      try {
+        db = normalizeDb(JSON.parse(raw), seed)
+      } catch {
+        db = null
+      }
+      loadedFromIndexedDb = db !== null
+    }
+  } catch (error) {
+    reportStorageError('reading IndexedDB', error)
+  }
+
+  if (!db) {
+    for (const key of [DB_KEY, ...LEGACY_DB_KEYS]) {
+      let raw: string | null = null
+      try {
+        raw = localStorage.getItem(key)
+      } catch (error) {
+        reportStorageError('reading localStorage', error)
+        break
+      }
+      if (!raw) continue
+      try {
+        db = normalizeDb(JSON.parse(raw), seed)
+      } catch { /* Try the next key when local data is corrupted. */ }
+      if (db) break
+    }
   }
   const source = db ?? seed
   const users = await Promise.all(source.users.map(async (user) => ({
@@ -277,22 +312,6 @@ export const loadDb = async (seed: Database): Promise<Database> => {
     pin: isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin),
   })))
   const migrated = { ...source, users }
-  const serialized = JSON.stringify(migrated)
-  try {
-    localStorage.setItem(DB_KEY, serialized)
-  } catch (error) {
-    if (!isQuotaExceeded(error)) throw error
-    // Storage is full: drop old keys and retry. If it still does not fit, keep
-    // running from memory so login keeps working instead of blocking the app.
-    for (const key of [...LEGACY_DB_KEYS, DB_KEY]) localStorage.removeItem(key)
-    try {
-      localStorage.setItem(DB_KEY, serialized)
-    } catch (retryError) {
-      if (!isQuotaExceeded(retryError)) throw retryError
-      console.warn('7anouti: local storage quota exceeded, running in memory only.')
-      return migrated
-    }
-  }
-  for (const key of LEGACY_DB_KEYS) localStorage.removeItem(key)
+  if (loadedFromIndexedDb) clearLocalDatabaseCopies()
   return migrated
 }

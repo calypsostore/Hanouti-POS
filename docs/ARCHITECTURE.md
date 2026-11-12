@@ -19,12 +19,13 @@
   Feature slices live in `src/store/` (`auth`, `orders`, `register`,
   `catalog`, `customers`, `staff`, and `settings`). `runtime.ts` owns shared
   database state and actor guards; `database.ts` owns local database loading,
-  normalization, and migrations.
+  normalization, and migrations, while `src/lib/storage.ts` wraps IndexedDB.
 - Shared application types are in `src/types.ts`; slice contracts are in
   `src/store/types.ts` and `src/store/sliceTypes.ts`. Seed data belongs in
   `src/data/`.
-- This is a localStorage demo application. The browser store is not a trusted
-  backend or production security boundary.
+- This is a browser-local demo application. Business data uses IndexedDB;
+  the session identifier and small UI preferences remain in localStorage.
+  Browser storage is not a trusted backend or production security boundary.
 
 ## Adding a page
 
@@ -55,7 +56,7 @@
 1. Update the domain type in `src/types.ts` and seed records in
    `src/data/seed.ts`.
 2. Bump `DB_KEY` in `src/store/database.ts` and add a migration/normalization
-   path in `loadDb` so existing localStorage data remains readable.
+   path in `loadDb` so existing IndexedDB and localStorage data remains readable.
 3. Preserve frozen register snapshots and other historical records where
    applicable. Update `docs/PRODUCTION_PLAN.md` with what is implemented and
    what remains demo-only.
