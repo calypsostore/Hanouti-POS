@@ -29,6 +29,7 @@ export default function OrdersPage() {
   const [range, setRange] = useState<OrderRange>('today')
   const [method, setMethod] = useState<OrderMethod>('all')
   const [status, setStatus] = useState<OrderStatus>('all')
+  const [tableId, setTableId] = useState('all')
   const [selected, setSelected] = useState<Order | null>(null)
   const [voidTarget, setVoidTarget] = useState<Order | null>(null)
   const [voidPin, setVoidPin] = useState('')
@@ -41,6 +42,15 @@ export default function OrdersPage() {
   const customers = db.customers.filter((customer) => customer.storeId === store.id)
   const customerName = (id?: string) => customers.find((customer) => customer.id === id)?.name
   const myOrders = user.role === 'staff' && searchParams.get('mine') === 'true'
+  const tableNames = new Map(
+    db.tables.filter((table) => table.storeId === store.id).map((table) => [table.id, table.name]),
+  )
+  db.orders.filter((order) => order.storeId === store.id && order.tableId).forEach((order) => {
+    if (order.tableId && !tableNames.has(order.tableId)) {
+      tableNames.set(order.tableId, order.tableName ?? 'Former table')
+    }
+  })
+  const tableOptions = [...tableNames].map(([id, name]) => ({ id, name }))
 
   const boundary = new Date()
   if (range === '7d') boundary.setDate(boundary.getDate() - 6)
@@ -58,6 +68,7 @@ export default function OrdersPage() {
     )
     .filter((order) => method === 'all' || order.paymentMethod === method)
     .filter((order) => status === 'all' || order.status === status)
+    .filter((order) => tableId === 'all' || order.tableId === tableId)
     .filter((order) => {
       if (!query.trim()) return true
       const search = query.trim().toLowerCase()
@@ -65,6 +76,7 @@ export default function OrdersPage() {
         String(order.number).includes(search) ||
         order.staffName.toLowerCase().includes(search) ||
         (customerName(order.customerId) ?? '').toLowerCase().includes(search) ||
+        (order.tableName ?? '').toLowerCase().includes(search) ||
         order.items.some((item) => item.name.toLowerCase().includes(search))
       )
     })
@@ -79,12 +91,14 @@ export default function OrdersPage() {
 
   const exportCsv = () => {
     const rows: (string | number)[][] = [
-      ['Order', 'Date', 'Time', 'Channel', 'Customer', 'Staff', 'Payment', 'Status', 'Items', 'Total (DT)'],
+      ['Order', 'Date', 'Time', 'Channel', 'Table', 'Guests', 'Customer', 'Staff', 'Payment', 'Status', 'Items', 'Total (DT)'],
       ...filtered.map((order) => [
         order.number,
         fmtDate(order.createdAt),
         fmtTime(order.createdAt),
         order.channel,
+        order.tableName ?? '',
+        order.guests ?? '',
         customerName(order.customerId) ?? 'Guest',
         order.staffName,
         order.paymentMethod,
@@ -158,6 +172,12 @@ export default function OrdersPage() {
         range={range}
         onRangeChange={(nextRange) => {
           setRange(nextRange)
+          setLimit(20)
+        }}
+        tableId={tableId}
+        tableOptions={tableOptions}
+        onTableIdChange={(id) => {
+          setTableId(id)
           setLimit(20)
         }}
         method={method}

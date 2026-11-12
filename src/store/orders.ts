@@ -25,6 +25,25 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       }
       const target = current.stores.find((s) => s.id === seller.storeId)
       if (!target) return { ok: false, error: 'Store not found.' }
+      if (input.channel === 'delivery' && !target.settings.features.delivery) {
+        return { ok: false, error: 'Delivery orders are disabled for this store.' }
+      }
+      if (input.channel !== 'dine-in' && input.tableId) {
+        return { ok: false, error: 'A table can only be assigned to a dine-in order.' }
+      }
+      const table = input.tableId
+        ? current.tables.find((candidate) =>
+            candidate.id === input.tableId && candidate.storeId === target.id && candidate.active,
+          )
+        : undefined
+      if (input.tableId && !table) return { ok: false, error: 'Choose an active table from this store.' }
+      if (input.channel === 'dine-in' && target.settings.features.tables && !table) {
+        return { ok: false, error: 'Choose a table before checking out a dine-in order.' }
+      }
+      if (input.guests !== undefined &&
+        (!Number.isSafeInteger(input.guests) || input.guests < 1 || input.guests > 50)) {
+        return { ok: false, error: 'Guests must be a whole number from 1 to 50.' }
+      }
       if (!input.items.length) return { ok: false, error: 'Cart is empty.' }
       if (!current.registerSessions.some((session) => session.storeId === target.id && session.status === 'open')) {
         return { ok: false, error: 'Open the register first' }
@@ -169,6 +188,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         discount,
         total: totals.total,
         channel: input.channel,
+        tableId: table?.id,
+        tableName: table?.name,
+        guests: input.guests,
         status: 'completed',
         paymentMethod: input.paymentMethod,
         customerId: input.customerId,
@@ -239,12 +261,14 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           action: 'created',
           entity: 'order',
           entityId: order.id,
-          summary: `Created order #${order.number} for ${order.total.toFixed(3)} DT`,
+          summary: `Created order #${order.number} for ${order.total.toFixed(3)} DT${table ? ` at ${table.name}` : ''}`,
           after: {
             number: order.number,
             total: order.total,
             discount: order.discount,
             paymentMethod: order.paymentMethod,
+            tableName: order.tableName ?? '',
+            guests: order.guests ?? 0,
             stockChanges,
           },
         })
@@ -378,9 +402,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           action: 'voided',
           entity: 'order',
           entityId: order.id,
-          summary: `Voided order #${order.number}: ${reason}`,
-          before: { status: order.status },
-          after: { status: 'void', reason, total: order.total },
+          summary: `Voided order #${order.number}${order.tableName ? ` · ${order.tableName}` : ''}: ${reason}`,
+          before: { status: order.status, tableName: order.tableName ?? '' },
+          after: { status: 'void', reason, total: order.total, tableName: order.tableName ?? '' },
         })
         if (order.paymentMethod === 'cash' || creditRefund > 0) {
           const refundAmount = order.paymentMethod === 'cash' ? order.total : creditRefund
@@ -390,7 +414,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             action: 'refund_applied',
             entity: 'order',
             entityId: order.id,
-            summary: `Refunded ${refundAmount.toFixed(3)} DT for order #${order.number} (${refundMethod})`,
+            summary: `Refunded ${refundAmount.toFixed(3)} DT for order #${order.number}${order.tableName ? ` · ${order.tableName}` : ''} (${refundMethod})`,
             after: { amount: refundAmount, method: refundMethod },
           })
         }

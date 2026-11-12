@@ -24,6 +24,11 @@ export function ReceiptView({ order, store }: { order: Order; store: Store }) {
         <span className="capitalize">{order.channel.replace('-', ' ')}</span>
         <span>{order.staffName}</span>
       </div>
+      {order.tableName && (
+        <div className="my-1 text-center text-[12px] font-extrabold uppercase tracking-wide">
+          {order.tableName}{order.guests ? ` · ${order.guests} guests` : ''}
+        </div>
+      )}
       <hr />
       <div className="space-y-1">
         {order.items.map((item) => (

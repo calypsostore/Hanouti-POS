@@ -11,6 +11,8 @@ export type AuditEntity =
   | 'settings'
   | 'auth'
   | 'payroll'
+  | 'shift'
+  | 'table'
 export type AuditAction =
   | 'created'
   | 'edited'
@@ -42,7 +44,7 @@ export type Plan = 'starter' | 'growth' | 'pro'
 export type StoreStatus = 'active' | 'trial' | 'suspended'
 export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
 export type PaymentMethod = 'cash' | 'card' | 'credit'
-export type OrderStatus = 'completed' | 'void'
+export type OrderStatus = 'open' | 'completed' | 'void'
 export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
 export type SalaryType = 'daily' | 'monthly' | 'none'
 export type AttendanceStatus = 'present' | 'half' | 'absent'
@@ -65,6 +67,7 @@ export type IconName = typeof ICON_NAMES[number]
 
 export interface StoreFeatures {
   tables: boolean
+  delivery: boolean
   kitchenScreen: boolean
   barcode: boolean
   weightItems: boolean
@@ -158,6 +161,16 @@ export interface Category {
   sort: number
 }
 
+export interface DiningTable {
+  id: string
+  storeId: string
+  name: string
+  seats: number
+  zone?: string
+  active: boolean
+  sort: number
+}
+
 export interface Product {
   id: string
   storeId: string
@@ -217,6 +230,7 @@ export interface Customer {
 
 export interface OrderItem {
   lineId?: string
+  sentAt?: string
   productId: string
   name: string
   price: number
@@ -248,6 +262,9 @@ export interface Order {
   discount: number
   total: number
   channel: OrderChannel
+  tableId?: string
+  tableName?: string
+  guests?: number
   status: OrderStatus
   paymentMethod: PaymentMethod
   customerId?: string
@@ -258,6 +275,27 @@ export interface Order {
   voidedById?: string
   voidedByName?: string
   voidedAt?: string
+}
+
+export interface OpenOrder {
+  id: string
+  storeId: string
+  tableId: string
+  tableName: string
+  guests?: number
+  items: OrderItem[]
+  subtotal: number
+  tax: number
+  service: number
+  discount: number
+  total: number
+  channel: 'dine-in'
+  status: 'open'
+  staffId: string
+  staffName: string
+  note?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LedgerEntry {
@@ -322,6 +360,18 @@ export interface Payroll {
   paidBy: string
 }
 
+export interface Shift {
+  id: string
+  storeId: string
+  userId: string
+  date: string
+  startTime: string
+  endTime: string
+  note?: string
+  createdBy: string
+  createdAt: string
+}
+
 export interface RegisterSnapshot {
   salesTotal: number
   cashSales: number
@@ -377,14 +427,17 @@ export interface Database {
   stores: Store[]
   users: User[]
   categories: Category[]
+  tables: DiningTable[]
   products: Product[]
   customers: Customer[]
   orders: Order[]
+  openOrders: OpenOrder[]
   ledger: LedgerEntry[]
   expenses: Expense[]
   attendance: Attendance[]
   advances: Advance[]
   payrolls: Payroll[]
+  shifts: Shift[]
   registerSessions: RegisterSession[]
   auditLogs: AuditLog[]
 }

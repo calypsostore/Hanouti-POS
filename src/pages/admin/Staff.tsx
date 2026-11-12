@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import {
   AtSign,
   BadgeCheck,
@@ -30,6 +31,7 @@ import { ImageUpload } from '../../components/ImageUpload'
 import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
 import { isValidUsername, suggestStaffUsername } from '../../lib/staff'
+import { getStaffSalesThisMonth } from '../../lib/staffDetails'
 
 type StaffForm = {
   name: string
@@ -45,16 +47,18 @@ type StaffForm = {
 export default function Staff() {
   const { db, store, user, addStaff, updateStaff, deleteStaff } = useApp()
   const { push } = useToast()
+  const navigate = useNavigate()
   const [editor, setEditor] = useState<{ open: boolean; member?: User }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [loginDetails, setLoginDetails] = useState<{ name: string; username: string; pin: string } | null>(null)
 
-  if (!store || !user) return null
+  if (!user) return null
+  const canManageStaff = user.role === 'admin'
+  const canOpenStaffDetails = canManageStaff || (user.role === 'staff' && user.permissions.supervisor)
+  if (!canOpenStaffDetails) return <Navigate to="/staff" replace />
+  if (!store) return null
 
   const team = db.users.filter((u) => u.storeId === store.id)
-  const monthStart = new Date()
-  monthStart.setDate(1)
-  monthStart.setHours(0, 0, 0, 0)
 
   return (
     <div className="space-y-5">
@@ -65,9 +69,11 @@ export default function Staff() {
             Give your staff a scoped login — they only ever see this store.
           </p>
         </div>
-        <Button onClick={() => setEditor({ open: true })}>
-          <UserPlus className="h-4 w-4" /> Add team member
-        </Button>
+        {canManageStaff && (
+          <Button onClick={() => setEditor({ open: true })}>
+            <UserPlus className="h-4 w-4" /> Add team member
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -135,15 +141,25 @@ export default function Staff() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {team.map((m) => {
-            const sales = db.orders.filter(
-              (o) =>
-                o.storeId === store.id &&
-                o.staffId === m.id &&
-                o.status === 'completed' &&
-                new Date(o.createdAt) >= monthStart,
-            )
+            const detailsAvailable = m.role === 'staff'
             return (
-              <Card key={m.id} className="group p-4">
+              <Card
+                key={m.id}
+                role={detailsAvailable ? 'button' : undefined}
+                tabIndex={detailsAvailable ? 0 : undefined}
+                aria-label={detailsAvailable ? `View ${m.name} details` : undefined}
+                onClick={(event) => {
+                  if (event.target instanceof HTMLElement && event.target.closest('button,input,select,a')) return
+                  if (detailsAvailable) navigate(`/admin/staff/${encodeURIComponent(m.id)}`)
+                }}
+                onKeyDown={(event) => {
+                  if (!detailsAvailable || event.target !== event.currentTarget ||
+                      (event.key !== 'Enter' && event.key !== ' ')) return
+                  event.preventDefault()
+                  navigate(`/admin/staff/${encodeURIComponent(m.id)}`)
+                }}
+                className={`group p-4 ${detailsAvailable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber-focus' : ''}`}
+              >
                 <div className="flex items-start gap-3">
                   <Avatar name={m.name} photo={m.photo} size="md" />
                   <div className="min-w-0 flex-1">
@@ -183,7 +199,7 @@ export default function Staff() {
                   </div>
                 </div>
                 <div className="mt-1 text-[10px] text-muted">
-                  Sales this month: {money(sales.reduce((a, o) => a + o.total, 0))}
+                  Sales this month: {money(getStaffSalesThisMonth(db, store.id, m.id))}
                 </div>
 
                 <div className="mt-2.5 flex flex-wrap gap-1">
@@ -195,36 +211,38 @@ export default function Staff() {
                   {m.permissions.reports && <Badge tone="neutral">Reports</Badge>}
                 </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5">
-                  <Toggle
-                    checked={m.active}
-                    onChange={async (v) => {
-                      const result = await updateStaff(m.id, { active: v })
-                      if (!result.ok) {
-                        push(result.error, 'error')
-                        return
-                      }
-                      push(v ? `${m.name} activated` : `${m.name} deactivated`, 'info')
-                    }}
-                    label="Active"
-                    disabled={m.id === user.id}
-                  />
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setEditor({ open: true, member: m })}
-                      className="rounded-lg p-1.5 text-muted transition hover:bg-cream-200 hover:text-ink"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(m)}
+                {canManageStaff && (
+                  <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5">
+                    <Toggle
+                      checked={m.active}
+                      onChange={async (v) => {
+                        const result = await updateStaff(m.id, { active: v })
+                        if (!result.ok) {
+                          push(result.error, 'error')
+                          return
+                        }
+                        push(v ? `${m.name} activated` : `${m.name} deactivated`, 'info')
+                      }}
+                      label="Active"
                       disabled={m.id === user.id}
-                      className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setEditor({ open: true, member: m })}
+                        className="rounded-lg p-1.5 text-muted transition hover:bg-cream-200 hover:text-ink"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(m)}
+                        disabled={m.id === user.id}
+                        className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </Card>
             )
           })}

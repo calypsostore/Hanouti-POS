@@ -92,7 +92,7 @@ export function TopBar({
           <div className="hidden items-center rounded-xl border border-line bg-cream-100 p-1 md:flex">
             <Link to="/pos" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'pos' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>POS</Link>
             {store.settings.features.tables && (
-              <Link to="/pos?channel=dine-in" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'tables' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>Tables</Link>
+              <Link to="/pos?channel=dine-in&focus=table" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'tables' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>Tables</Link>
             )}
           </div>
         )}

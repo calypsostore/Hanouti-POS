@@ -5,6 +5,7 @@ import { ToastProvider } from './components/toast'
 import { AppShell } from './components/Layout'
 import Login from './pages/Login'
 import POS from './pages/POS'
+import TableFloor from './pages/pos/TableFloor'
 import AdminOverview from './pages/admin/Overview'
 import StaffDashboard from './pages/admin/overview/StaffDashboard'
 import Orders from './pages/admin/Orders'
@@ -12,6 +13,7 @@ import Customers from './pages/admin/Customers'
 import Register from './pages/admin/Register'
 import Products from './pages/admin/Products'
 import Staff from './pages/admin/Staff'
+import StaffDetail from './pages/admin/staff/StaffDetail'
 import Reports from './pages/admin/Reports'
 import Expenses from './pages/admin/Expenses'
 import ActivityLog from './pages/admin/ActivityLog'
@@ -65,7 +67,7 @@ function AdminShell() {
 
 function POSPage() {
   const [searchParams] = useSearchParams()
-  return <POS key={searchParams.get('channel') ?? ''} />
+  return <POS key={`${searchParams.get('channel') ?? ''}:${searchParams.get('focus') ?? ''}:${searchParams.get('orderId') ?? ''}`} />
 }
 
 function StoreSetupGate({ children }: { children: React.ReactNode }) {
@@ -115,6 +117,18 @@ export default function App() {
                 </Protected>
               }
             />
+            <Route
+              path="/pos/floor"
+              element={
+                <Protected>
+                  <RoleGate roles={['admin', 'staff']}>
+                    <StoreSetupGate>
+                      <TableFloor />
+                    </StoreSetupGate>
+                  </RoleGate>
+                </Protected>
+              }
+            />
 
             <Route
               path="/admin"
@@ -148,8 +162,16 @@ export default function App() {
               <Route
                 path="staff"
                 element={
-                  <RoleGate roles={['admin']}>
+                  <RoleGate roles={['admin', 'staff']}>
                     <Staff />
+                  </RoleGate>
+                }
+              />
+              <Route
+                path="staff/:id"
+                element={
+                  <RoleGate roles={['admin', 'staff']}>
+                    <StaffDetail />
                   </RoleGate>
                 }
               />

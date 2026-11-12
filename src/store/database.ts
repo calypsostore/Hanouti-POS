@@ -1,8 +1,8 @@
 import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
-  Category, Customer, Database, Expense, IconColor, IconName, Order,
-  OrderModifier, Payroll, Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit,
-  Store, StoreSettings, User,
+  Category, Customer, Database, DiningTable, Expense, IconColor, IconName, Order,
+  OpenOrder, OrderModifier, Payroll, Product, ProductModifierGroup, ProductVariant, RegisterSession, SaleUnit,
+  Shift, Store, StoreSettings, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
@@ -13,10 +13,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v13'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v16'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -24,6 +24,11 @@ export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+const isDateKey = (value: string) => {
+  const date = new Date(`${value}T12:00:00`)
+  return Number.isFinite(date.getTime()) &&
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` === value
+}
 const LEGACY_EMOJI_ICONS: Record<string, IconName> = {
   '☕': 'Coffee', '🧁': 'Cake', '🥐': 'Croissant', '🍰': 'Cake',
   '🥤': 'CupSoda', '🍽️': 'Utensils', '🌿': 'Leaf', '🍵': 'Coffee',
@@ -59,7 +64,7 @@ const auditActions: AuditAction[] = [
 ]
 const auditEntities: AuditEntity[] = [
   'order', 'product', 'category', 'customer', 'staff', 'expense',
-  'register', 'settings', 'auth', 'payroll',
+  'register', 'settings', 'auth', 'payroll', 'shift', 'table',
 ]
 const auditRoles: AuditRole[] = ['super', 'admin', 'staff', 'unknown']
 const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
@@ -166,6 +171,8 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
             ...(isRecord(s.settings.features) ? s.settings.features : {}),
             tables: isRecord(s.settings.features) && typeof s.settings.features.tables === 'boolean'
               ? s.settings.features.tables : template.features.tables,
+            delivery: isRecord(s.settings.features) && typeof s.settings.features.delivery === 'boolean'
+              ? s.settings.features.delivery : false,
             kitchenScreen: isRecord(s.settings.features) && typeof s.settings.features.kitchenScreen === 'boolean'
               ? s.settings.features.kitchenScreen : template.features.kitchenScreen,
             barcode: isRecord(s.settings.features) && typeof s.settings.features.barcode === 'boolean'
@@ -250,6 +257,11 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     (item.channel === 'takeaway' || item.channel === 'dine-in' || item.channel === 'delivery'),
   ).map((order) => ({
     ...order,
+    tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
+    tableName: typeof order.tableName === 'string' ? order.tableName : undefined,
+    guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
+      ? Number(order.guests)
+      : undefined,
     items: order.items.filter((item) =>
       isRecord(item) && typeof item.productId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) &&
@@ -265,6 +277,62 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
       soldByWeight: item.soldByWeight === true,
     })),
   }))
+  const tables = collection<DiningTable>('tables', (item): item is DiningTable =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    item.name.trim().length > 0 && isFiniteNumber(item.seats) &&
+    Number.isSafeInteger(item.seats) && item.seats >= 1 && item.seats <= 50 &&
+    typeof item.active === 'boolean' && isFiniteNumber(item.sort),
+  ).map((table) => ({
+    ...table,
+    name: table.name.trim().slice(0, 60),
+    zone: typeof table.zone === 'string' ? table.zone.trim().slice(0, 60) || undefined : undefined,
+  })).filter((table, index, list) =>
+    stores.some((store) => store.id === table.storeId) &&
+    list.findIndex((other) =>
+      other.id === table.id ||
+      (other.storeId === table.storeId && other.name.toLowerCase() === table.name.toLowerCase()),
+    ) === index,
+  )
+  const usedOpenTables = new Set<string>()
+  const openOrders = collection<OpenOrder>('openOrders', (item): item is OpenOrder =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.tableId === 'string' &&
+    typeof item.tableName === 'string' && Array.isArray(item.items) &&
+    isFiniteNumber(item.subtotal) && isFiniteNumber(item.tax) && isFiniteNumber(item.service) &&
+    isFiniteNumber(item.discount) && isFiniteNumber(item.total) &&
+    item.channel === 'dine-in' && item.status === 'open' &&
+    typeof item.staffId === 'string' && typeof item.staffName === 'string' &&
+    typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) &&
+    typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt)),
+  ).map((order) => ({
+    ...order,
+    guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
+      ? Number(order.guests)
+      : undefined,
+    note: typeof order.note === 'string' ? order.note.slice(0, 500) : undefined,
+    items: order.items.filter((item) =>
+      isRecord(item) && typeof item.productId === 'string' && typeof item.name === 'string' &&
+      isFiniteNumber(item.price) && isFiniteNumber(item.qty) && item.qty > 0,
+    ).map((item, index) => ({
+      ...withoutLegacyEmoji(item),
+      lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
+      modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
+      note: typeof item.note === 'string' ? item.note.slice(0, 240) : '',
+      variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
+      variantName: typeof item.variantName === 'string' ? item.variantName : undefined,
+      saleUnit: isSaleUnit(item.saleUnit) ? item.saleUnit : undefined,
+      soldByWeight: item.soldByWeight === true,
+      sentAt: typeof item.sentAt === 'string' && Number.isFinite(Date.parse(item.sentAt))
+        ? item.sentAt
+        : undefined,
+    })),
+  })).filter((order) => {
+    const tableKey = `${order.storeId}:${order.tableId}`
+    const valid = stores.some((store) => store.id === order.storeId) &&
+      tables.some((table) => table.id === order.tableId && table.storeId === order.storeId) &&
+      !usedOpenTables.has(tableKey)
+    if (valid) usedOpenTables.add(tableKey)
+    return valid
+  })
   const ledger = collection<Database['ledger'][number]>('ledger', (item): item is Database['ledger'][number] =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.customerId === 'string' &&
     (item.type === 'charge' || item.type === 'payment') &&
@@ -325,6 +393,25 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     auditCounts.set(log.storeId, count + 1)
     return true
   }).reverse()
+  const shifts = Array.isArray(value.shifts)
+    ? collection<Shift>('shifts', (item): item is Shift =>
+        hasId(item) && typeof item.storeId === 'string' && typeof item.userId === 'string' &&
+        typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && isDateKey(item.date) &&
+        typeof item.startTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item.startTime) &&
+        typeof item.endTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item.endTime) &&
+        item.endTime > item.startTime && typeof item.createdBy === 'string' &&
+        typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)),
+      ).map((item) => ({
+        ...item,
+        note: typeof item.note === 'string' ? item.note.slice(0, 500) : undefined,
+      })).filter((shift) =>
+        users.some((member) =>
+          member.id === shift.userId && member.storeId === shift.storeId && member.role === 'staff',
+        ) &&
+        stores.some((store) => store.id === shift.storeId) &&
+        users.some((actor) => actor.id === shift.createdBy && actor.storeId === shift.storeId),
+      )
+    : []
   return {
     stores,
     users,
@@ -336,6 +423,8 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
       iconColor: isIconColor(category.iconColor) ? category.iconColor : 'amber',
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
+    tables,
+    openOrders,
     products: collection<Product>('products', (item): item is Product =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.categoryId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) && isFiniteNumber(item.cost) &&
@@ -372,6 +461,7 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
     attendance,
     advances,
     payrolls,
+    shifts,
     registerSessions: collection<RegisterSession>('registerSessions', (item): item is RegisterSession =>
       hasId(item) && typeof item.storeId === 'string' &&
       (item.status === 'open' || item.status === 'closed') && typeof item.openedAt === 'string' &&

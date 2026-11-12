@@ -66,6 +66,9 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       if (actor.role !== 'admin' && !actor.permissions.register) {
         return { ok: false, error: 'You do not have permission to close the register.' }
       }
+      if (current.openOrders.some((order) => order.storeId === session.storeId)) {
+        return { ok: false, error: 'Close or cancel all open table orders before closing the register.' }
+      }
       if (!Number.isFinite(countedCash) || countedCash < 0) {
         return { ok: false, error: 'Enter the cash you counted in the drawer.' }
       }

@@ -13,8 +13,9 @@ import BrandingTab from './BrandingTab'
 import ProfileTab from './ProfileTab'
 import RegisterTab from './RegisterTab'
 import ReceiptTab from './ReceiptTab'
+import TablesTab from './TablesTab'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
@@ -48,7 +49,7 @@ export default function SettingsPage() {
         accent: '7anouti',
         colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
-        features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
+        features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
         payroll: { ...DEFAULT_PAYROLL_SETTINGS },
       },
   )
@@ -107,6 +108,7 @@ export default function SettingsPage() {
           { value: 'branding', label: 'Branding' },
           { value: 'register', label: 'Register & checkout' },
           { value: 'receipt', label: 'Receipt' },
+          ...(settings.features.tables ? [{ value: 'tables' as const, label: 'Tables' }] : []),
         ]}
       />
 
@@ -144,6 +146,7 @@ export default function SettingsPage() {
           onTestPrint={() => setTestJob(true)}
         />
       )}
+      {tab === 'tables' && settings.features.tables && <TablesTab storeId={store.id} />}
 
       <Card className="flex flex-wrap items-center justify-between gap-3 border-dashed p-4">
         <div>

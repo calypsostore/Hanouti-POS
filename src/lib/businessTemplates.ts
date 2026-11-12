@@ -13,7 +13,7 @@ export interface BusinessTemplate {
 const templates: Record<BusinessType, BusinessTemplate> = {
   cafe: {
     posMode: 'cashier',
-    features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
+    features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you for your visit!'),
     categories: [
       { name: 'Coffee', icon: 'Coffee', iconColor: 'amber' },
@@ -26,7 +26,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   },
   restaurant: {
     posMode: 'cashier',
-    features: { tables: true, kitchenScreen: true, barcode: false, weightItems: false },
+    features: { tables: true, delivery: false, kitchenScreen: true, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you for dining with us!'),
     categories: [
       { name: 'Starters', icon: 'Salad', iconColor: 'green' },
@@ -38,7 +38,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   },
   bakery: {
     posMode: 'cashier',
-    features: { tables: false, kitchenScreen: false, barcode: true, weightItems: true },
+    features: { tables: false, delivery: false, kitchenScreen: false, barcode: true, weightItems: true },
     receiptFooter: receiptFooter('Freshly baked for you!'),
     categories: [
       { name: 'Bread', icon: 'Croissant', iconColor: 'amber' },
@@ -50,7 +50,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   },
   snack: {
     posMode: 'quick',
-    features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
+    features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thanks — see you soon!'),
     categories: [
       { name: 'Sandwiches', icon: 'Sandwich', iconColor: 'amber' },
@@ -62,7 +62,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   },
   retail: {
     posMode: 'cashier',
-    features: { tables: false, kitchenScreen: false, barcode: true, weightItems: true },
+    features: { tables: false, delivery: false, kitchenScreen: false, barcode: true, weightItems: true },
     receiptFooter: receiptFooter('Thank you for shopping with us!'),
     categories: [
       { name: 'Groceries', icon: 'ShoppingBasket', iconColor: 'green' },
@@ -73,7 +73,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
   },
   salon: {
     posMode: 'cashier',
-    features: { tables: false, kitchenScreen: false, barcode: false, weightItems: false },
+    features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you — we look forward to seeing you again!'),
     categories: [
       { name: 'Hair services', icon: 'Scissors', iconColor: 'violet' },

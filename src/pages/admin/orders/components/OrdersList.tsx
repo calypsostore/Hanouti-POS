@@ -16,6 +16,9 @@ type Props = {
   onMethodChange: (method: OrderMethod) => void
   status: OrderStatus
   onStatusChange: (status: OrderStatus) => void
+  tableId: string
+  tableOptions: Array<{ id: string; name: string }>
+  onTableIdChange: (tableId: string) => void
   limit: number
   onLoadMore: () => void
   onSelect: (order: Order) => void
@@ -32,6 +35,9 @@ export default function OrdersList({
   onMethodChange,
   status,
   onStatusChange,
+  tableId,
+  tableOptions,
+  onTableIdChange,
   limit,
   onLoadMore,
   onSelect,
@@ -44,7 +50,7 @@ export default function OrdersList({
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search by order #, customer, staff or item…"
+            placeholder="Search by order #, table, customer, staff or item…"
             className="pl-9"
           />
         </div>
@@ -78,6 +84,14 @@ export default function OrdersList({
             <option value="all">All status</option>
             <option value="completed">Completed</option>
             <option value="void">Void</option>
+          </Select>
+          <Select
+            value={tableId}
+            onChange={(event) => onTableIdChange(event.target.value)}
+            className="h-9 w-[140px] text-[12.5px]"
+          >
+            <option value="all">All tables</option>
+            {tableOptions.map((table) => <option key={table.id} value={table.id}>{table.name}</option>)}
           </Select>
         </div>
       </div>
@@ -123,6 +137,7 @@ export default function OrdersList({
                       <div className="text-[10.5px] capitalize text-muted">
                         {order.channel.replace('-', ' ')}
                       </div>
+                      {order.tableName && <div className="text-[10.5px] font-semibold text-accent-foreground">{order.tableName}</div>}
                     </td>
                     <td className="max-w-[240px] px-4 py-3 text-muted">
                       <span className="line-clamp-1">
@@ -168,6 +183,7 @@ export default function OrdersList({
                   <div className="text-[12.5px] font-semibold">
                     #{order.number} · {customerName(order.customerId) ?? 'Guest'}
                   </div>
+                  {order.tableName && <div className="text-[10px] font-semibold text-accent-foreground">{order.tableName}</div>}
                   <div className="truncate text-[10.5px] text-muted">
                     {order.items.map((item) => `${item.qty}× ${item.name}`).join(', ')}
                   </div>

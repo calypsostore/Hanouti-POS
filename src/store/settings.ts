@@ -145,7 +145,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (!actorResult.ok) return actorResult
     if (patch.features) {
       const featureValues = Object.values(patch.features)
-      if (featureValues.length !== 4 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
+      if (featureValues.length !== 5 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
         return { ok: false, error: 'Business feature settings must be enabled or disabled.' }
       }
     }

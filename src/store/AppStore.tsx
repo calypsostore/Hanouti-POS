@@ -9,6 +9,9 @@ import { useRegisterSlice } from './register'
 import { useSettingsSlice } from './settings'
 import { useStaffSlice } from './staff'
 import { usePayrollSlice } from './payroll'
+import { useShiftsSlice } from './shifts'
+import { useTablesSlice } from './tables'
+import { useOpenOrdersSlice } from './openOrders'
 import { useDatabase, useActorGuards } from './runtime'
 import type { AppContextValue } from './types'
 
@@ -30,11 +33,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
   const dependencies = { ...database, ...guards }
   const orders = useOrdersSlice(dependencies)
+  const openOrders = useOpenOrdersSlice(dependencies, orders.createOrder)
   const register = useRegisterSlice(dependencies)
   const catalog = useCatalogSlice(dependencies)
   const customers = useCustomersSlice(dependencies)
   const staff = useStaffSlice(dependencies)
   const payroll = usePayrollSlice(dependencies)
+  const shifts = useShiftsSlice(dependencies)
+  const tables = useTablesSlice(dependencies)
   const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
   const { db } = database
@@ -79,11 +85,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loginPin: auth.loginPin,
     logout: auth.logout,
     ...orders,
+    ...openOrders,
     ...register,
     ...catalog,
     ...customers,
     ...staff,
     ...payroll,
+    ...shifts,
+    ...tables,
     ...settings,
   }
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

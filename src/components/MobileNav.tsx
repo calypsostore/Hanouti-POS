@@ -15,7 +15,9 @@ export function MobileNav() {
           { to: '/pos', label: 'POS', icon: ShoppingBag },
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
           { to: '/admin/expenses', label: 'Attendance', icon: Wallet },
-          ...(user.permissions.register
+          ...(user.permissions.supervisor
+            ? [{ to: '/admin/staff', label: 'Team', icon: Users }]
+            : user.permissions.register
             ? [{ to: '/admin/register', label: 'Register', icon: BarChart3 }]
             : [{ to: '/admin/customers', label: 'Tabs', icon: Users }]),
         ]

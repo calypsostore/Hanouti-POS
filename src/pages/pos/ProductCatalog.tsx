@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Barcode, ChevronRight, LayoutGrid, Plus, Search, ShoppingBag } from 'lucide-react'
 import type { Category, OrderChannel, Product, Store } from '../../types'
-import { Button, EmptyState, Input, Segmented } from '../../components/ui'
+import { Button, EmptyState, Input } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
 import { getProductImage } from '../../lib/productDisplay'
 import { CategoryChip } from './CartPanel'
 import { AppIcon } from '../../components/AppIcon'
+import { ChannelSwitch } from './ChannelSwitch'
 
 type ProductCatalogProps = {
   categories: Category[]
@@ -24,11 +25,13 @@ type ProductCatalogProps = {
   total: number
   hasCartItems: boolean
   onOpenCart: () => void
+  lockedChannel?: boolean
+  tableName?: string
 }
 
 export function ProductCatalog({
   categories, products, categoryId, setCategoryId, search, setSearch, channel, setChannel, store, qtyInCart, addItem, onBarcodeScan,
-  count, total, hasCartItems, onOpenCart,
+  count, total, hasCartItems, onOpenCart, lockedChannel, tableName,
 }: ProductCatalogProps) {
   const [scanCode, setScanCode] = useState('')
   return (
@@ -44,16 +47,18 @@ export function ProductCatalog({
                   className="pl-9"
                 />
               </div>
-              <Segmented
-                value={channel}
-                onChange={setChannel}
-                size="sm"
-                options={[
-                  { value: 'takeaway', label: 'Takeaway' },
-                  { value: 'dine-in', label: 'Dine-in' },
-                ]}
-                className="hidden sm:inline-flex"
-              />
+              {lockedChannel ? (
+                <span className="hidden rounded-full border border-line px-3 py-2 text-[11px] font-semibold text-muted sm:inline-flex">
+                  Dine-in · {tableName}
+                </span>
+              ) : (
+                <ChannelSwitch
+                  channel={channel}
+                  setChannel={setChannel}
+                  allowDelivery={store.settings.features.delivery}
+                  className="hidden sm:inline-flex"
+                />
+              )}
             </div>
 
             {store.settings.features.barcode && (

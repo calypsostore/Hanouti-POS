@@ -61,6 +61,7 @@ export default function OrderDetailsDrawer({
               {order.status === 'void' ? 'Voided' : 'Completed'}
             </Badge>
             <Badge tone="neutral">{order.channel.replace('-', ' ')}</Badge>
+            {order.tableName && <Badge tone="accent">{order.tableName}{order.guests ? ` · ${order.guests} guests` : ''}</Badge>}
             {order.customerId && (
               <Badge tone="accent">
                 <UserRound className="h-3 w-3" />

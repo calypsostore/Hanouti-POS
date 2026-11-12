@@ -48,6 +48,14 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
             </Link>
           )}
+          {store.settings.features.tables && (
+            <Link
+              to="/pos/floor"
+              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+            >
+              <Users className="h-3.5 w-3.5" /> Floor
+            </Link>
+          )}
           {user.role === 'staff' && (
             <>
               <Link

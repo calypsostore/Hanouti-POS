@@ -3,6 +3,7 @@ import type {
   Customer,
   BusinessType,
   Database,
+  DiningTable,
   Expense,
   IconName,
   LedgerEntry,
@@ -12,11 +13,12 @@ import type {
   RegisterSession,
   RegisterSnapshot,
   SettlementCycle,
+  Shift,
   Store,
   StoreSettings,
   User,
 } from '../types'
-import { isoDaysAgo, uid } from '../lib/utils'
+import { dateKey, isoDaysAgo, uid } from '../lib/utils'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 
@@ -506,6 +508,33 @@ export function buildSeed(): Database {
   const ledger: LedgerEntry[] = []
   const expenses: Expense[] = []
   const registerSessions: RegisterSession[] = []
+  const tables: DiningTable[] = Array.from({ length: 8 }, (_, index) => ({
+    id: `tbl_darchai_${index + 1}`,
+    storeId: 'st_darchai',
+    name: `Table ${index + 1}`,
+    seats: index % 4 < 2 ? 2 : 4,
+    zone: index < 4 ? 'Inside' : 'Terrace',
+    active: true,
+    sort: index,
+  }))
+  const shifts: Shift[] = []
+  const shiftDate = (daysFromToday: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() + daysFromToday)
+    return dateKey(date)
+  }
+  const shiftCreatedAt = new Date().toISOString()
+  const sampleShifts: Array<Omit<Shift, 'id' | 'createdAt'>> = [
+    { storeId: 'st_yasmine', userId: 'u_amine', date: shiftDate(1), startTime: '08:00', endTime: '14:00', note: 'Opening shift', createdBy: 'u_sami' },
+    { storeId: 'st_yasmine', userId: 'u_salma', date: shiftDate(2), startTime: '14:00', endTime: '20:00', note: 'Afternoon shift', createdBy: 'u_sami' },
+    { storeId: 'st_petitcoin', userId: 'u_karim', date: shiftDate(1), startTime: '09:00', endTime: '15:00', note: '', createdBy: 'u_ines' },
+    { storeId: 'st_darchai', userId: 'u_hedi', date: shiftDate(3), startTime: '10:00', endTime: '16:00', note: '', createdBy: 'u_mehdi' },
+  ]
+  shifts.push(...sampleShifts.map((shift) => ({
+    ...shift,
+    id: uid('shift'),
+    createdAt: shiftCreatedAt,
+  })))
 
   const rng = mulberry32(20260214)
 
@@ -590,6 +619,7 @@ export function buildSeed(): Database {
 
     if (store.status !== 'suspended') {
       let orderNo = 1001
+      let seededDineInCount = 0
       for (let d = historyDays; d >= 0; d--) {
         const day = new Date()
         day.setDate(day.getDate() - d)
@@ -642,6 +672,10 @@ export function buildSeed(): Database {
           const paymentMethod = isCredit ? 'credit' : rng() < 0.72 ? 'cash' : 'card'
 
           const seller = pick(rng, staffPool)
+          const channel = rng() < 0.72 ? 'takeaway' : rng() < 0.85 ? 'dine-in' : 'delivery'
+          const table = store.id === 'st_darchai' && channel === 'dine-in' && seededDineInCount < tables.length
+            ? tables[seededDineInCount++]
+            : undefined
           const order: Order = {
             id: uid('ord'),
             storeId: store.id,
@@ -652,7 +686,9 @@ export function buildSeed(): Database {
             service,
             discount: 0,
             total,
-            channel: rng() < 0.72 ? 'takeaway' : rng() < 0.85 ? 'dine-in' : 'delivery',
+            channel,
+            tableId: table?.id,
+            tableName: table?.name,
             status: rng() < 0.015 ? 'void' : 'completed',
             paymentMethod,
             customerId: customer?.id,
@@ -833,14 +869,17 @@ export function buildSeed(): Database {
     stores,
     users,
     categories,
+    tables,
     products,
     customers,
     orders,
+    openOrders: [],
     ledger,
     expenses,
     attendance: [],
     advances: [],
     payrolls: [],
+    shifts,
     registerSessions,
     auditLogs: [],
   }

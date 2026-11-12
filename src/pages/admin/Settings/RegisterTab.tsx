@@ -118,6 +118,7 @@ export default function RegisterTab({
           <div className="mt-3.5 space-y-3.5">
             {([
               ['tables', 'Restaurant tables', 'Enable table workflows in the register.'],
+              ['delivery', 'Delivery orders', 'Allow delivery as an order channel.'],
               ['kitchenScreen', 'Kitchen screen', 'Enable kitchen ticket workflows.'],
               ['barcode', 'Barcode scanning', 'Show the POS scan field and support product barcodes.'],
               ['weightItems', 'Weight-based items', 'Allow sales by kg, g or fractional piece.'],

@@ -1,4 +1,4 @@
-import type { Order, PrinterWidth, RegisterSession, RegisterSnapshot, Store } from '../types'
+import type { OpenOrder, Order, OrderItem, PrinterWidth, RegisterSession, RegisterSnapshot, Store } from '../types'
 import { fmtDate, fmtDateTime, fmtTime } from './utils'
 import { round } from './pricing-utils'
 import { BRAND_NAME } from './brand'
@@ -139,6 +139,9 @@ export const buildReceiptLines = (
   lines.push({ text: divider(cols) })
   lines.push({ text: twoCol(`Order #${order.number}`, fmtDateTime(order.createdAt), cols) })
   lines.push({ text: twoCol(order.channel.replace('-', ' '), order.staffName, cols) })
+  if (order.tableName) {
+    lines.push({ text: `${order.tableName.toUpperCase()}${order.guests ? ` · ${order.guests} GUESTS` : ''}`, align: 'center', bold: true })
+  }
   if (order.customerId) {
     lines.push({ text: `Tab: ${opts.customerName ?? 'Customer'}` })
   }
@@ -175,17 +178,25 @@ export const buildReceiptLines = (
 
 /* ----------------------------- kitchen tickets ---------------------------- */
 
-export const buildKitchenLines = (order: Order, store: Store): ReceiptLine[] => {
+type KitchenOrder = Pick<Order, 'createdAt' | 'channel' | 'items' | 'note' | 'tableName' | 'staffName'>
+
+const kitchenLines = (
+  order: KitchenOrder,
+  store: Store,
+  reference: string,
+  items = order.items,
+): ReceiptLine[] => {
   const cols = columnsFor(store.settings.printer.width)
   const lines: ReceiptLine[] = []
   lines.push({ text: 'KITCHEN', align: 'center', bold: true, size: 'double' })
+  if (order.tableName) lines.push({ text: order.tableName.toUpperCase(), align: 'center', bold: true, size: 'double' })
   lines.push({
-    text: twoCol(`#${order.number}`, fmtTime(order.createdAt), cols),
+    text: twoCol(reference, fmtTime(order.createdAt), cols),
     bold: true,
   })
   lines.push({ text: order.channel.replace('-', ' ').toUpperCase(), align: 'center', bold: true })
   lines.push({ text: divider(cols) })
-  for (const item of order.items) {
+  for (const item of items) {
     const quantity = item.soldByWeight
       ? `${item.qty.toFixed(3)} ${item.saleUnit ?? 'piece'}`
       : `${item.qty} x`
@@ -200,6 +211,15 @@ export const buildKitchenLines = (order: Order, store: Store): ReceiptLine[] => 
   lines.push({ text: `-${order.staffName}`, align: 'right' })
   return lines
 }
+
+export const buildKitchenLines = (order: Order, store: Store): ReceiptLine[] =>
+  kitchenLines(order, store, `#${order.number}`)
+
+export const buildOpenKitchenLines = (
+  order: OpenOrder,
+  items: OrderItem[],
+  store: Store,
+): ReceiptLine[] => kitchenLines(order, store, `OPEN ${order.id.slice(-6)}`, items)
 
 /* ------------------------------ X / Z reports ----------------------------- */
 

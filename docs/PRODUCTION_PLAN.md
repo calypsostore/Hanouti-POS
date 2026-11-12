@@ -6,8 +6,8 @@ the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
 Last updated: 2026-11-12 · shipped: **POS hardening, architecture refactor,
-requested feature Phase 1, and the visual/icon upgrade**. The requested feature
-Phases 2–9 remain unstarted.
+business templates, visual/icon upgrade, and dine-in table setup with
+table-aware immediate orders**. Persistent open table orders remain in progress.
 
 ## Code organization update (2026-11-12)
 
@@ -44,8 +44,9 @@ dashboard component set and the app shell is split into a collapsible sidebar,
 top bar, and mobile navigation. Dashboard totals reuse the existing report and
 ledger data; month profit is explicitly an estimate based on current product
 costs and recorded expenses. This is a presentation update only: the current
-database still has no open-order/tracking status model, shift records, last-login
-history, or billing workflow. Those dashboard
+database still has no open-order/tracking status model, last-login history, or
+billing workflow. Planned staff shifts are modeled separately from live register
+or order-tracking data. Those dashboard
 sections are omitted, marked unavailable, or limited to the data already
 stored; no demo values are presented as production data.
 
@@ -56,10 +57,11 @@ stored; no demo values are presented as production data.
   blue, and credit amber; report/dashboard charts use those tokens and include
   legends.
 - Store, category, and product records use Lucide icon keys and semantic icon
-  colors. Existing emoji-backed records migrate to the nearest icon during the
-  `7anouti.db.v13` local database normalization; the legacy emoji property is
-  removed. Store logos and product images can be uploaded and resized to 256 px
-  client-side (up to 300 KB).
+  colors. Existing emoji-backed records migrate to the nearest icon during
+  local database normalization; the legacy emoji property is removed. The
+  current schema is `7anouti.db.v16`, with older IndexedDB/local records
+  normalized during load. Store logos and product images can be uploaded and
+  resized to 256 px client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
   accessibility fallbacks. The sidebar is edge-docked and full-height, and the
   top bar is sticky at the viewport top; neither uses the floating glass-shell
@@ -77,18 +79,22 @@ stored; no demo values are presented as production data.
   username, PIN, permission, and active-status controls. Staff sign in with a
   unique username and PIN; admin accounts retain email/password login.
 - Store admins have an append-only, per-store activity log for sign-ins,
-  orders, catalog, customers, staff, expenses, registers, and settings. The
-  admin page supports filters, before/after details, CSV export, and
-  50-entry pagination. Entries are capped at 3,000 per store and remain
-  browser-local demo data, not tamper-resistant audit history.
+  orders, catalog, customers, staff, expenses, registers, settings, payroll,
+  shifts, and tables. The admin page supports filters, readable before/after change tables, optional
+  technical JSON, CSV export, and 50-entry pagination. Entries are capped at
+  3,000 per store and remain browser-local demo data, not tamper-resistant
+  audit history.
 - Payroll is available from the Expenses page: owners set staff salary type
   and amount, review full/half/absent attendance, manually correct attendance,
   issue advances, and pay each staff member once per month. Staff clock in on
   login, clock out on logout, and refresh `lastSeen` each minute; stale or
   prior-day sessions are auto-closed. Advances and net salary payouts appear
   separately as expenses, with payroll and manual attendance changes logged.
-  Staff can view only their own attendance and advances. The workflow and
-  records remain browser-local demo behavior.
+  Staff can view only their own attendance and advances; admins and shift
+  managers can review staff profiles, payroll, attendance, schedules, and
+  related activity. Weekly shift plans are persisted, checked for overlaps,
+  and included in the activity log. These workflows and records remain
+  browser-local demo behavior.
 - Local Chrome smoke review covered the dashboard, report donut/bars, POS
   catalog, settings icon picker, and light/dark presentation. The mobile
   settings viewport had no horizontal overflow. The local v13 database contains
@@ -107,15 +113,22 @@ stored; no demo values are presented as production data.
   A super administrator can create a store with its first administrator; that
   administrator chooses a business type at first sign-in. The template supplies
   starter categories, POS mode, feature defaults and receipt footer.
-- Settings can toggle tables, kitchen screen, barcode scanning and weight-based
-  items. The restaurant/table and kitchen workflows themselves are part of
-  requested Phase 2.
+- Settings can toggle tables, delivery, kitchen screen, barcode scanning and
+  weight-based items. Admins can add, edit, reorder, deactivate, quick-add and
+  remove dining tables; used table records are deactivated to preserve history.
+- Dine-in checkout requires an active table when the feature is enabled. Table
+  names are snapshotted on orders and shown on receipts, ESC/POS kitchen tickets,
+  the Orders page and CSV exports. The POS table picker is available in desktop
+  and mobile carts; the TopBar shortcut focuses it. Delivery is opt-in.
+- Schema `7anouti.db.v15` introduced dining tables and preserved historical
+  orders without table details. Seed data includes eight tables and sample
+  table-linked restaurant orders. These remain browser-local demo records.
 - Products support modifier groups/options, variants with independent price,
   cost, barcode and stock, product barcodes, per-item notes, and sales by kg/g/
   piece to three decimal places. POS validates and snapshots chosen variants and
   modifiers from the local catalog; receipts, kitchen tickets and sales totals
   use the saved line details.
-- `7anouti.db.v13` in IndexedDB migrates the previous v12/v11/v10 IndexedDB/localStorage
+- `7anouti.db.v16` in IndexedDB migrates previous v15/v14/v13/v12/v11/v10 IndexedDB/localStorage
   data and legacy `7anouti.db.v9`, v8, `cafepos.db.v8`, v7 and v6 databases with
   safe defaults for new fields, including staff usernames. Seed data includes
   realistic sample stores for all six business types.
@@ -123,13 +136,28 @@ stored; no demo values are presented as production data.
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
 
-### Requested feature phases 2–9 ⏳ partially implemented
+### Phase 2 — Open table orders ✅ demo implementation
 
-Restaurant open orders and tables; returns and labels; Tunisia VAT/fiscal
-compliance; ingredients and inventory; trusted server-side activity and payroll
-history; loyalty/promotions/sharing; expanded reports; and PWA/display/backup/
-polish remain planned work. Browser-local payroll and attendance are implemented
-as a demo workflow, not an authoritative wage or timekeeping system.
+- Dine-in tables can hold persistent open orders separate from completed sales.
+  Staff can add items in multiple rounds, send only unsent lines to the kitchen,
+  move or merge table orders, and pay at the end. Cancellation requires an
+  active admin PIN.
+- Open orders do not change stock, sales, customer tabs, or register totals
+  until payment. Register close and table deactivation/removal are blocked
+  while an open order remains. Open-order actions are included in the
+  browser-local activity log.
+- Schema `7anouti.db.v16` defaults open orders to an empty list when migrating
+  older records. This remains a demo workflow, not a production-safe
+  multi-terminal kitchen queue.
+
+### Requested feature phases 3–9 ⏳ partially implemented
+
+Persistent restaurant open orders and pay-later floor workflow; returns and
+labels; Tunisia VAT/fiscal compliance; ingredients and inventory; trusted
+server-side activity and payroll history; loyalty/promotions/sharing; expanded
+reports; and PWA/display/backup/polish remain planned work. Browser-local
+payroll and attendance are implemented as a demo workflow, not an authoritative
+wage or timekeeping system.
 
 ---
 
@@ -138,7 +166,7 @@ as a demo workflow, not an authoritative wage or timekeeping system.
 | Area | State before this phase | Now |
 | --- | --- | --- |
 | Auth | Browser-local demo auth | PBKDF2-hashed passwords/PINs, store-layer checks and PIN lockout; server auth still needed |
-| POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets |
+| POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets and persistent table orders |
 | Orders | History, void (admin only) | + manager-PIN void authorization, reprint, `voidedByName` audit |
 | Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
 | Reports | Daily/monthly charts, CSV export | + X/Z register reports (new page) |
@@ -150,7 +178,7 @@ as a demo workflow, not an authoritative wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v13`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v16`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is

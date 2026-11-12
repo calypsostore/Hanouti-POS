@@ -1,6 +1,6 @@
 import type {
   AttendanceStatus, BusinessType, Category, Customer, Database, Order, OrderChannel, OrderItem,
-  PaymentMethod, Product, SalaryType, Store, StoreSettings, StoreStatus, User,
+  OpenOrder, PaymentMethod, Product, SalaryType, Store, StoreSettings, StoreStatus, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -9,6 +9,8 @@ export type ActorResult = { ok: true; actor: User } | { ok: false; error: string
 export interface CreateOrderInput {
   items: OrderItem[]
   channel: OrderChannel
+  tableId?: string
+  guests?: number
   paymentMethod: PaymentMethod
   customerId?: string
   discount?: number
@@ -48,6 +50,33 @@ export interface ManualAttendanceInput {
   note?: string
 }
 
+export interface ShiftInput {
+  date: string
+  startTime: string
+  endTime: string
+  note?: string
+}
+
+export interface DiningTableInput {
+  name: string
+  seats: number
+  zone?: string
+  active?: boolean
+  sort?: number
+}
+
+export type OpenOrderActionResult =
+  | { ok: true; order: OpenOrder }
+  | { ok: false; error: string }
+
+export type KitchenSendResult =
+  | { ok: true; order: OpenOrder; items: OrderItem[] }
+  | { ok: false; error: string }
+
+export type PaidOpenOrderResult =
+  | { ok: true; order: Order }
+  | { ok: false; error: string }
+
 export interface AddAdvanceInput {
   amount: number
   date: string
@@ -64,6 +93,30 @@ export interface AppContextValue {
   loginPin: (username: string, pin: string) => Promise<Result>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
+  addTable: (storeId: string, data: Pick<DiningTableInput, 'name' | 'seats' | 'zone'>) => Result
+  updateTable: (id: string, patch: Partial<DiningTableInput>) => Result
+  deleteTable: (id: string) => Result
+  openTableOrder: (storeId: string, tableId: string, guests?: number) => OpenOrderActionResult
+  addItemsToOpenOrder: (
+    orderId: string,
+    items: OrderItem[],
+    discount?: number,
+    note?: string,
+  ) => OpenOrderActionResult
+  sendToKitchen: (
+    orderId: string,
+    items?: OrderItem[],
+    discount?: number,
+    note?: string,
+  ) => KitchenSendResult
+  payOpenOrder: (
+    orderId: string,
+    paymentMethod: PaymentMethod,
+    customerId?: string,
+  ) => PaidOpenOrderResult
+  moveOrderToTable: (orderId: string, tableId: string) => Result
+  mergeTableOrders: (sourceOrderId: string, targetOrderId: string) => Result
+  cancelOpenOrder: (orderId: string, managerPin: string) => Promise<Result>
   voidOrder: (orderId: string, managerPin?: string, reason?: string) => Promise<Result>
   openRegister: (storeId: string, openingCash: number) => Result
   closeRegister: (sessionId: string, countedCash: number, note?: string) => Result
@@ -89,6 +142,9 @@ export interface AppContextValue {
   addAdvance: (storeId: string, userId: string, data: AddAdvanceInput) => Result
   paySalary: (storeId: string, userId: string, month: string) => Result
   saveManualAttendance: (storeId: string, userId: string, data: ManualAttendanceInput) => Result
+  addShift: (storeId: string, userId: string, data: ShiftInput) => Result
+  updateShift: (id: string, patch: Partial<ShiftInput>) => Result
+  deleteShift: (id: string) => Result
   updateSettings: (storeId: string, patch: Partial<StoreSettings>) => Result
   completeBusinessSetup: (storeId: string, businessType: BusinessType) => Result
   createStore: (data: CreateStoreInput) => Promise<Result>
