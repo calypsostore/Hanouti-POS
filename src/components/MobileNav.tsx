@@ -1,11 +1,11 @@
-import { BarChart3, LayoutDashboard, Package, Plus, ReceiptText, Settings, ShoppingBag, Store, Users, Wallet } from 'lucide-react'
+import { BarChart3, LayoutDashboard, Package, Plus, ReceiptText, Settings, ShoppingBag, Store, Utensils, Users, Wallet } from 'lucide-react'
 import { Link, NavLink } from 'react-router-dom'
 import { useApp } from '../store/AppStore'
 import { cn } from '../lib/utils'
 import { can } from '../lib/permissions'
 
 export function MobileNav() {
-  const { user } = useApp()
+  const { user, store } = useApp()
   if (!user) return null
   const isSuper = user.role === 'super'
   const items = isSuper
@@ -14,6 +14,9 @@ export function MobileNav() {
       ? [
           { to: '/staff', label: 'Home', icon: LayoutDashboard, end: true },
           { to: '/pos', label: 'POS', icon: ShoppingBag },
+          ...(store?.settings.features.tables
+            ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils }]
+            : []),
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
           { to: '/admin/expenses', label: 'Attendance', icon: Wallet },
           ...(user.permissions.supervisor

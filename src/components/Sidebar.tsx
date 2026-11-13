@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store as StoreIcon,
+  Utensils,
   Users,
   Wallet,
   Zap,
@@ -57,6 +58,9 @@ export function Sidebar({
       ? [{ label: 'MAIN', items: [
           { to: '/staff', label: 'Dashboard', icon: LayoutDashboard, tone: 'blue', end: true },
           { to: '/pos', label: 'New order', icon: ShoppingBag, tone: 'amber' },
+          ...(store?.settings.features.tables
+            ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils, tone: 'teal' as const }]
+            : []),
         ] },
         { label: 'SALES', items: [
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },

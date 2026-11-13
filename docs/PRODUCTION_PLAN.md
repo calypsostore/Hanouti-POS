@@ -152,7 +152,10 @@ stored; no demo values are presented as production data.
   A super administrator can create a store with its first administrator; that
   administrator chooses a business type at first sign-in. The template supplies
   starter categories, POS mode, feature defaults and receipt footer.
-- Settings can toggle tables, delivery, kitchen screen, barcode scanning and
+- Selecting Cashier and saving settings automatically enables table workflows;
+  admins can still toggle tables separately. Switching back to Quick Order does
+  not disable tables. Staff navigation shows Floor when table service is on.
+  Settings can also toggle delivery, kitchen screen, barcode scanning and
   weight-based items. Admins can add, edit, reorder, deactivate, quick-add and
   remove dining tables; used table records are deactivated to preserve history.
 - Dine-in checkout requires an active table when the feature is enabled. Table

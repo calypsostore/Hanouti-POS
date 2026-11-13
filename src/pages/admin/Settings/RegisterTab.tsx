@@ -21,7 +21,7 @@ export default function RegisterTab({
             <h3 className="text-[15px] font-semibold tracking-tight">How the register works</h3>
           </div>
           <p className="text-[12px] text-muted">
-            Pick how your staff finish a sale. You can switch whenever you like.
+            Pick how your staff finish a sale. Choosing Cashier also enables restaurant tables; save to apply the change.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -40,7 +40,10 @@ export default function RegisterTab({
             />
             <ModeCard
               active={settings.posMode === 'cashier'}
-              onClick={() => set('posMode', 'cashier')}
+              onClick={() => {
+                set('posMode', 'cashier')
+                set('features', { ...settings.features, tables: true })
+              }}
               icon={<CreditCard className="h-5 w-5" />}
               title="Cashier"
               badge="Full POS"
