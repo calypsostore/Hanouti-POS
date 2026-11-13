@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChefHat, Clock3, Merge, MoveRight, Plus, Utensils } from 'lucide-react'
 import { Button, Input, Modal, Select } from '../../components/ui'
 import { useToast } from '../../components/toast'
+import { can } from '../../lib/permissions'
 import { fmtTime, money } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
 import type { OpenOrder } from '../../types'
@@ -211,7 +212,16 @@ export default function TableFloor() {
         ))}
         {!tables.length && (
           <div className="rounded-2xl border border-dashed border-line p-8 text-center text-sm text-muted">
-            Add active tables in Settings to use the floor view.
+            {user.role === 'staff'
+              ? <p>No tables yet, ask your manager.</p>
+              : <div className="space-y-3">
+                  <p>No active tables yet. Add tables to use the floor view.</p>
+                  {can(user, 'manageSettings') && (
+                    <Button variant="secondary" onClick={() => navigate('/admin/settings?tab=tables')}>
+                      Add tables
+                    </Button>
+                  )}
+                </div>}
           </div>
         )}
       </div>

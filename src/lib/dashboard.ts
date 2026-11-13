@@ -194,6 +194,18 @@ export function getStaffDashboardData(db: Database, storeId: string, userId: str
   }
 }
 
+export function getTableOccupancy(db: Database, storeId: string) {
+  const activeTables = db.tables.filter((table) => table.storeId === storeId && table.active)
+  const occupied = new Set(db.openOrders
+    .filter((order) => order.storeId === storeId)
+    .map((order) => order.tableId))
+  const occupiedCount = activeTables.filter((table) => occupied.has(table.id)).length
+  return {
+    free: activeTables.length - occupiedCount,
+    occupied: occupiedCount,
+  }
+}
+
 export function getSuperDashboardData(db: Database, now = new Date()) {
   const monthStores = db.stores.filter((store) => isInMonth(store.createdAt, now.getFullYear(), now.getMonth()))
   const signupTrend = Array.from({ length: 6 }, (_, index) => {

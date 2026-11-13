@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, Wallet } from 'lucide-react'
+import { Banknote, Clock3, CreditCard, Wallet } from 'lucide-react'
 import type { Order } from '../../../../types'
 import { Badge, Card } from '../../../../components/ui'
 
@@ -25,6 +25,12 @@ export function MiniStat({
 }
 
 export function PaymentBadge({ method }: { method: Order['paymentMethod'] }) {
+  if (method === 'unpaid')
+    return (
+      <Badge tone="warning">
+        <Clock3 className="h-3 w-3" /> Unpaid
+      </Badge>
+    )
   if (method === 'credit')
     return (
       <Badge tone="accent">

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { OpenOrder } from '../types'
+import type { OpenOrder, Order } from '../types'
 import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
@@ -9,6 +9,32 @@ import { can } from '../lib/permissions'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
+
+const recordedOrderFromOpenOrder = (
+  openOrder: OpenOrder,
+  previous: Order | undefined,
+  number: number,
+): Order => ({
+  id: previous?.id ?? uid('ord'),
+  storeId: openOrder.storeId,
+  number,
+  items: openOrder.items,
+  subtotal: openOrder.subtotal,
+  tax: openOrder.tax,
+  service: openOrder.service,
+  discount: openOrder.discount,
+  total: openOrder.total,
+  channel: 'dine-in',
+  tableId: openOrder.tableId,
+  tableName: openOrder.tableName,
+  guests: openOrder.guests,
+  status: 'recorded',
+  paymentMethod: 'unpaid',
+  staffId: openOrder.staffId,
+  staffName: openOrder.staffName,
+  note: openOrder.note,
+  createdAt: previous?.createdAt ?? openOrder.createdAt,
+})
 
 export function useOpenOrdersSlice(
   dependencies: StoreSliceDependencies,
@@ -81,9 +107,17 @@ export function useOpenOrdersSlice(
       }
       const result = buildUpdatedOpenOrder(order, items, discount, note, actorResult.actor, current)
       if (!result.ok) return result
+      const recordedOrder = order.recordedOrderId
+        ? current.orders.find((item) => item.id === order.recordedOrderId)
+        : undefined
       commitDb((prev) => addLog({
         ...prev,
         openOrders: prev.openOrders.map((item) => item.id === order.id ? result.order : item),
+        orders: recordedOrder
+          ? prev.orders.map((item) => item.id === recordedOrder.id
+              ? recordedOrderFromOpenOrder(result.order, recordedOrder, recordedOrder.number)
+              : item)
+          : prev.orders,
       }, actorResult.actor, {
         storeId: order.storeId,
         action: 'edited',
@@ -118,6 +152,11 @@ export function useOpenOrdersSlice(
       commitDb((prev) => addLog({
         ...prev,
         openOrders: prev.openOrders.map((item) => item.id === order.id ? updated : item),
+        orders: order.recordedOrderId
+          ? prev.orders.map((item) => item.id === order.recordedOrderId
+              ? recordedOrderFromOpenOrder(updated, item, item.number)
+              : item)
+          : prev.orders,
       }, actorResult.actor, {
         storeId: order.storeId,
         action: 'edited',
@@ -154,6 +193,9 @@ export function useOpenOrdersSlice(
       commitDb((prev) => addLog({
         ...prev,
         openOrders: prev.openOrders.filter((item) => item.id !== order.id),
+        orders: order.recordedOrderId
+          ? prev.orders.filter((item) => item.id !== order.recordedOrderId)
+          : prev.orders,
       }, actor.actor, {
         storeId: order.storeId,
         action: 'edited',
@@ -167,6 +209,51 @@ export function useOpenOrdersSlice(
     },
     [commitDb, createOrder, dbRef, requireActor],
   )
+
+  const recordOpenOrder = useCallback<AppContextValue['recordOpenOrder']>((orderId) => {
+    const current = dbRef.current
+    const order = current.openOrders.find((item) => item.id === orderId)
+    if (!order) return { ok: false, error: 'Open table order not found.' }
+    const actorResult = requireActor(order.storeId)
+    if (!actorResult.ok) return actorResult
+    if (!order.items.length) return { ok: false, error: 'Add items before recording this table order.' }
+    const store = current.stores.find((item) => item.id === order.storeId)
+    if (!store?.settings.features.tables) return { ok: false, error: 'Tables are disabled for this store.' }
+    if (!current.tables.some((table) =>
+      table.id === order.tableId && table.storeId === order.storeId && table.active,
+    )) return { ok: false, error: 'Choose an active table from this store.' }
+    if (!current.registerSessions.some((session) =>
+      session.storeId === order.storeId && session.status === 'open',
+    )) return { ok: false, error: 'Open the register first.' }
+    const previous = order.recordedOrderId
+      ? current.orders.find((item) => item.id === order.recordedOrderId)
+      : undefined
+    if (order.recordedOrderId && !previous) {
+      return { ok: false, error: 'The recorded table order could not be found. Save the table order again.' }
+    }
+    const number = previous?.number ?? current.orders
+      .filter((item) => item.storeId === order.storeId)
+      .reduce((max, item) => Math.max(max, item.number), 1000) + 1
+    const recorded = recordedOrderFromOpenOrder(order, previous, number)
+    commitDb((prev) => addLog({
+      ...prev,
+      openOrders: prev.openOrders.map((item) =>
+        item.id === order.id ? { ...item, recordedOrderId: recorded.id } : item,
+      ),
+      orders: previous
+        ? prev.orders.map((item) => item.id === previous.id ? recorded : item)
+        : [recorded, ...prev.orders],
+    }, actorResult.actor, {
+      storeId: order.storeId,
+      action: previous ? 'edited' : 'created',
+      entity: 'order',
+      entityId: recorded.id,
+      summary: `${previous ? 'Updated' : 'Recorded'} unpaid table order #${recorded.number} at ${order.tableName}`,
+      before: previous ? { status: previous.status, total: previous.total } : undefined,
+      after: { status: 'recorded', tableName: order.tableName, total: order.total },
+    }))
+    return { ok: true, order: recorded }
+  }, [commitDb, dbRef, requireActor])
 
   const moveOrderToTable = useCallback<AppContextValue['moveOrderToTable']>((orderId, tableId) => {
     const current = dbRef.current
@@ -183,6 +270,11 @@ export function useOpenOrdersSlice(
     commitDb((prev) => addLog({
       ...prev,
       openOrders: prev.openOrders.map((item) => item.id === order.id ? updated : item),
+      orders: order.recordedOrderId
+        ? prev.orders.map((item) => item.id === order.recordedOrderId
+            ? { ...item, tableId: table.id, tableName: table.name }
+            : item)
+        : prev.orders,
     }, actorResult.actor, {
       storeId: order.storeId,
       action: 'edited',
@@ -213,8 +305,10 @@ export function useOpenOrdersSlice(
     const discount = round(target.discount + source.discount)
     const undiscounted = computeTotals(items, store.settings)
     if (discount > undiscounted.total) return { ok: false, error: 'Combined discounts exceed the new order total.' }
+    const recordedOrderId = target.recordedOrderId ?? source.recordedOrderId
     const updated: OpenOrder = {
       ...target,
+      recordedOrderId,
       items,
       ...computeTotals(items, store.settings, discount),
       discount,
@@ -227,6 +321,13 @@ export function useOpenOrdersSlice(
       openOrders: prev.openOrders
         .filter((item) => item.id !== source.id)
         .map((item) => item.id === target.id ? updated : item),
+      orders: [
+        ...prev.orders
+        .filter((item) => item.id !== source.recordedOrderId || item.id === recordedOrderId)
+          .map((item) => item.id === recordedOrderId
+            ? recordedOrderFromOpenOrder(updated, item, item.number)
+            : item),
+      ],
     }, actorResult.actor, {
       storeId: target.storeId,
       action: 'edited',
@@ -270,6 +371,9 @@ export function useOpenOrdersSlice(
       commitDb((prev) => addLog({
         ...prev,
         openOrders: prev.openOrders.filter((item) => item.id !== order.id),
+        orders: order.recordedOrderId
+          ? prev.orders.filter((item) => item.id !== order.recordedOrderId)
+          : prev.orders,
       }, authorizer, {
         storeId: order.storeId,
         action: 'voided',
@@ -285,6 +389,7 @@ export function useOpenOrdersSlice(
 
   return {
     openTableOrder,
+    recordOpenOrder,
     addItemsToOpenOrder,
     sendToKitchen,
     payOpenOrder,

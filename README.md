@@ -62,6 +62,11 @@ The login screen has one-click demo buttons for the first three.
   orders and take payments; only admins can edit profiles or remove customers.
 - Products and categories: emoji icons, pricing, cost/margin, stock tracking,
   active toggles
+- Inventory: base units and package conversions, opening stock, counts,
+  adjustments, waste, recent movement history, searchable list and permission-
+  aware CSV export
+- Supplier purchases: receive stock, attach invoices/receipt images, update
+  average costs, record partial payments and export filtered purchase history
 - Team: staff username + PIN logins, salary type/amount, roles, granular
   permissions (discounts, tabs, settlements, register, reports, shift supervisor),
   activation; administrators keep email/password sign-in

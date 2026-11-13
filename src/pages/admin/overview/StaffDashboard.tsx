@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../../../store/AppStore'
-import { getStaffDashboardData, canViewFinancials } from '../../../lib/dashboard'
+import { getStaffDashboardData, getTableOccupancy, canViewFinancials } from '../../../lib/dashboard'
 import { money, relative } from '../../../lib/utils'
 import { Badge } from '../../../components/ui'
 import { GradientKpiCard } from '../../../components/dashboard/GradientKpiCard'
 import { QuickActionTile } from '../../../components/dashboard/QuickActionTile'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
 import { AdminHeader } from './AdminHeader'
-import { ReceiptText, ShoppingBag, Users, Wallet } from 'lucide-react'
+import { ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
 
 export default function StaffDashboard() {
   const { db, store, user } = useApp()
@@ -16,6 +16,7 @@ export default function StaffDashboard() {
   if (!store || !user || !data) return null
   const openRegister = db.registerSessions.some((session) => session.storeId === store.id && session.status === 'open')
   const canSeeMoney = canViewFinancials(user)
+  const tableOccupancy = getTableOccupancy(db, store.id)
   return (
     <div className="space-y-5">
       <AdminHeader store={store} user={user} registerOpen={openRegister} now={now} />
@@ -27,6 +28,15 @@ export default function StaffDashboard() {
       {!user.permissions.register && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Shift tracking is not available in this demo.</div>}
       <SectionCard icon={ShoppingBag} tone="amber" title="Quick actions" subtitle="Pick up where you left off" bodyClassName="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-5">
         <QuickActionTile icon={ShoppingBag} tone="amber" label="New order" href="/pos" />
+        {store.settings.features.tables && (
+          <QuickActionTile
+            icon={Utensils}
+            tone="teal"
+            label="Tables"
+            detail={`${tableOccupancy.free} free · ${tableOccupancy.occupied} occupied`}
+            href="/pos/floor"
+          />
+        )}
         <QuickActionTile icon={ReceiptText} tone="blue" label="My orders" href="/admin/orders?mine=true" />
         {user.permissions.settle && <QuickActionTile icon={Users} tone="teal" label="Collect tab" href="/admin/customers" />}
       </SectionCard>

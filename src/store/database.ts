@@ -2,7 +2,8 @@ import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, Payroll, Product, ProductModifierGroup,
-  ProductVariant, RegisterSession, SaleUnit, Shift, StockMovement, Store, StoreSettings, User,
+  ProductVariant, Purchase, PurchasePayment, RegisterSession, SaleUnit, Shift, StockMovement,
+  Store, StoreSettings, Supplier, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
@@ -13,10 +14,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v18'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v21'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -67,6 +68,7 @@ const auditActions: AuditAction[] = [
 const auditEntities: AuditEntity[] = [
   'order', 'product', 'category', 'customer', 'staff', 'expense',
   'register', 'settings', 'auth', 'payroll', 'shift', 'table', 'inventory',
+  'purchase', 'supplier',
 ]
 const auditRoles: AuditRole[] = ['super', 'admin', 'manager', 'staff', 'unknown']
 const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
@@ -256,8 +258,10 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     isFiniteNumber(item.tax) && isFiniteNumber(item.service) &&
     isFiniteNumber(item.discount) && typeof item.staffId === 'string' &&
     typeof item.staffName === 'string' &&
-    (item.status === 'completed' || item.status === 'void') &&
-    (item.paymentMethod === 'cash' || item.paymentMethod === 'card' || item.paymentMethod === 'credit') &&
+    (item.status === 'completed' || item.status === 'recorded' || item.status === 'void') &&
+    ((item.status === 'recorded' && item.paymentMethod === 'unpaid') ||
+      (item.status !== 'recorded' &&
+        (item.paymentMethod === 'cash' || item.paymentMethod === 'card' || item.paymentMethod === 'credit'))) &&
     (item.channel === 'takeaway' || item.channel === 'dine-in' || item.channel === 'delivery'),
   ).map((order) => ({
     ...order,
@@ -342,6 +346,87 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
   })).filter((movement) =>
     inventoryItems.some((item) => item.id === movement.itemId && item.storeId === movement.storeId),
   )
+  const suppliers = collection<Supplier>('suppliers', (item): item is Supplier =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    typeof item.phone === 'string' && typeof item.email === 'string' &&
+    typeof item.address === 'string' && typeof item.notes === 'string' &&
+    typeof item.active === 'boolean' && typeof item.createdAt === 'string' &&
+    Number.isFinite(Date.parse(item.createdAt)),
+  ).map((supplier) => ({
+    ...supplier,
+    name: supplier.name.trim().slice(0, 100),
+    phone: supplier.phone.trim().slice(0, 40),
+    email: supplier.email.trim().slice(0, 120),
+    address: supplier.address.trim().slice(0, 240),
+    notes: supplier.notes.trim().slice(0, 500),
+  })).filter((supplier, index, list) =>
+    stores.some((store) => store.id === supplier.storeId) && Boolean(supplier.name) &&
+    list.findIndex((other) =>
+      other.id === supplier.id ||
+      (other.storeId === supplier.storeId && other.name.toLowerCase() === supplier.name.toLowerCase()),
+    ) === index,
+  )
+  const purchases = collection<Purchase>('purchases', (item): item is Purchase =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.supplierId === 'string' &&
+    typeof item.supplierName === 'string' && typeof item.invoiceNumber === 'string' &&
+    typeof item.receivedAt === 'string' && Number.isFinite(Date.parse(item.receivedAt)) &&
+    Array.isArray(item.lines) && item.lines.length > 0 &&
+    item.lines.every((line) =>
+      isRecord(line) && typeof line.id === 'string' &&
+      typeof line.inventoryItemId === 'string' && typeof line.itemName === 'string' &&
+      typeof line.packageId === 'string' && typeof line.packageLabel === 'string' &&
+      isFiniteNumber(line.packageCount) && line.packageCount > 0 &&
+      isFiniteNumber(line.baseQuantity) && line.baseQuantity > 0 &&
+      isFiniteNumber(line.unitCost) && line.unitCost >= 0 &&
+      isFiniteNumber(line.lineTotal) && line.lineTotal >= 0,
+    ) &&
+    isFiniteNumber(item.subtotal) && item.subtotal >= 0 &&
+    isFiniteNumber(item.paidAmount) && item.paidAmount >= 0 && item.paidAmount <= item.subtotal &&
+    (item.status === 'received' || item.status === 'void') &&
+    typeof item.note === 'string' && typeof item.createdById === 'string' &&
+    typeof item.createdByName === 'string' && typeof item.createdAt === 'string' &&
+    Number.isFinite(Date.parse(item.createdAt)) &&
+    (item.receiptImage === undefined ||
+      (typeof item.receiptImage === 'string' && item.receiptImage.length <= 700_000 &&
+        /^data:image\/(?:jpeg|png|webp);base64,/.test(item.receiptImage))),
+  ).map((purchase) => ({
+    ...purchase,
+    supplierName: purchase.supplierName.trim().slice(0, 100),
+    invoiceNumber: purchase.invoiceNumber.trim().slice(0, 100),
+    note: purchase.note.trim().slice(0, 500),
+    lines: purchase.lines.map((line) => ({
+      ...line,
+      itemName: line.itemName.trim().slice(0, 100),
+      packageLabel: line.packageLabel.trim().slice(0, 100),
+    })),
+    receiptImage: typeof purchase.receiptImage === 'string' ? purchase.receiptImage : undefined,
+    voidedAt: typeof purchase.voidedAt === 'string' ? purchase.voidedAt : undefined,
+    voidedById: typeof purchase.voidedById === 'string' ? purchase.voidedById : undefined,
+    voidedByName: typeof purchase.voidedByName === 'string' ? purchase.voidedByName : undefined,
+  })).filter((purchase) =>
+    stores.some((store) => store.id === purchase.storeId) &&
+    suppliers.some((supplier) => supplier.id === purchase.supplierId && supplier.storeId === purchase.storeId) &&
+    purchase.lines.every((line) =>
+      inventoryItems.some((inventoryItem) =>
+        inventoryItem.id === line.inventoryItemId && inventoryItem.storeId === purchase.storeId,
+      ),
+    ),
+  )
+  const purchasePayments = collection<PurchasePayment>('purchasePayments', (item): item is PurchasePayment =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.purchaseId === 'string' &&
+    isFiniteNumber(item.amount) && item.amount > 0 &&
+    (item.method === 'cash' || item.method === 'card' || item.method === 'bank_transfer' || item.method === 'other') &&
+    typeof item.note === 'string' && typeof item.userId === 'string' &&
+    typeof item.userName === 'string' && typeof item.createdAt === 'string' &&
+    Number.isFinite(Date.parse(item.createdAt)),
+  ).map((payment) => ({
+    ...payment,
+    note: payment.note.trim().slice(0, 240),
+  })).filter((payment) =>
+    purchases.some((purchase) =>
+      purchase.id === payment.purchaseId && purchase.storeId === payment.storeId && purchase.status === 'received',
+    ) && users.some((user) => user.id === payment.userId && user.storeId === payment.storeId),
+  )
   const usedOpenTables = new Set<string>()
   const openOrders = collection<OpenOrder>('openOrders', (item): item is OpenOrder =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.tableId === 'string' &&
@@ -357,6 +442,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
       ? Number(order.guests)
       : undefined,
+    recordedOrderId: typeof order.recordedOrderId === 'string' ? order.recordedOrderId : undefined,
     note: typeof order.note === 'string' ? order.note.slice(0, 500) : undefined,
     items: order.items.filter((item) =>
       isRecord(item) && typeof item.productId === 'string' && typeof item.name === 'string' &&
@@ -475,6 +561,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     tables,
     inventoryItems,
     stockMovements,
+    suppliers,
+    purchases,
+    purchasePayments,
     openOrders,
     products: collection<Product>('products', (item): item is Product =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.categoryId === 'string' &&
@@ -532,16 +621,20 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
 
 const databaseCollectionKeys: Array<keyof Database> = [
   'stores', 'users', 'categories', 'tables', 'inventoryItems', 'stockMovements',
-  'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
+  'suppliers', 'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
   'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'auditLogs',
 ]
 
 export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
-  if (!isRecord(value) || !databaseCollectionKeys.every((key) => Array.isArray(value[key]))) return null
+  const optionalCollections: Array<keyof Database> = ['suppliers', 'purchases', 'purchasePayments']
+  if (!isRecord(value) || !databaseCollectionKeys.every((key) =>
+    optionalCollections.includes(key) || Array.isArray(value[key]),
+  )) return null
   const normalized = normalizeDb(value, seed)
   if (!normalized) return null
   if (databaseCollectionKeys.some((key) => {
     const rawCollection = value[key]
+    if (optionalCollections.includes(key) && rawCollection === undefined) return false
     return !Array.isArray(rawCollection) || normalized[key].length !== rawCollection.length
   })) return null
   return normalized
@@ -563,6 +656,7 @@ export const loadDb = async (
 ): Promise<{ database: Database; hasPersistedData: boolean }> => {
   let db: Database | null = null
   let loadedFromIndexedDb = false
+  let loadedFromPreviousKey = false
   let hasPersistedData = false
   for (const key of [DB_KEY, ...INDEXED_DB_MIGRATION_KEYS]) {
     try {
@@ -575,6 +669,7 @@ export const loadDb = async (
       }
       if (db) {
         loadedFromIndexedDb = true
+        loadedFromPreviousKey = key !== DB_KEY
         hasPersistedData = true
         break
       }
@@ -597,6 +692,7 @@ export const loadDb = async (
         db = normalizeDb(JSON.parse(raw), seed)
       } catch { /* Try the next key when local data is corrupted. */ }
       if (db) {
+        loadedFromPreviousKey = key !== DB_KEY
         hasPersistedData = true
         break
       }
@@ -615,7 +711,20 @@ export const loadDb = async (
       ? isSecretHash(user.pin) ? user.pin : await hashSecret(user.pin)
       : '',
   })))
-  const migrated = { ...source, users }
+  const stores = loadedFromPreviousKey
+    ? source.stores.map((store) =>
+        !store.settings.features.tables && source.tables.some((table) => table.storeId === store.id)
+          ? {
+              ...store,
+              settings: {
+                ...store.settings,
+                features: { ...store.settings.features, tables: true },
+              },
+            }
+          : store,
+      )
+    : source.stores
+  const migrated = { ...source, stores, users }
   if (loadedFromIndexedDb) clearLocalDatabaseCopies()
   return { database: migrated, hasPersistedData }
 }

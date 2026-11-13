@@ -17,6 +17,20 @@ const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'regi
 const validPermissions = (permissions: User['permissions']) =>
   LEGACY_PERMISSION_KEYS.every((key) => typeof permissions[key] === 'boolean') &&
   CAPABILITIES.every((key) => permissions[key] === undefined || typeof permissions[key] === 'boolean')
+
+const permissionsForRole = (
+  role: User['role'],
+  existing: User['permissions'],
+  patch?: User['permissions'],
+): User['permissions'] => {
+  const permissions = { ...defaultPermissions(role), ...existing, ...patch }
+  if (role !== 'manager') {
+    for (const capability of CAPABILITIES) {
+      if (capability !== 'recordPurchases') permissions[capability] = false
+    }
+  }
+  return permissions
+}
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -87,7 +101,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
         password,
         pin,
         role: data.role ?? 'staff',
-        permissions: { ...defaultPermissions(data.role ?? 'staff'), ...data.permissions },
+        permissions: permissionsForRole(data.role ?? 'staff', data.permissions),
         id: uid('usr'),
         storeId,
         createdAt: new Date().toISOString(),
@@ -184,6 +198,9 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       return { ok: false, error: 'You cannot demote or deactivate the last active store admin.' }
     }
     const safePatch: Partial<User> = { ...patch }
+    if (patch.permissions !== undefined || patch.role !== undefined) {
+      safePatch.permissions = permissionsForRole(nextRole, member.permissions, patch.permissions)
+    }
     if (username !== undefined) safePatch.username = username
     if (patch.salaryAmount !== undefined) safePatch.salaryAmount = round(patch.salaryAmount)
     if (patch.salaryType === 'none') safePatch.salaryAmount = 0

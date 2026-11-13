@@ -19,7 +19,7 @@ import { useProductCart } from './useProductCart'
 
 export default function POS() {
   const {
-    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToKitchen, payOpenOrder,
+    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToKitchen, payOpenOrder, recordOpenOrder,
   } = useApp()
   const navigate = useNavigate()
   const { push } = useToast()
@@ -128,6 +128,7 @@ export default function POS() {
     tableId,
     guests,
     openOrder,
+    quick,
     cart,
     customerId,
     discount,
@@ -141,6 +142,7 @@ export default function POS() {
     addItemsToOpenOrder,
     sendToKitchen,
     payOpenOrder,
+    recordOpenOrder,
     push,
     focusTablePicker,
     setCart,
@@ -156,6 +158,7 @@ export default function POS() {
     setMobileCartOpen,
     setReceipt,
     setKitchenJob,
+    navigateToFloor: () => navigate('/pos/floor'),
   })
   const {
     clearCart, completeSale, checkout, addToTab, saveOpenChanges, sendKitchenItems,

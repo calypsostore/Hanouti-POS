@@ -80,7 +80,9 @@ export function ReceiptView({ order, store }: { order: Order; store: Store }) {
         <span className="mono">{order.total.toFixed(3)} DT</span>
       </div>
       <div className="mt-1 text-right text-[10px] uppercase tracking-wide text-neutral-500">
-        {order.paymentMethod === 'credit' ? 'On account' : order.paymentMethod}
+        {order.paymentMethod === 'unpaid'
+          ? 'Recorded · not paid'
+          : order.paymentMethod === 'credit' ? 'On account' : order.paymentMethod}
       </div>
       <hr />
       <div className="text-center text-[10.5px] leading-relaxed text-neutral-600">

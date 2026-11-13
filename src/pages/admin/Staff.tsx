@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import type { User } from '../../types'
-import type { Capability } from '../../types'
 import { can, MANAGER_DEFAULT_PERMISSIONS } from '../../lib/permissions'
 import { defaultPermissions } from '../../lib/defaults'
 import {
@@ -33,8 +32,10 @@ import {
 import { ImageUpload } from '../../components/ImageUpload'
 import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
-import { isValidUsername, suggestStaffUsername } from '../../lib/staff'
+import { isValidUsername, normalizeUsername, suggestStaffUsername } from '../../lib/staff'
 import { getStaffSalesThisMonth } from '../../lib/staffDetails'
+import StaffPermissionsEditor from './staff/StaffPermissionsEditor'
+import type { Result } from '../../store/types'
 
 type StaffForm = {
   role: 'staff' | 'manager'
@@ -155,7 +156,7 @@ export default function Staff() {
                 tabIndex={detailsAvailable ? 0 : undefined}
                 aria-label={detailsAvailable ? `View ${m.name} details` : undefined}
                 onClick={(event) => {
-                  if (event.target instanceof HTMLElement && event.target.closest('button,input,select,a')) return
+                  if (event.target instanceof Element && event.target.closest('button,input,select,a')) return
                   if (detailsAvailable) navigate(`/admin/staff/${encodeURIComponent(m.id)}`)
                 }}
                 onKeyDown={(event) => {
@@ -218,7 +219,7 @@ export default function Staff() {
                   {m.permissions.settle && <Badge tone="neutral">Settlements</Badge>}
                   {m.permissions.register && <Badge tone="neutral">Register</Badge>}
                   {m.permissions.supervisor && <Badge tone="neutral">Supervisor</Badge>}
-                  {m.permissions.reports && <Badge tone="neutral">Reports</Badge>}
+                  {m.permissions.reports && <Badge tone="neutral">Financials</Badge>}
                 </div>
 
                 {canManageStaff && (
@@ -238,12 +239,18 @@ export default function Staff() {
                     />
                     <div className="flex gap-1">
                       <button
+                        type="button"
+                        aria-label={`Edit ${m.name}`}
+                        title={`Edit ${m.name}`}
                         onClick={() => setEditor({ open: true, member: m })}
                         className="rounded-lg p-1.5 text-muted transition hover:bg-cream-200 hover:text-ink"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        type="button"
+                        aria-label={`Remove ${m.name}`}
+                        title={`Remove ${m.name}`}
                         onClick={() => setDeleteTarget(m)}
                         disabled={m.id === user.id}
                         className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
@@ -299,25 +306,38 @@ export default function Staff() {
                         : {}),
                     }),
               }
-              const result = await updateStaff(editor.member.id, patch)
-              if (!result.ok) {
-                push(result.error, 'error')
-                return
+              try {
+                const result = await updateStaff(editor.member.id, patch)
+                if (!result.ok) {
+                  push(result.error, 'error')
+                  return result
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Could not update this team member.'
+                push(message, 'error')
+                return { ok: false, error: message }
               }
               push('Team member updated')
               if (data.pin && (editor.member.role === 'staff' || editor.member.role === 'manager')) {
                 setLoginDetails({ name: data.name, username: data.username, pin: data.pin })
               }
             } else {
-              const res = await addStaff(store.id, data)
-              if (!res.ok) {
-                push(res.error, 'error')
-                return
+              try {
+                const result = await addStaff(store.id, data)
+                if (!result.ok) {
+                  push(result.error, 'error')
+                  return result
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Could not add this team member.'
+                push(message, 'error')
+                return { ok: false, error: message }
               }
               push(`${data.name} added to the team`)
               setLoginDetails({ name: data.name, username: data.username, pin: data.pin })
             }
             setEditor({ open: false })
+            return { ok: true }
           }}
         />
       )}
@@ -376,7 +396,7 @@ function StaffEditor({
   canChangeRoles: boolean
   canManagePayroll: boolean
   onClose: () => void
-  onSave: (data: StaffForm) => void
+  onSave: (data: StaffForm) => Promise<Result>
 }) {
   const [name, setName] = useState(member?.name ?? '')
   const [username, setUsername] = useState(
@@ -389,12 +409,36 @@ function StaffEditor({
   const [salaryType, setSalaryType] = useState<User['salaryType']>(member?.salaryType ?? 'none')
   const [salaryAmount, setSalaryAmount] = useState(String(member?.salaryAmount ?? 0))
   const [permissions, setPermissions] = useState(member?.permissions ?? defaultPermissions('staff'))
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const valid =
-    !!name.trim() &&
-    isValidUsername(username) &&
-    (role === 'manager' || salaryType === 'none' || (Number.isFinite(Number(salaryAmount)) && Number(salaryAmount) > 0)) &&
-    (member ? !pin || /^\d{4,6}$/.test(pin) : /^\d{4,6}$/.test(pin))
+  const nameError = name.trim() ? '' : 'Enter a full name.'
+  const normalizedUsername = normalizeUsername(username)
+  const duplicateUsername = users.some((user) =>
+    user.id !== member?.id && normalizeUsername(user.username ?? '') === normalizedUsername,
+  )
+  const usernameError = !isValidUsername(username)
+    ? 'Use 3–24 lowercase letters, digits, dots, underscores or hyphens.'
+    : duplicateUsername ? 'That username is already in use.' : ''
+  const pinError = member
+    ? pin && !/^\d{4,6}$/.test(pin) ? 'PIN must contain 4 to 6 digits.' : ''
+    : /^\d{4,6}$/.test(pin) ? '' : 'PIN must contain 4 to 6 digits.'
+  const salaryValue = Number(salaryAmount)
+  const salaryError = role === 'staff' && salaryType !== 'none' &&
+    (!Number.isFinite(salaryValue) || salaryValue <= 0)
+    ? 'Enter a salary amount greater than zero.'
+    : ''
+  const usernameSaveError = /username/i.test(saveError) ? saveError : ''
+  const pinSaveError = /pin/i.test(saveError) ? saveError : ''
+  const salarySaveError = /salary/i.test(saveError) ? saveError : ''
+  const visibleErrors = [
+    nameError,
+    usernameError || usernameSaveError,
+    pinError || pinSaveError,
+    salaryError || salarySaveError,
+  ].filter(Boolean)
+  const valid = visibleErrors.length === 0
+  const disabledReason = visibleErrors[0]
 
   return (
     <Modal
@@ -403,14 +447,23 @@ function StaffEditor({
       title={member ? 'Edit team member' : 'Add team member'}
       subtitle={member ? member.name : 'They will only see this store’s data.'}
       footer={
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {!valid && (
+            <span id="staff-save-help" role="status" className="mr-auto text-xs text-red-600">
+              Save disabled: {disabledReason}
+            </span>
+          )}
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            disabled={!valid}
-            onClick={() =>
-              onSave({
+            disabled={!valid || saving}
+            title={!valid ? `Save disabled: ${disabledReason}` : undefined}
+            aria-describedby={!valid ? 'staff-save-help' : undefined}
+            onClick={async () => {
+              setSaveError('')
+              setSaving(true)
+              const result = await onSave({
                 name: name.trim(),
                 role,
                 username,
@@ -421,9 +474,11 @@ function StaffEditor({
                 salaryAmount: role === 'manager' || salaryType === 'none' ? 0 : Number(salaryAmount),
                 permissions,
               })
-            }
+              setSaving(false)
+              if (!result.ok) setSaveError(result.error)
+            }}
           >
-            {member ? 'Save changes' : 'Add to team'}
+            {saving ? 'Saving…' : member ? 'Save changes' : 'Add to team'}
           </Button>
         </div>
       }
@@ -431,13 +486,15 @@ function StaffEditor({
       <div className="space-y-3.5">
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Full name" className="sm:col-span-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amine Jebali" autoFocus />
+            <Input value={name} onChange={(e) => { setName(e.target.value); setSaveError('') }} placeholder="e.g. Amine Jebali" autoFocus aria-invalid={Boolean(nameError)} />
+            {nameError && <p className="mt-1 text-xs text-red-600">{nameError}</p>}
           </Field>
           {canChangeRoles && (
             <Field label="Role">
               <Select
                 value={role}
                 onChange={(event) => {
+                  setSaveError('')
                   const nextRole = event.target.value === 'manager' ? 'manager' : 'staff'
                   setRole(nextRole)
                   setPermissions((current) => nextRole === 'manager'
@@ -467,9 +524,10 @@ function StaffEditor({
             <div className="flex gap-2">
               <Input
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                onChange={(e) => { setUsername(e.target.value.toLowerCase()); setSaveError('') }}
                 placeholder="amine.yasmine"
                 autoComplete="username"
+                aria-invalid={Boolean(usernameError || usernameSaveError)}
               />
               <Button
                 variant="secondary"
@@ -478,15 +536,18 @@ function StaffEditor({
                 <Sparkles className="h-4 w-4" /> Generate
               </Button>
             </div>
+            {(usernameError || usernameSaveError) && <p className="mt-1 text-xs text-red-600">{usernameError || usernameSaveError}</p>}
           </Field>
           <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? 'Leave blank to keep the current PIN · 4–6 digits' : '4–6 digits · PINs can be reused'}>
             <Input
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setSaveError('') }}
               placeholder={member ? 'Leave unchanged' : '1234'}
               inputMode="numeric"
               className="font-mono tracking-[0.3em]"
+              aria-invalid={Boolean(pinError || pinSaveError)}
             />
+            {(pinError || pinSaveError) && <p className="mt-1 text-xs text-red-600">{pinError || pinSaveError}</p>}
           </Field>
           <div className="sm:col-span-2">
             <Toggle
@@ -504,7 +565,7 @@ function StaffEditor({
         {role === 'staff' && canManagePayroll && (
           <div className="grid gap-3.5 sm:grid-cols-2">
             <Field label="Salary type">
-              <Select value={salaryType} onChange={(event) => setSalaryType(event.target.value as User['salaryType'])}>
+              <Select value={salaryType} onChange={(event) => { setSalaryType(event.target.value as User['salaryType']); setSaveError('') }}>
                 <option value="none">Not set</option>
                 <option value="daily">Daily</option>
                 <option value="monthly">Monthly</option>
@@ -516,78 +577,25 @@ function StaffEditor({
                 min={0}
                 step="0.001"
                 value={salaryAmount}
-                onChange={(event) => setSalaryAmount(event.target.value)}
+                onChange={(event) => { setSalaryAmount(event.target.value); setSaveError('') }}
                 disabled={salaryType === 'none'}
                 placeholder="0.000"
+                aria-invalid={Boolean(salaryError || salarySaveError)}
               />
+              {(salaryError || salarySaveError) && <p className="mt-1 text-xs text-red-600">{salaryError || salarySaveError}</p>}
             </Field>
           </div>
         )}
 
-        <div className="rounded-xl border border-line bg-white p-3.5">
-          <div className="mb-2 text-[12.5px] font-semibold text-ink">
-            {role === 'manager' ? 'Manager capabilities' : 'Permissions'}
-          </div>
-          <div className="space-y-3">
-            <Toggle
-              checked={permissions.discount}
-              onChange={(v) => setPermissions((p) => ({ ...p, discount: v }))}
-              label="Apply discounts"
-              description="Can reduce the total at checkout."
-            />
-            <Toggle
-              checked={permissions.credit}
-              onChange={(v) => setPermissions((p) => ({ ...p, credit: v }))}
-              label="Charge to tabs"
-              description="Can attach an order to a customer account."
-            />
-            <Toggle
-              checked={permissions.settle}
-              onChange={(v) => setPermissions((p) => ({ ...p, settle: v }))}
-              label="Take customer payments"
-              description="Can settle tab balances."
-            />
-            <Toggle
-              checked={permissions.reports}
-              onChange={(v) => setPermissions((p) => ({ ...p, reports: v }))}
-              label="View reports"
-              description="Can open the reports and expenses pages."
-            />
-            <Toggle
-              checked={permissions.register}
-              onChange={(v) => setPermissions((p) => ({ ...p, register: v }))}
-              label="Open & close the register"
-              description="Can open a session, print X reports and close the day with a Z report."
-            />
-            <Toggle
-              checked={permissions.supervisor}
-              onChange={(v) => setPermissions((p) => ({ ...p, supervisor: v }))}
-              label="Shift supervisor"
-              description="Trusted with the team: sees every register session and the whole team's sales, and can close sessions opened by others."
-            />
-            {role === 'manager' && ([
-              ['manageInventory', 'Manage inventory'],
-              ['recordPurchases', 'Record purchases'],
-              ['viewCosts', 'View costs'],
-              ['manageStaffAllowances', 'Manage staff allowances'],
-              ['approveOverrides', 'Approve allowance overrides'],
-              ['viewReports', 'View reports'],
-              ['manageProducts', 'Manage products'],
-              ['voidOrders', 'Void orders'],
-              ['manageStaff', 'Manage staff'],
-              ['manageSettings', 'Manage store settings'],
-              ['managePayroll', 'Manage payroll'],
-            ] as Array<[Capability, string]>).map(([capability, label]) => (
-              <Toggle
-                key={capability}
-                checked={permissions[capability] === true}
-                onChange={(enabled) => setPermissions((current) => ({ ...current, [capability]: enabled }))}
-                label={label}
-              />
-            ))}
-          </div>
-        </div>
+        <StaffPermissionsEditor
+          role={role}
+          permissions={permissions}
+          onChange={(nextPermissions) => { setPermissions(nextPermissions); setSaveError('') }}
+        />
 
+        {saveError && !usernameSaveError && !pinSaveError && !salarySaveError && (
+          <p role="alert" className="text-xs text-red-600">{saveError}</p>
+        )}
         <p className="text-[11px] leading-relaxed text-muted">
           PINs are securely hashed. You will only see the PIN again when you reset it.
         </p>

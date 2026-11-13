@@ -10,6 +10,7 @@ type Props = {
   tableId?: string
   guests?: number
   openOrder?: OpenOrder
+  quick: boolean
   cart: OrderItem[]
   customerId?: string
   discount: number
@@ -23,6 +24,7 @@ type Props = {
   addItemsToOpenOrder: AppContextValue['addItemsToOpenOrder']
   sendToKitchen: AppContextValue['sendToKitchen']
   payOpenOrder: AppContextValue['payOpenOrder']
+  recordOpenOrder: AppContextValue['recordOpenOrder']
   push: (message: string, type: 'success' | 'error') => void
   focusTablePicker: () => void
   setCart: (items: OrderItem[]) => void
@@ -38,6 +40,7 @@ type Props = {
   setMobileCartOpen: (open: boolean) => void
   setReceipt: (order: Order | null) => void
   setKitchenJob: (job: PrintJob | null) => void
+  navigateToFloor: () => void
 }
 
 export const createPOSActions = (props: Props) => {
@@ -67,6 +70,34 @@ export const createPOSActions = (props: Props) => {
       return
     }
     if (props.openOrder) {
+      if (props.quick) {
+        if (props.canSaveOpenOrder) {
+          const saved = props.addItemsToOpenOrder(
+            props.openOrder.id,
+            props.cart,
+            props.activeDiscount,
+            props.activeNote,
+          )
+          if (!saved.ok) {
+            props.push(saved.error, 'error')
+            return
+          }
+          props.setCart([])
+          props.setOpenDiscount(undefined)
+          props.setOpenNote(undefined)
+        }
+        const recorded = props.recordOpenOrder(props.openOrder.id)
+        if (!recorded.ok) {
+          props.push(recorded.error, 'error')
+          return
+        }
+        props.push(`Table order #${recorded.order.number} recorded · no payment taken`, 'success')
+        props.setPaymentOpen(false)
+        props.setMobileCartOpen(false)
+        resetSale()
+        props.navigateToFloor()
+        return
+      }
       if (props.canSaveOpenOrder) {
         const saved = props.addItemsToOpenOrder(
           props.openOrder.id,
@@ -121,6 +152,10 @@ export const createPOSActions = (props: Props) => {
       props.store.settings.features.tables && !props.tableId) {
       props.push('Choose a table before checking out.', 'error')
       props.focusTablePicker()
+      return
+    }
+    if (props.openOrder && props.quick) {
+      completeSale('unpaid')
       return
     }
     props.setPaymentOpen(true)

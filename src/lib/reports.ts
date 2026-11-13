@@ -10,7 +10,7 @@ import { round } from './pricing-utils'
  * changes afterwards.
  */
 
-type TotalsSource = Pick<Database, 'orders' | 'ledger' | 'expenses'>
+type TotalsSource = Pick<Database, 'orders' | 'ledger' | 'expenses' | 'purchasePayments'>
 
 export const computeRegisterTotals = (
   db: TotalsSource,
@@ -73,7 +73,14 @@ export const computeRegisterTotals = (
         const t = new Date(e.createdAt ?? e.date).getTime()
         return t >= start && t <= end
       })
-      .reduce((a, e) => a + e.amount, 0),
+      .reduce((a, e) => a + e.amount, 0) +
+      db.purchasePayments
+        .filter((payment) => {
+          if (payment.storeId !== storeId || payment.method !== 'cash') return false
+          const t = new Date(payment.createdAt).getTime()
+          return t >= start && t <= end
+        })
+        .reduce((a, payment) => a + payment.amount, 0),
   )
 
   return {

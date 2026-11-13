@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { ClipboardCheck, PackagePlus, Pencil, Plus, Scale, Trash2, Wrench } from 'lucide-react'
 import { Badge, Button, Card } from '../../components/ui'
+import CsvExportButton from '../../components/data/CsvExportButton'
+import DataToolbar from '../../components/data/DataToolbar'
+import { DataTable, type DataTableColumn } from '../../components/data/DataTable'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
 import { formatInventoryQuantity } from '../../lib/inventory'
@@ -31,19 +34,52 @@ export default function Inventory() {
   const { push } = useToast()
   const [editor, setEditor] = useState<{ open: boolean; item?: InventoryItem }>({ open: false })
   const [stockAction, setStockAction] = useState<{ item: InventoryItem; action: StockAction } | null>(null)
+  const [query, setQuery] = useState('')
 
   if (!store || !user) return null
 
-  const items = db.inventoryItems
+  const allItems = db.inventoryItems
     .filter((item) => item.storeId === store.id)
     .sort((a, b) => a.name.localeCompare(b.name))
-  const activeItems = items.filter((item) => item.active)
+  const items = allItems.filter((item) =>
+    `${item.name} ${item.category}`.toLowerCase().includes(query.trim().toLowerCase()),
+  )
+  const activeItems = allItems.filter((item) => item.active)
   const lowStock = activeItems.filter((item) => item.onHand <= item.reorderLevel).length
   const showCosts = can(user, 'viewCosts')
   const recentMovements = db.stockMovements
     .filter((movement) => movement.storeId === store.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 10)
+
+  const columns: DataTableColumn<InventoryItem>[] = [
+    { key: 'item', header: 'Item', render: (item) => <><div className="font-semibold text-ink">{item.name}</div><div className="mt-0.5 text-xs capitalize text-muted">{item.category}</div></> },
+    { key: 'on-hand', header: 'On hand', render: (item) => <span className="font-semibold text-ink">{formatInventoryQuantity(item.onHand, item.baseUnit)}</span> },
+    { key: 'reorder', header: 'Reorder at', render: (item) => formatInventoryQuantity(item.reorderLevel, item.baseUnit) },
+    ...(showCosts ? [{ key: 'cost', header: 'Avg cost / unit', render: (item: InventoryItem) => `${item.avgCostPerBaseUnit.toFixed(4)} TND` }] : []),
+    { key: 'status', header: 'Status', render: (item) => <Badge tone={!item.active ? 'neutral' : item.onHand <= item.reorderLevel ? 'warning' : 'success'}>{!item.active ? 'Inactive' : item.onHand <= item.reorderLevel ? 'Low stock' : 'In stock'}</Badge> },
+    { key: 'actions', header: 'Actions', className: 'text-right', render: (item) => <div className="flex justify-end gap-1">
+      <Button size="sm" variant="ghost" title="Edit item" onClick={() => setEditor({ open: true, item })}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
+      {item.active && <StockActions openingEligible={item.onHand === 0 && !db.stockMovements.some((movement) => movement.itemId === item.id)} onAction={(action) => setStockAction({ item, action })} />}
+      <Button size="icon" variant="ghost" title={item.active ? 'Deactivate item' : 'Activate item'} onClick={() => {
+        const result = updateInventoryItem(item.id, { active: !item.active })
+        if (!result.ok) push(result.error, 'error')
+        else push(item.active ? 'Inventory item deactivated' : 'Inventory item activated')
+      }}><Trash2 className="h-4 w-4" /></Button>
+    </div> },
+  ]
+  const exportRows = [
+    ['Item', 'Category', 'On hand', 'Base unit', 'Reorder at', ...(showCosts ? ['Average cost per base unit (TND)'] : []), 'Status'],
+    ...items.map((item) => [
+      item.name,
+      item.category,
+      item.onHand,
+      item.baseUnit,
+      item.reorderLevel,
+      ...(showCosts ? [item.avgCostPerBaseUnit] : []),
+      !item.active ? 'Inactive' : item.onHand <= item.reorderLevel ? 'Low stock' : 'In stock',
+    ]),
+  ]
 
   const saveItem = (data: Parameters<typeof addInventoryItem>[1]) => {
     const result = editor.item
@@ -104,6 +140,10 @@ export default function Inventory() {
         </Card>
       </div>
 
+      <DataToolbar query={query} onQueryChange={setQuery} placeholder="Search inventory…">
+        <CsvExportButton filename="inventory.csv" rows={exportRows} />
+      </DataToolbar>
+
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-line/70 px-4 py-3 sm:px-5">
           <div>
@@ -112,7 +152,7 @@ export default function Inventory() {
           </div>
         </div>
         {items.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted">Add an inventory item to get started.</div>
+          <div className="p-8 text-center text-sm text-muted">{query ? 'No inventory items match your search.' : 'Add an inventory item to get started.'}</div>
         ) : (
           <>
             <div className="divide-y divide-line/70 md:hidden">
@@ -133,54 +173,13 @@ export default function Inventory() {
               ))}
             </div>
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-cream-100/70 text-[10px] uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-5 py-3 font-bold">Item</th>
-                    <th className="px-3 py-3 font-bold">On hand</th>
-                    <th className="px-3 py-3 font-bold">Reorder at</th>
-                    {showCosts && <th className="px-3 py-3 font-bold">Avg cost / unit</th>}
-                    <th className="px-3 py-3 font-bold">Status</th>
-                    <th className="px-5 py-3 text-right font-bold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line/60">
-                  {items.map((item) => (
-                    <tr key={item.id} className={!item.active ? 'opacity-55' : undefined}>
-                      <td className="px-5 py-3">
-                        <div className="font-semibold text-ink">{item.name}</div>
-                        <div className="mt-0.5 text-xs capitalize text-muted">{item.category}</div>
-                      </td>
-                      <td className="px-3 py-3 font-semibold text-ink">{formatInventoryQuantity(item.onHand, item.baseUnit)}</td>
-                      <td className="px-3 py-3 text-muted">{formatInventoryQuantity(item.reorderLevel, item.baseUnit)}</td>
-                      {showCosts && <td className="px-3 py-3 text-muted">{item.avgCostPerBaseUnit.toFixed(4)} TND</td>}
-                      <td className="px-3 py-3">
-                        <Badge tone={!item.active ? 'neutral' : item.onHand <= item.reorderLevel ? 'warning' : 'success'}>
-                          {!item.active ? 'Inactive' : item.onHand <= item.reorderLevel ? 'Low stock' : 'In stock'}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" title="Edit item" onClick={() => setEditor({ open: true, item })}>
-                            <Pencil className="h-3.5 w-3.5" /> Edit
-                          </Button>
-                          {item.active && <StockActions
-                            openingEligible={item.onHand === 0 && !db.stockMovements.some((movement) => movement.itemId === item.id)}
-                            onAction={(action) => setStockAction({ item, action })}
-                          />}
-                          <Button size="icon" variant="ghost" title={item.active ? 'Deactivate item' : 'Activate item'} onClick={() => {
-                            const result = updateInventoryItem(item.id, { active: !item.active })
-                            if (!result.ok) push(result.error, 'error')
-                            else push(item.active ? 'Inventory item deactivated' : 'Inventory item activated')
-                          }}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable
+                columns={columns}
+                rows={items}
+                rowKey={(item) => item.id}
+                rowClassName={(item) => !item.active ? 'opacity-55' : ''}
+                empty="No inventory items."
+              />
             </div>
           </>
         )}
@@ -195,7 +194,7 @@ export default function Inventory() {
         ) : (
           <div className="divide-y divide-line/60">
             {recentMovements.map((movement) => {
-              const item = items.find((candidate) => candidate.id === movement.itemId)
+              const item = allItems.find((candidate) => candidate.id === movement.itemId)
               return (
                 <div key={movement.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
                   <div className="min-w-0">

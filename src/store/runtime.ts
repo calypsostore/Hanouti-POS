@@ -5,6 +5,7 @@ import { useToast } from '../components/toast'
 import { readIndexedValue, writeIndexedValue } from '../lib/storage'
 import { APP_BUILD_STORAGE_KEY, APP_BUILD_TIMESTAMP, APP_VERSION, getOffByDefaultSettings } from '../lib/appVersion'
 import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
+import { normalizeDb } from './database'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import type { Capability } from '../types'
@@ -22,6 +23,8 @@ export function useDatabase(): DatabaseRuntime {
   const { push } = useToast()
   const [db, setDbState] = useState<Database>(buildSeed)
   const dbRef = useRef(db)
+  const channelRef = useRef<BroadcastChannel | null>(null)
+  const remoteSnapshotRef = useRef<Database | null>(null)
   const persistenceWarningShown = useRef(false)
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -43,6 +46,27 @@ export function useDatabase(): DatabaseRuntime {
     setDbState(next)
     return next
   }, [])
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel('7anouti-pos:database-updates')
+    channelRef.current = channel
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (event.data !== 'database-updated') return
+      void readIndexedValue(DB_KEY).then((raw) => {
+        if (!raw) throw new Error('The saved database was missing after a cross-tab update.')
+        const normalized = normalizeDb(JSON.parse(raw), dbRef.current)
+        if (!normalized) throw new Error('The saved database from another tab was invalid.')
+        dbRef.current = normalized
+        remoteSnapshotRef.current = normalized
+        setDbState(normalized)
+      }).catch((error: unknown) => reportStorageError('applying a cross-tab database update', error))
+    }
+    return () => {
+      channel.close()
+      channelRef.current = null
+    }
+  }, [reportStorageError])
 
   useEffect(() => {
     let active = true
@@ -111,6 +135,11 @@ export function useDatabase(): DatabaseRuntime {
 
   useEffect(() => {
     if (!ready || loadError) return
+    if (remoteSnapshotRef.current === db) {
+      remoteSnapshotRef.current = null
+      return
+    }
+    remoteSnapshotRef.current = null
     const timeout = window.setTimeout(() => {
       let serialized: string
       try {
@@ -120,7 +149,10 @@ export function useDatabase(): DatabaseRuntime {
         return
       }
       void writeIndexedValue(DB_KEY, serialized).then(
-        clearLocalDatabaseCopies,
+        () => {
+          clearLocalDatabaseCopies()
+          channelRef.current?.postMessage('database-updated')
+        },
         (error: unknown) => reportStorageError('saving IndexedDB', error),
       )
     }, 500)

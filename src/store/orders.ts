@@ -302,6 +302,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (!actorResult.ok) return actorResult
       const actor = actorResult.actor
       if (initialOrder.status === 'void') return { ok: false, error: 'This order is already void.' }
+      if (initialOrder.status === 'recorded') {
+        return { ok: false, error: 'This table order is still open. Use the floor to cancel it.' }
+      }
       let authorizer: User | null = actor
       let verifiedAdminId: string | null = null
       if (actor.role !== 'admin' && !can(actor, 'voidOrders')) {

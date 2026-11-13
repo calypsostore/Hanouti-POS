@@ -57,8 +57,8 @@ export default function OrderDetailsDrawer({
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <PaymentBadge method={order.paymentMethod} />
-            <Badge tone={order.status === 'void' ? 'danger' : 'success'}>
-              {order.status === 'void' ? 'Voided' : 'Completed'}
+            <Badge tone={order.status === 'void' ? 'danger' : order.status === 'recorded' ? 'warning' : 'success'}>
+              {order.status === 'void' ? 'Voided' : order.status === 'recorded' ? 'Recorded' : 'Completed'}
             </Badge>
             <Badge tone="neutral">{order.channel.replace('-', ' ')}</Badge>
             {order.tableName && <Badge tone="accent">{order.tableName}{order.guests ? ` · ${order.guests} guests` : ''}</Badge>}
@@ -143,7 +143,9 @@ export default function OrderDetailsDrawer({
               <div className="mt-1 text-[12.5px] font-semibold">
                 {order.customerId
                   ? money(balanceForCustomer(order.customerId))
-                  : order.paymentMethod === 'cash'
+                  : order.paymentMethod === 'unpaid'
+                    ? 'Not paid · recorded'
+                    : order.paymentMethod === 'cash'
                     ? 'Paid in cash'
                     : 'Paid by card'}
               </div>

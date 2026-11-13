@@ -45,6 +45,8 @@ export type AuditEntity =
   | 'shift'
   | 'table'
   | 'inventory'
+  | 'purchase'
+  | 'supplier'
 export type AuditAction =
   | 'created'
   | 'edited'
@@ -82,8 +84,8 @@ export type PosMode = 'quick' | 'cashier'
 export type Plan = 'starter' | 'growth' | 'pro'
 export type StoreStatus = 'active' | 'trial' | 'suspended'
 export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
-export type PaymentMethod = 'cash' | 'card' | 'credit'
-export type OrderStatus = 'open' | 'completed' | 'void'
+export type PaymentMethod = 'cash' | 'card' | 'credit' | 'unpaid'
+export type OrderStatus = 'open' | 'completed' | 'recorded' | 'void'
 export type SettlementCycle = 'monthly' | 'weekly' | 'on-demand'
 export type SalaryType = 'daily' | 'monthly' | 'none'
 export type AttendanceStatus = 'present' | 'half' | 'absent'
@@ -257,6 +259,63 @@ export interface StockMovement {
   createdAt: string
 }
 
+export interface Supplier {
+  id: string
+  storeId: string
+  name: string
+  phone: string
+  email: string
+  address: string
+  notes: string
+  active: boolean
+  createdAt: string
+}
+
+export interface PurchaseLine {
+  id: string
+  inventoryItemId: string
+  itemName: string
+  packageId: string
+  packageLabel: string
+  packageCount: number
+  baseQuantity: number
+  unitCost: number
+  lineTotal: number
+}
+
+export interface Purchase {
+  id: string
+  storeId: string
+  supplierId: string
+  supplierName: string
+  invoiceNumber: string
+  receivedAt: string
+  lines: PurchaseLine[]
+  subtotal: number
+  paidAmount: number
+  status: 'received' | 'void'
+  note: string
+  receiptImage?: string
+  createdById: string
+  createdByName: string
+  createdAt: string
+  voidedAt?: string
+  voidedById?: string
+  voidedByName?: string
+}
+
+export interface PurchasePayment {
+  id: string
+  storeId: string
+  purchaseId: string
+  amount: number
+  method: 'cash' | 'card' | 'bank_transfer' | 'other'
+  note: string
+  userId: string
+  userName: string
+  createdAt: string
+}
+
 export interface Product {
   id: string
   storeId: string
@@ -368,6 +427,7 @@ export interface OpenOrder {
   storeId: string
   tableId: string
   tableName: string
+  recordedOrderId?: string
   guests?: number
   items: OrderItem[]
   subtotal: number
@@ -516,6 +576,9 @@ export interface Database {
   tables: DiningTable[]
   inventoryItems: InventoryItem[]
   stockMovements: StockMovement[]
+  suppliers: Supplier[]
+  purchases: Purchase[]
+  purchasePayments: PurchasePayment[]
   products: Product[]
   customers: Customer[]
   orders: Order[]

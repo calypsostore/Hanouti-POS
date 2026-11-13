@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store as StoreIcon,
+  Truck,
   Utensils,
   Users,
   Wallet,
@@ -65,6 +66,9 @@ export function Sidebar({
         { label: 'SALES', items: [
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
           { to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' },
+          ...(can(user, 'recordPurchases')
+            ? [{ to: '/admin/purchases', label: 'Purchases', icon: Truck, tone: 'amber' as const }]
+            : []),
           ...(user.permissions.register ? [{ to: '/admin/register', label: 'Register', icon: Calculator, tone: 'green' as const }] : []),
           ...(user.permissions.supervisor ? [{ to: '/admin/staff', label: 'Team', icon: Users, tone: 'purple' as const }] : []),
           { to: '/admin/expenses', label: 'My attendance', icon: Wallet, tone: 'rose' },
@@ -73,8 +77,12 @@ export function Sidebar({
           { label: 'MAIN', items: [{ to: '/admin', label: 'Overview', icon: LayoutDashboard, tone: 'blue', end: true }] },
           { label: 'SALES', items: [
             { to: '/pos', label: 'Point of sale', icon: ShoppingBag, tone: 'amber' },
+            ...(store?.settings.features.tables
+              ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils, tone: 'teal' as const }]
+              : []),
             { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
             { to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' },
+            { to: '/admin/purchases', label: 'Purchases', icon: Truck, tone: 'amber' },
           ] },
           { label: 'CATALOG', items: [
             { to: '/admin/products', label: 'Products', icon: Package, tone: 'blue' },
@@ -99,6 +107,7 @@ export function Sidebar({
           if (item.to === '/admin') return can(user, 'viewReports')
           if (item.to === '/admin/products') return can(user, 'manageProducts')
           if (item.to === '/admin/inventory') return can(user, 'manageInventory')
+          if (item.to === '/admin/purchases') return can(user, 'recordPurchases')
           if (item.to === '/admin/staff') return can(user, 'manageStaff')
           if (item.to === '/admin/reports' || item.to === '/admin/logs') return can(user, 'viewReports')
           if (item.to === '/admin/register') return user.permissions.register

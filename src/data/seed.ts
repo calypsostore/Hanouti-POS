@@ -11,6 +11,8 @@ import type {
   Order,
   Plan,
   Product,
+  Purchase,
+  PurchasePayment,
   RegisterSession,
   RegisterSnapshot,
   SettlementCycle,
@@ -18,11 +20,13 @@ import type {
   StockMovement,
   Store,
   StoreSettings,
+  Supplier,
   User,
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
+import { computeTotals } from '../lib/pricing'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
   starter: { label: 'Starter', price: 29, blurb: 'Single counter, up to 3 staff' },
@@ -540,7 +544,7 @@ export function buildSeed(): Database {
   const ledger: LedgerEntry[] = []
   const expenses: Expense[] = []
   const inventoryItems: InventoryItem[] = [
-    { id: 'inv_coffee_beans', storeId: 'st_yasmine', name: 'Coffee beans', category: 'coffee', baseUnit: 'g', packages: [{ id: 'pkg_coffee_1kg', label: 'Bag 1 kg', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 2000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
+    { id: 'inv_coffee_beans', storeId: 'st_yasmine', name: 'Coffee beans', category: 'coffee', baseUnit: 'g', packages: [{ id: 'pkg_coffee_1kg', label: 'Bag 1 kg', baseQtyPerPackage: 1000 }], onHand: 5000, reorderLevel: 2000, avgCostPerBaseUnit: 0.025, lastCostPerBaseUnit: 0.025, active: true },
     { id: 'inv_sugar', storeId: 'st_yasmine', name: 'Sugar', category: 'other', baseUnit: 'g', packages: [{ id: 'pkg_sugar_1kg', label: 'Bag 1 kg', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 1000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
     { id: 'inv_milk', storeId: 'st_yasmine', name: 'Whole milk', category: 'dairy', baseUnit: 'ml', packages: [{ id: 'pkg_milk_1l', label: 'Bottle 1 L', baseQtyPerPackage: 1000 }], onHand: 0, reorderLevel: 3000, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
     { id: 'inv_water_05', storeId: 'st_yasmine', name: 'Water 0.5 L', category: 'water', baseUnit: 'piece', packages: [{ id: 'pkg_water_05_6', label: 'Pack of 6', baseQtyPerPackage: 6 }], onHand: 0, reorderLevel: 12, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
@@ -550,7 +554,70 @@ export function buildSeed(): Database {
     { id: 'inv_lids', storeId: 'st_yasmine', name: 'Cup lids', category: 'packaging', baseUnit: 'piece', packages: [{ id: 'pkg_lids_50', label: 'Pack of 50', baseQtyPerPackage: 50 }], onHand: 0, reorderLevel: 100, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
     { id: 'inv_cakes', storeId: 'st_yasmine', name: 'Cakes', category: 'pastry', baseUnit: 'piece', packages: [{ id: 'pkg_cakes_1', label: 'Single cake', baseQtyPerPackage: 1 }], onHand: 0, reorderLevel: 6, avgCostPerBaseUnit: 0, lastCostPerBaseUnit: 0, active: true },
   ]
-  const stockMovements: StockMovement[] = []
+  const purchaseDate = dateKey(isoDaysAgo(2))
+  const purchaseCreatedAt = isoDaysAgo(2)
+  const suppliers: Supplier[] = [{
+    id: 'sup_central_cafe',
+    storeId: 'st_yasmine',
+    name: 'Central Café Supplies',
+    phone: '+216 71 555 018',
+    email: 'orders@central-cafe.example',
+    address: 'Tunis',
+    notes: 'Coffee and dry goods supplier',
+    active: true,
+    createdAt: isoDaysAgo(30),
+  }]
+  const purchases: Purchase[] = [{
+    id: 'purchase_yasmine_coffee',
+    storeId: 'st_yasmine',
+    supplierId: 'sup_central_cafe',
+    supplierName: 'Central Café Supplies',
+    invoiceNumber: 'CC-1042',
+    receivedAt: purchaseDate,
+    lines: [{
+      id: 'pline_yasmine_coffee',
+      inventoryItemId: 'inv_coffee_beans',
+      itemName: 'Coffee beans',
+      packageId: 'pkg_coffee_1kg',
+      packageLabel: 'Bag 1 kg',
+      packageCount: 5,
+      baseQuantity: 5000,
+      unitCost: 25,
+      lineTotal: 125,
+    }],
+    subtotal: 125,
+    paidAmount: 75,
+    status: 'received',
+    note: 'Opening demo purchase',
+    createdById: 'u_sami',
+    createdByName: 'Sami Ben Ali',
+    createdAt: purchaseCreatedAt,
+  }]
+  const purchasePayments: PurchasePayment[] = [{
+    id: 'ppay_yasmine_coffee',
+    storeId: 'st_yasmine',
+    purchaseId: 'purchase_yasmine_coffee',
+    amount: 75,
+    method: 'cash',
+    note: 'Part payment',
+    userId: 'u_sami',
+    userName: 'Sami Ben Ali',
+    createdAt: purchaseCreatedAt,
+  }]
+  const stockMovements: StockMovement[] = [{
+    id: 'mov_yasmine_coffee_purchase',
+    storeId: 'st_yasmine',
+    itemId: 'inv_coffee_beans',
+    type: 'purchase',
+    qtyDelta: 5000,
+    unitCostSnapshot: 0.025,
+    reason: 'Purchase CC-1042',
+    userId: 'u_sami',
+    userName: 'Sami Ben Ali',
+    refType: 'purchase',
+    refId: 'purchase_yasmine_coffee',
+    createdAt: purchaseCreatedAt,
+  }]
   const registerSessions: RegisterSession[] = []
   const tables: DiningTable[] = Array.from({ length: 8 }, (_, index) => ({
     id: `tbl_darchai_${index + 1}`,
@@ -909,6 +976,44 @@ export function buildSeed(): Database {
     }
   }
 
+  const tableStore = stores.find((store) => store.settings.features.tables)
+  const sampleTable = tableStore && tables.find((table) => table.storeId === tableStore.id && table.active)
+  const sampleProduct = tableStore && products.find((product) =>
+    product.storeId === tableStore.id && product.active,
+  )
+  const sampleStaff = tableStore && users.find((user) =>
+    user.storeId === tableStore.id && user.role === 'staff' && user.active,
+  )
+  if (tableStore && sampleTable && sampleProduct && sampleStaff) {
+    const items: Order['items'] = [{
+      lineId: uid('line'),
+      productId: sampleProduct.id,
+      name: sampleProduct.name,
+      price: sampleProduct.price,
+      qty: 1,
+    }]
+    const totals = computeTotals(items, tableStore.settings)
+    const number = orders
+      .filter((order) => order.storeId === tableStore.id)
+      .reduce((max, order) => Math.max(max, order.number), 1000) + 1
+    orders.push({
+      id: uid('ord'),
+      storeId: tableStore.id,
+      number,
+      items,
+      ...totals,
+      discount: 0,
+      channel: 'dine-in',
+      tableId: sampleTable.id,
+      tableName: sampleTable.name,
+      status: 'recorded',
+      paymentMethod: 'unpaid',
+      staffId: sampleStaff.id,
+      staffName: sampleStaff.name,
+      createdAt: new Date().toISOString(),
+    })
+  }
+
   return {
     stores,
     users,
@@ -916,6 +1021,9 @@ export function buildSeed(): Database {
     tables,
     inventoryItems,
     stockMovements,
+    suppliers,
+    purchases,
+    purchasePayments,
     products,
     customers,
     orders,

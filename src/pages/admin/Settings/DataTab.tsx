@@ -8,6 +8,7 @@ import { dateKey } from '../../../lib/utils'
 import { buildSeed } from '../../../data/seed'
 import { DB_KEY, normalizeDatabaseBackup } from '../../../store/database'
 import type { Database } from '../../../types'
+import { getStoreDiagnostics } from '../../../lib/diagnostics'
 
 type PendingImport = { database: Database; fileName: string }
 
@@ -17,7 +18,9 @@ const formatTimestamp = (timestamp: string) => {
 }
 
 const countStaff = (database: Database) =>
-  database.users.filter((user) => user.role === 'staff' || user.role === 'manager').length
+  database.users.filter((user) =>
+    user.role === 'staff' || user.role === 'manager',
+  ).length
 
 function downloadBackup(database: Database) {
   const blob = new Blob([JSON.stringify(database, null, 2)], { type: 'application/json' })
@@ -32,7 +35,7 @@ function downloadBackup(database: Database) {
 }
 
 export default function DataTab() {
-  const { user, exportDatabaseBackup, importDatabaseBackup, resetDemo } = useApp()
+  const { db, store, user, exportDatabaseBackup, importDatabaseBackup, resetDemo } = useApp()
   const { push } = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
@@ -41,7 +44,8 @@ export default function DataTab() {
   const [importing, setImporting] = useState(false)
   const [resetting, setResetting] = useState(false)
 
-  if (user?.role !== 'admin') return null
+  if (user?.role !== 'admin' || !store) return null
+  const diagnostics = getStoreDiagnostics(db, store, DB_KEY)
 
   const selectBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -139,18 +143,19 @@ export default function DataTab() {
 
       <Card className="space-y-4 p-4 sm:p-5">
         <div>
-          <h2 className="text-sm font-bold text-ink">Browser-local data</h2>
+          <h2 className="text-sm font-bold text-ink">Store backup</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Data stays in this browser. Until the Phase 2 backend exists, a backup file is the only way
-            to move it to another browser or device. Exported backups include stored password and PIN hashes.
+            Data is stored in this browser/device. Staff must use the same device or import the store backup.
+            Until the backend exists, this backup is the way to move store data to another device.
+            Exported backups include stored password and PIN hashes.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={exportBackup}>
-            <Download className="h-4 w-4" /> Export backup
+            <Download className="h-4 w-4" /> Export store backup
           </Button>
           <Button variant="secondary" onClick={() => fileInput.current?.click()} disabled={importing}>
-            <FileUp className="h-4 w-4" /> Import backup
+            <FileUp className="h-4 w-4" /> Import store backup
           </Button>
           <input
             ref={fileInput}
@@ -162,6 +167,27 @@ export default function DataTab() {
           />
         </div>
       </Card>
+
+      <details className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <summary className="cursor-pointer text-sm font-bold text-ink">Diagnostics · this device</summary>
+        <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
+          <Count label="Store ID" value={diagnostics.storeId} />
+          <Count label="Tables" value={diagnostics.tablesCount} />
+          <Count label="Staff" value={diagnostics.staffCount} />
+          <Count label="POS mode" value={diagnostics.mode} />
+          <Count label="Database version" value={diagnostics.databaseKey} />
+          <div>
+            <dt className="text-muted">Features</dt>
+            <dd className="mt-1 flex flex-wrap gap-1">
+              {Object.entries(diagnostics.features).map(([feature, enabled]) => (
+                <span key={feature} className="rounded-md bg-cream-100 px-1.5 py-0.5 font-semibold text-ink">
+                  {feature}: {enabled ? 'on' : 'off'}
+                </span>
+              ))}
+            </dd>
+          </div>
+        </dl>
+      </details>
 
       <Card className="flex flex-wrap items-center justify-between gap-3 border-dashed p-4">
         <div>
@@ -199,6 +225,7 @@ export default function DataTab() {
             </p>
             <dl className="grid grid-cols-2 gap-2 rounded-xl bg-cream-100 p-3 text-xs sm:grid-cols-4">
               <Count label="Stores" value={imported.stores.length} />
+              <Count label="Tables" value={imported.tables.length} />
               <Count label="Products" value={imported.products.length} />
               <Count label="Orders" value={imported.orders.length} />
               <Count label="Staff" value={countStaff(imported)} />
@@ -240,7 +267,7 @@ export default function DataTab() {
   )
 }
 
-function Count({ label, value }: { label: string; value: number }) {
+function Count({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
       <dt className="text-muted">{label}</dt>

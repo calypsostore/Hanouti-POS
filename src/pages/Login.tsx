@@ -359,7 +359,7 @@ export default function Login() {
           </div>
 
           <p className="mt-5 text-center text-[10.5px] leading-relaxed text-muted/80">
-            Demo workspace · all data is stored locally in your browser.
+            Data is stored in this browser/device. Staff must use the same device or import the store backup.
             <br />
             Owner/admin demo password: <span className="font-semibold text-muted">password</span>.
           </p>

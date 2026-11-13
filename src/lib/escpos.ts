@@ -166,7 +166,9 @@ export const buildReceiptLines = (
   lines.push({ text: divider(cols) })
   lines.push({ text: twoCol('TOTAL', `${amount(order.total)} DT`, cols), bold: true, size: 'double' })
   lines.push({
-    text: order.paymentMethod === 'credit' ? 'ON ACCOUNT' : order.paymentMethod.toUpperCase(),
+    text: order.paymentMethod === 'unpaid'
+      ? 'RECORDED · NOT PAID'
+      : order.paymentMethod === 'credit' ? 'ON ACCOUNT' : order.paymentMethod.toUpperCase(),
     align: 'right',
   })
   if (order.note) lines.push({ text: `Note: ${order.note}` })

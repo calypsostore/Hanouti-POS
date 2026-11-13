@@ -1,7 +1,7 @@
 import type {
   AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
-  Order, OrderChannel, OrderItem, OpenOrder, PaymentMethod, Product, SalaryType, Store,
-  StoreSettings, StoreStatus, User,
+  Order, OrderChannel, OrderItem, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
+  Store, StoreSettings, StoreStatus, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -57,6 +57,33 @@ export interface InventoryItemInput {
 
 export type InventoryItemPatch = Partial<InventoryItemInput> & { active?: boolean }
 
+export interface SupplierInput {
+  name: string
+  phone: string
+  email: string
+  address: string
+  notes: string
+  active?: boolean
+}
+
+export interface PurchaseLineInput {
+  inventoryItemId: string
+  packageId: string
+  packageCount: number
+  unitCost: number
+}
+
+export interface PurchaseInput {
+  supplierId: string
+  invoiceNumber: string
+  receivedAt: string
+  lines: PurchaseLineInput[]
+  note: string
+  receiptImage?: string
+}
+
+export type PurchaseResult = { ok: true; purchase: Purchase } | { ok: false; error: string }
+
 export interface ManualAttendanceInput {
   date: string
   status: AttendanceStatus
@@ -82,6 +109,10 @@ export interface DiningTableInput {
 
 export type OpenOrderActionResult =
   | { ok: true; order: OpenOrder }
+  | { ok: false; error: string }
+
+export type RecordedOrderResult =
+  | { ok: true; order: Order }
   | { ok: false; error: string }
 
 export type KitchenSendResult =
@@ -112,6 +143,7 @@ export interface AppContextValue {
   updateTable: (id: string, patch: Partial<DiningTableInput>) => Result
   deleteTable: (id: string) => Result
   openTableOrder: (storeId: string, tableId: string, guests?: number) => OpenOrderActionResult
+  recordOpenOrder: (orderId: string) => RecordedOrderResult
   addItemsToOpenOrder: (
     orderId: string,
     items: OrderItem[],
@@ -148,6 +180,15 @@ export interface AppContextValue {
   recordWaste: (itemId: string, quantity: number, reason: string) => Result
   adjustStock: (itemId: string, quantityDelta: number, reason: string) => Result
   recordStockCount: (itemId: string, actualQuantity: number, reason: string) => Result
+  addSupplier: (storeId: string, data: SupplierInput) => Result
+  updateSupplier: (id: string, patch: Partial<SupplierInput>) => Result
+  addPurchase: (storeId: string, data: PurchaseInput) => PurchaseResult
+  updatePurchase: (id: string, data: PurchaseInput) => Result
+  recordPurchasePayment: (
+    purchaseId: string,
+    data: { amount: number; method: 'cash' | 'card' | 'bank_transfer' | 'other'; note: string },
+  ) => Result
+  voidPurchase: (id: string, reason: string) => Result
   addStaff: (storeId: string, data: AddStaffInput) => Promise<Result>
   updateStaff: (id: string, patch: Partial<User>) => Promise<Result>
   deleteStaff: (id: string) => Result

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, LogOut, ReceiptText, Users, Zap } from 'lucide-react'
+import { ArrowLeft, LogOut, ReceiptText, Utensils, Users, Zap } from 'lucide-react'
 import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -51,9 +51,11 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
           {store.settings.features.tables && (
             <Link
               to="/pos/floor"
-              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+              aria-label="Floor"
+              title="Floor"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:px-3"
             >
-              <Users className="h-3.5 w-3.5" /> Floor
+              <Utensils className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Floor</span>
             </Link>
           )}
           {(user.role === 'staff' || user.role === 'manager') && (

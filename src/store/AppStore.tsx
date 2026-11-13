@@ -12,6 +12,7 @@ import { usePayrollSlice } from './payroll'
 import { useShiftsSlice } from './shifts'
 import { useTablesSlice } from './tables'
 import { useInventorySlice } from './inventory'
+import { usePurchasesSlice } from './purchases'
 import { useDataManagementSlice } from './dataManagement'
 import { useOpenOrdersSlice } from './openOrders'
 import { useDatabase, useActorGuards } from './runtime'
@@ -44,13 +45,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const shifts = useShiftsSlice(dependencies)
   const tables = useTablesSlice(dependencies)
   const inventory = useInventorySlice(dependencies)
+  const purchases = usePurchasesSlice(dependencies)
   const dataManagement = useDataManagementSlice(dependencies)
   const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
   const { db } = database
   const { userId } = auth
   const user = useMemo<User | null>(
-    () => (database.ready && !database.loadError ? db.users.find((candidate) => candidate.id === userId) ?? null : null),
+    () => (database.ready && !database.loadError
+      ? db.users.find((candidate) => candidate.id === userId && candidate.active) ?? null
+      : null),
     [db.users, database.loadError, database.ready, userId],
   )
   const store = useMemo<Store | null>(
@@ -98,6 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...shifts,
     ...tables,
     ...inventory,
+    ...purchases,
     ...dataManagement,
     ...settings,
   }

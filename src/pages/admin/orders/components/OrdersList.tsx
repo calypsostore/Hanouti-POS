@@ -75,6 +75,7 @@ export default function OrdersList({
             <option value="cash">Cash</option>
             <option value="card">Card</option>
             <option value="credit">On tab</option>
+            <option value="unpaid">Unpaid</option>
           </Select>
           <Select
             value={status}
@@ -83,6 +84,7 @@ export default function OrdersList({
           >
             <option value="all">All status</option>
             <option value="completed">Completed</option>
+            <option value="recorded">Recorded</option>
             <option value="void">Void</option>
           </Select>
           <Select
@@ -148,6 +150,7 @@ export default function OrdersList({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <PaymentBadge method={order.paymentMethod} />
+                        {order.status === 'recorded' && <Badge tone="warning">Recorded</Badge>}
                         {order.status === 'void' && <Badge tone="danger">Void</Badge>}
                       </div>
                     </td>
@@ -182,6 +185,7 @@ export default function OrdersList({
                 <div className="min-w-0 flex-1">
                   <div className="text-[12.5px] font-semibold">
                     #{order.number} · {customerName(order.customerId) ?? 'Guest'}
+                    {order.status === 'recorded' && <Badge tone="warning" className="ml-1.5">Recorded</Badge>}
                   </div>
                   {order.tableName && <div className="text-[10px] font-semibold text-accent-foreground">{order.tableName}</div>}
                   <div className="truncate text-[10.5px] text-muted">

@@ -59,7 +59,7 @@ stored; no demo values are presented as production data.
 - Store, category, and product records use Lucide icon keys and semantic icon
   colors. Existing emoji-backed records migrate to the nearest icon during
   local database normalization; the legacy emoji property is removed. The
-  current schema is `7anouti.db.v18`, with older IndexedDB/local records
+  current schema is `7anouti.db.v21`, with older IndexedDB/local records
   normalized during load. Store logos and product images can be uploaded and
   resized to 256 px client-side (up to 300 KB).
 - Shared screens use the liquid-glass surfaces, ambient background, and
@@ -112,39 +112,59 @@ stored; no demo values are presented as production data.
 - **Manager role and capabilities — implemented demo behavior.** Store owners
   can create managers with username/PIN login and grant the supported
   capabilities. Manager route and mutation checks use the same browser-local
-  guards; the demo manager seed account is `nadia.yasmine` / `3456`.
+  guards; the demo manager seed account is `nadia.yasmine` / `3456`. Legacy
+  permissions migrate to safe role defaults, staff cannot retain manager-only
+  capabilities, and permission changes immediately refresh in the active app
+  session and are audited. Financial-summary visibility and access to the
+  Reports page are separate controls. Protected routes and store mutations
+  enforce the corresponding capability; mobile navigation exposes permitted
+  manager tools, including register and settings, and can scroll when needed.
 - **Inventory items and stock ledger — implemented demo behavior.** Managers
   with inventory access and admins can create/edit items, set base units,
   package conversions and reorder levels, record one-time opening stock,
   stock counts, adjustments and waste, and review recent movements. Stock
-  quantities and audit events are persisted locally. Unit-cost fields and
-  weighted-average helpers are present, but inventory costs remain zero until
-  purchase entry is implemented.
-- Schema `7anouti.db.v18` normalizes inventory items and stock movements;
-  earlier local records receive empty inventory collections. New demo seed
-  data includes café ingredients and supplies. All of these flows remain
-  editable browser-local demo data, not a trusted backend or tamper-resistant
-  ledger.
-- **Still planned:** supplier and purchase entry with bill photos; recipe
-  costing and automatic stock consumption; daily close/count reports; and
-  staff consumption and allowances. These phases have not been implemented.
+  quantities, costs and audit events are persisted locally. Purchase receiving
+  updates weighted-average costs; recipe-based stock consumption remains
+  planned.
+- Schema `7anouti.db.v20` normalizes inventory, supplier, purchase and payment
+  records; earlier local records receive empty collections for new fields.
+  New demo seed data includes café ingredients, a supplier and a partially paid
+  purchase. These remain editable browser-local demo records, not a trusted
+  backend or tamper-resistant ledger.
+- **Implemented locally:** the Purchases page manages suppliers, receives
+  packaged inventory with invoice details and an optional receipt image,
+  updates on-hand quantities and weighted-average costs, and records partial
+  supplier payments. Purchase edits/voids are blocked after payment or later
+  stock activity; cash supplier payments reduce the open register's expected
+  drawer balance. These records are browser-local demo data.
+- Inventory lists now share reusable search, responsive table, and CSV export
+  controls; the export omits average-cost data for users without cost access.
+  Purchase search and filtered CSV export use the same shared toolbar/export
+  controls. Product and customer deletion confirmations use a shared modal.
+- **Still planned:** recipe costing and automatic stock consumption; daily
+  close/count reports; and staff consumption and allowances. These phases have
+  not been implemented.
 
 ### Browser-local data and backups
 
 - **Current behavior:** application data is stored per browser in IndexedDB;
   pushing a code release does not transfer or merge another browser's records
   or newly added seed data. Until the Phase 2 backend exists, exporting and
-  importing a JSON backup is the only supported way to move data between
-  browsers/devices.
+  importing a JSON backup is the local data backup/restore mechanism.
 - Settings → Data is owner-only and provides full-database JSON export/import,
   import confirmation counts, typed `RESET` confirmation for restoring demo
-  seed data, and the app/database/build version identifiers. Backups preserve
-  the stored password and PIN hashes. Imports are normalized and must include
-  the active owner and store.
+  seed data, app/database/build version identifiers, and a collapsed
+  diagnostics panel with store ID, active tables, staff, POS mode, and feature
+  flags. Backups preserve the stored password and PIN hashes. Imports are
+  normalized and must include the active owner and store.
 - Startup compares the previous IndexedDB build timestamp with the deployed
   build, records an app-update audit event, and notifies the owner about
   settings that remain off by default. This is a local notification only; it
   does not synchronize data or seeds across browsers.
+- Login and backup screens warn that records are browser/device-local. Staff
+  need the same browser data. Import currently requires an already available
+  active owner and store, so a first-time restore to a clean browser still
+  needs a dedicated bootstrap flow or backend.
 
 ### Phase 1 — Business types and product options ✅ demo implementation
 
@@ -152,12 +172,18 @@ stored; no demo values are presented as production data.
   A super administrator can create a store with its first administrator; that
   administrator chooses a business type at first sign-in. The template supplies
   starter categories, POS mode, feature defaults and receipt footer.
-- Selecting Cashier and saving settings automatically enables table workflows;
-  admins can still toggle tables separately. Switching back to Quick Order does
-  not disable tables. Staff navigation shows Floor when table service is on.
+- POS mode and table availability are independent settings. Staff navigation
+  shows Floor for every store role when table service is on, including on
+  mobile. Cashier mode retains its payment flow; in Quick mode, completing a
+  table round records it as unpaid and returns to Floor without opening payment.
+  Both modes keep table rounds editable and support moving and merging orders.
   Settings can also toggle delivery, kitchen screen, barcode scanning and
   weight-based items. Admins can add, edit, reorder, deactivate, quick-add and
   remove dining tables; used table records are deactivated to preserve history.
+- Schema `7anouti.db.v21` enables table service for legacy stores that already
+  contain dining tables; Settings also warns admins when tables exist but the
+  feature is off. At a 1110 by 503 desktop viewport, the compact POS cart showed
+  all three order rows, the total and the primary checkout action together.
 - Dine-in checkout requires an active table when the feature is enabled. Table
   names are snapshotted on orders and shown on receipts, ESC/POS kitchen tickets,
   the Orders page and CSV exports. The POS table picker is available in desktop
@@ -187,7 +213,9 @@ stored; no demo values are presented as production data.
 - Open orders do not change stock, sales, customer tabs, or register totals
   until payment. Register close and table deactivation/removal are blocked
   while an open order remains. Open-order actions are included in the
-  browser-local activity log.
+  browser-local activity log. Quick-mode table completion creates a `recorded`
+  unpaid order snapshot for the Orders page; later rounds update that snapshot,
+  while payment replaces it with the paid order and cancellation removes it.
 - Schema `7anouti.db.v16` defaults open orders to an empty list when migrating
   older records. This remains a demo workflow, not a production-safe
   multi-terminal kitchen queue.
@@ -220,7 +248,7 @@ wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v18`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v21`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is

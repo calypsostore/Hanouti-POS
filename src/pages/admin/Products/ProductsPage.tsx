@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { useApp } from '../../../store/AppStore'
 import type { Category, Product } from '../../../types'
 import { Button, Modal } from '../../../components/ui'
+import ConfirmDeleteModal from '../../../components/data/ConfirmDeleteModal'
 import { useToast } from '../../../components/toast'
 import ProductCatalog from './ProductCatalog'
 import { CategoryEditor, ProductEditor } from './ProductEditors'
@@ -141,39 +142,23 @@ export default function ProductsPage() {
         />
       )}
 
-      <Modal
+      <ConfirmDeleteModal
         open={!!deleteProductTarget}
         onClose={() => setDeleteProductTarget(null)}
         title="Delete product?"
-        subtitle={deleteProductTarget?.name}
-        size="sm"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeleteProductTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (!deleteProductTarget) return
-                const result = deleteProduct(deleteProductTarget.id)
-                if (!result.ok) {
-                  push(result.error, 'error')
-                  return
-                }
-                push('Product deleted', 'info')
-                setDeleteProductTarget(null)
-              }}
-            >
-              Delete
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-[13px] text-muted">
-          Past orders keep their copy of this item, so your reports stay accurate.
-        </p>
-      </Modal>
+        subject={deleteProductTarget?.name}
+        description="Past orders keep their copy of this item, so your reports stay accurate."
+        onConfirm={() => {
+          if (!deleteProductTarget) return
+          const result = deleteProduct(deleteProductTarget.id)
+          if (!result.ok) {
+            push(result.error, 'error')
+            return
+          }
+          push('Product deleted', 'info')
+          setDeleteProductTarget(null)
+        }}
+      />
 
       <Modal
         open={!!deleteCategoryTarget}

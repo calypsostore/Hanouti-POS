@@ -8,20 +8,38 @@ type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettin
 export default function RegisterTab({
   settings,
   set,
+  hasTablesHidden,
+  onEnableTables,
 }: {
   settings: StoreSettings
   set: SettingsSetter
+  hasTablesHidden: boolean
+  onEnableTables: () => void
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       <div className="space-y-5 lg:col-span-2">
+        {hasTablesHidden && (
+          <Card className="flex flex-wrap items-center justify-between gap-3 border-amber-400/50 bg-amber-50 p-4">
+            <p className="text-[13px] font-medium text-amber-950">
+              Tables exist but are hidden from your team.
+            </p>
+            <button
+              type="button"
+              onClick={onEnableTables}
+              className="rounded-lg bg-brand-amber px-3 py-2 text-xs font-bold text-brand-navy hover:brightness-105"
+            >
+              Enable
+            </button>
+          </Card>
+        )}
         <Card className="p-5">
           <div className="mb-1 flex items-center gap-2">
             <Zap className="h-4 w-4 text-accent-foreground" />
             <h3 className="text-[15px] font-semibold tracking-tight">How the register works</h3>
           </div>
           <p className="text-[12px] text-muted">
-            Pick how your staff finish a sale. Choosing Cashier also enables restaurant tables; save to apply the change.
+            Pick how staff finish a sale. Table service is controlled separately below.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -40,10 +58,7 @@ export default function RegisterTab({
             />
             <ModeCard
               active={settings.posMode === 'cashier'}
-              onClick={() => {
-                set('posMode', 'cashier')
-                set('features', { ...settings.features, tables: true })
-              }}
+              onClick={() => set('posMode', 'cashier')}
               icon={<CreditCard className="h-5 w-5" />}
               title="Cashier"
               badge="Full POS"

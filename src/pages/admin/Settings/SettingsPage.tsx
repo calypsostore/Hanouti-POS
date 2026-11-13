@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Save } from 'lucide-react'
 import { useApp } from '../../../store/AppStore'
 import type { Store, StoreSettings } from '../../../types'
@@ -21,9 +22,10 @@ type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone'
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
-  const { store, updateStore, updateSettings, updateStaff, user } = useApp()
+  const { db, store, updateStore, updateSettings, updateStaff, user } = useApp()
+  const [searchParams] = useSearchParams()
   const { push } = useToast()
-  const [tab, setTab] = useState<Tab>('profile')
+  const [tab, setTab] = useState<Tab>(() => searchParams.get('tab') === 'tables' ? 'tables' : 'profile')
   const [form, setForm] = useState<StoreProfile>({
     name: store?.name ?? '',
     icon: store?.icon ?? 'Coffee',
@@ -86,6 +88,25 @@ export default function SettingsPage() {
     push('Settings saved')
   }
 
+  const enableExistingTables = () => {
+    if (!store) return
+    const nextSettings = {
+      ...settings,
+      features: { ...settings.features, tables: true },
+    }
+    const result = updateSettings(store.id, nextSettings)
+    if (!result.ok) {
+      push(result.error, 'error')
+      return
+    }
+    setSettings(nextSettings)
+    push('Table service enabled')
+  }
+  const hasTablesHidden =
+    !!store &&
+    !settings.features.tables &&
+    db.tables.some((table) => table.storeId === store.id)
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -128,7 +149,14 @@ export default function SettingsPage() {
       {tab === 'branding' && (
         <BrandingTab form={form} setForm={setForm} settings={settings} set={set} />
       )}
-      {tab === 'register' && <RegisterTab settings={settings} set={set} />}
+      {tab === 'register' && (
+        <RegisterTab
+          settings={settings}
+          set={set}
+          hasTablesHidden={hasTablesHidden}
+          onEnableTables={enableExistingTables}
+        />
+      )}
       {tab === 'receipt' && (
         <ReceiptTab
           form={form}

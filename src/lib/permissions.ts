@@ -16,6 +16,9 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
 
 export function can(user: User, capability: Capability): boolean {
   if (user.role === 'admin') return true
+  if (capability === 'recordPurchases' && user.role === 'staff') {
+    return user.permissions.recordPurchases === true
+  }
   if (user.role !== 'manager') return false
   return user.permissions[capability] === true
 }

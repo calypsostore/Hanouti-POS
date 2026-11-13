@@ -13,6 +13,7 @@ import Customers from './pages/admin/Customers'
 import Register from './pages/admin/Register'
 import Products from './pages/admin/Products'
 import Inventory from './pages/admin/Inventory'
+import Purchases from './pages/admin/Purchases'
 import Staff from './pages/admin/Staff'
 import StaffDetail from './pages/admin/staff/StaffDetail'
 import Reports from './pages/admin/Reports'
@@ -60,6 +61,15 @@ function CapabilityGate({ capability, children }: { capability: Capability; chil
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
   if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user.role)} replace />
+  return <>{children}</>
+}
+
+function RegisterGate({ children }: { children: React.ReactNode }) {
+  const { user } = useApp()
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin' && !user.permissions.register) {
+    return <Navigate to={user.role === 'staff' ? '/pos' : '/admin'} replace />
+  }
   return <>{children}</>
 }
 
@@ -163,7 +173,7 @@ export default function App() {
               />
               <Route path="orders" element={<RoleGate roles={['admin', 'manager', 'staff']}><Orders /></RoleGate>} />
               <Route path="customers" element={<Customers />} />
-              <Route path="register" element={<Register />} />
+              <Route path="register" element={<RegisterGate><Register /></RegisterGate>} />
               <Route
                 path="products"
                 element={
@@ -177,6 +187,14 @@ export default function App() {
                 element={
                   <CapabilityGate capability="manageInventory">
                     <Inventory />
+                  </CapabilityGate>
+                }
+              />
+              <Route
+                path="purchases"
+                element={
+                  <CapabilityGate capability="recordPurchases">
+                    <Purchases />
                   </CapabilityGate>
                 }
               />

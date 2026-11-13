@@ -22,9 +22,9 @@ export function CartItemsList({
         return (
           <li
             key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
-            className="glass-row group flex items-center gap-2.5 rounded-xl px-1.5 py-2"
+            className="glass-row group flex items-center gap-2 rounded-xl px-1.5 py-1"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
               {item.name.slice(0, 1).toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">

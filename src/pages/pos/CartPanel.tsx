@@ -117,7 +117,7 @@ export function CartPanel({
   const newItemCount = pendingCount ?? cart.length
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col', embedded && 'min-h-[50vh]')}>
-      <div className="glass-sidebar flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 text-white">
+      <div className="glass-sidebar flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2 text-white">
         <div className="flex items-center gap-2">
           <ShoppingBag className="h-4 w-4 text-brand-amber" />
           <span className="text-[13.5px] font-bold">{isOpenOrder ? `${tableName ?? 'Table'} order` : 'Current order'}</span>
@@ -145,11 +145,11 @@ export function CartPanel({
         )}
       </div>
 
-      {!isOpenOrder && <div className="shrink-0 border-b border-line/70 px-4 py-2.5">
+      {!isOpenOrder && <div className="shrink-0 border-b border-line/70 px-3 py-1.5">
         <ChannelSwitch channel={channel} setChannel={setChannel} allowDelivery={deliveryEnabled} />
       </div>}
 
-      <div className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-3 thin-scrollbar', embedded && 'max-h-[36vh]')}>
+      <div className={cn('min-h-0 flex-1 overflow-y-auto px-3 py-2 thin-scrollbar', embedded && 'max-h-[36vh]')}>
         {!isOpenOrder && channel === 'dine-in' && tablesEnabled && (
           <TablePicker
             tables={tables}
@@ -179,21 +179,21 @@ export function CartPanel({
         ) : (
           <button
             onClick={onPickCustomer}
-            className="mb-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-2.5 py-2.5 text-left transition hover:border-accent-foreground/50 hover:bg-white"
+            className="mb-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-2 py-1.5 text-left transition hover:border-accent-foreground/50 hover:bg-white"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-200 text-muted">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cream-200 text-muted">
               <UserRound className="h-4 w-4" />
             </div>
             <div className="flex-1">
               <div className="text-[12px] font-semibold text-ink">Attach a customer</div>
-              <div className="text-[10.5px] text-muted">Charge to a tab or keep as guest</div>
+              <div className="text-[10px] text-muted">For customer tabs</div>
             </div>
             <ChevronRight className="h-4 w-4 text-muted/50" />
           </button>
         )}
 
         {cart.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+          <div className="flex flex-col items-center justify-center px-4 py-4 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-cream-200 text-muted/70">
               <ShoppingBag className="h-5 w-5" />
             </div>

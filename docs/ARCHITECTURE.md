@@ -12,12 +12,14 @@
 - `src/components/` contains UI shared across pages. Reuse
   `src/components/ui.tsx` for common controls. The app shell is split across
   `Layout.tsx`, `Sidebar.tsx`, `TopBar.tsx`, and `MobileNav.tsx`; reusable
-  dashboard primitives live in `src/components/dashboard/`.
+  dashboard primitives live in `src/components/dashboard/`, and reusable data
+  controls (tables, toolbars, CSV export and delete confirmation) live in
+  `src/components/data/`.
 - `src/lib/` contains reusable domain helpers and pure business calculations.
   Keep React and UI dependencies out of this layer.
 - `src/store/AppStore.tsx` composes the provider and exports `useApp()`.
   Feature slices live in `src/store/` (`auth`, `orders`, `register`,
-  `catalog`, `customers`, `staff`, and `settings`). `runtime.ts` owns shared
+  `catalog`, `customers`, `staff`, `inventory`, `purchases`, and `settings`). `runtime.ts` owns shared
   database state and actor guards; `database.ts` owns local database loading,
   normalization, and migrations, while `src/lib/storage.ts` wraps IndexedDB.
 - Shared application types are in `src/types.ts`; slice contracts are in
@@ -26,6 +28,12 @@
 - This is a browser-local demo application. Business data uses IndexedDB;
   the session identifier and small UI preferences remain in localStorage.
   Browser storage is not a trusted backend or production security boundary.
+  Settings → Data exports normalized backups and provides owner-only restore
+  and device diagnostics. Import requires the current active owner/store to be
+  present; first-time restore on a clean browser needs a bootstrap flow.
+- Table service is controlled independently from POS mode. Active table rounds
+  remain in `openOrders`; Quick-mode completion also keeps an unpaid `recorded`
+  order snapshot until the order is paid or cancelled.
 
 ## Adding a page
 
