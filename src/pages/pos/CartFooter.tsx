@@ -44,7 +44,7 @@ export function CartFooter({
   const showTabButton = allowCredit && !!customerId && !(quick && isOpenOrder)
 
   return (
-    <div className="glass-subtle flex min-h-0 max-h-[40%] shrink-0 flex-col overflow-hidden border-t border-line/70 px-3 py-2">
+    <div className="glass-subtle flex min-h-0 max-h-32 shrink-0 flex-col overflow-hidden border-t border-line/70 px-3 py-2">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <details className="group mb-1 rounded-lg">
           <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-muted transition hover:text-ink">
@@ -100,7 +100,7 @@ export function CartFooter({
           <span className="text-[18px] font-extrabold tracking-tight text-ink tabular">{money(totals.total)}</span>
         </div>
 
-        <div className={cn('mt-2', showTabButton ? 'grid grid-cols-2 gap-2' : 'space-y-1')}>
+        <div className={cn('mt-2', showTabButton ? 'grid grid-cols-2 gap-2' : '')}>
           <Button
             size="md"
             className={cn(
@@ -129,7 +129,6 @@ export function CartFooter({
               <UserRound className="h-4 w-4" /> Add to tab
             </Button>
           )}
-          {quick && !isOpenOrder && <p className={cn('text-center text-[10px] leading-tight text-muted', showTabButton && 'col-span-2')}>Quick mode · cash or card at checkout.</p>}
         </div>
       </div>
     </div>

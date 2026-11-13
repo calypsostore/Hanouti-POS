@@ -15,7 +15,7 @@ reported as passing.
 | S4 Permission changes | Change permissions in the admin tab while the staff account is open in another tab; expect current navigation and routes to update without re-login. | Granting `recordPurchases` made Purchases appear in the staff tab and its route loaded without re-login. Other routes/buttons were not exhaustively checked. | No errors or warnings observed during the captured interactions. | PARTIAL |
 | S5 Purchases | Admin records water, coffee and soft drinks with a receipt photo; staff with only `recordPurchases` edits and voids it; verify stock and expense totals. | Receipt purchase was recorded; staff edited and voided it. Inventory quantities and expense/register totals were not checked. | No errors or warnings observed during the captured interactions. | PARTIAL |
 | S6 Lists | For Staff, Customers, Inventory, Products, Expenses, Orders, Purchases and Tables, exercise search, filter, add, edit and delete. | The full list-by-list interaction pass was not run. | Not exhaustively scanned. | NOT RUN |
-| R1 Compact POS cart | At 1110 by 503, inspect a three-item cart; expect readable order rows and total/checkout controls without the footer obscuring the list. | All three rows were fully visible in a 153 px order-list area; the footer was 164 px tall and the primary checkout action remained visible. The note control opened and accepted text. | No errors or warnings observed during the captured interactions. | PASS |
+| R1 Compact POS cart | At 1110 by 503, inspect a three-item cart; expect readable order rows and total/checkout controls without the footer obscuring the list. | With the note expanded, the 128 px footer kept checkout visible and all three rows fully visible in the 189.5 px order area. The customer attach control is compact. | No errors or warnings observed during the captured interactions. | PASS |
 
 ## Root causes and fixes
 
@@ -28,7 +28,7 @@ reported as passing.
 | S4 | Cross-tab data changes were not reflected in an already-open app session. | Added database change notification and refresh so permission-driven navigation updates without signing in again. | `src/store/runtime.ts`, `src/store/staff.ts`, `src/lib/permissions.ts`, `src/components/MobileNav.tsx` |
 | S5 | Staff purchase recording needed an explicit permission path; downstream stock and expense reconciliation remains unverified. | Added `recordPurchases` support and verified receive/edit/void in the browser. | `src/lib/defaults.ts`, `src/lib/permissions.ts`, `src/store/purchases.ts`, `src/pages/admin/Purchases.tsx`, `src/pages/admin/purchases/` |
 | S6 | Not assessed; the requested list-by-list interactions were not run. | No fix claimed. Run the full list interaction matrix before release. | — |
-| R1 | The non-shrinking cart footer consumed most of the short panel, leaving the order scroller nearly collapsed. | Capped the footer to 40% of its parent, made optional details scrollable, pinned total/checkout, and tightened the cart header and item rows. | `src/pages/pos/CartFooter.tsx`, `src/pages/pos/CartPanel.tsx`, `src/pages/pos/CartItemsList.tsx` |
+| R1 | The non-shrinking cart footer consumed most of the short panel, leaving the order scroller nearly collapsed. | Capped the footer at 8rem, made optional details scrollable, pinned total/checkout, and tightened the customer control and item rows. | `src/pages/pos/CartFooter.tsx`, `src/pages/pos/CartPanel.tsx`, `src/pages/pos/CartItemsList.tsx` |
 
 ## Remaining verification
 

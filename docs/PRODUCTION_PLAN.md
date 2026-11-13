@@ -5,9 +5,10 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-13 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-14 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, and dine-in table setup with
-table-aware immediate orders**. Persistent open table orders remain in progress.
+table-aware immediate orders, and compact POS cart layout**. Persistent open
+table orders remain in progress.
 
 ## Code organization update (2026-11-12)
 
@@ -182,8 +183,10 @@ stored; no demo values are presented as production data.
   remove dining tables; used table records are deactivated to preserve history.
 - Schema `7anouti.db.v21` enables table service for legacy stores that already
   contain dining tables; Settings also warns admins when tables exist but the
-  feature is off. At a 1110 by 503 desktop viewport, the compact POS cart showed
-  all three order rows, the total and the primary checkout action together.
+  feature is off. The compact POS cart caps its footer at 8rem and compresses
+  the customer attach control; at a 1110 by
+  503 desktop viewport, all three order rows, the total and primary checkout
+  action were visible together.
 - Dine-in checkout requires an active table when the feature is enabled. Table
   names are snapshotted on orders and shown on receipts, ESC/POS kitchen tickets,
   the Orders page and CSV exports. The POS table picker is available in desktop

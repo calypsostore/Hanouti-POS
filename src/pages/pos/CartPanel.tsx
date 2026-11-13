@@ -179,16 +179,13 @@ export function CartPanel({
         ) : (
           <button
             onClick={onPickCustomer}
-            className="mb-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-2 py-1.5 text-left transition hover:border-accent-foreground/50 hover:bg-white"
+            className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line px-2 py-1 text-left transition hover:border-accent-foreground/50 hover:bg-white"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cream-200 text-muted">
-              <UserRound className="h-4 w-4" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cream-200 text-muted">
+              <UserRound className="h-3.5 w-3.5" />
             </div>
-            <div className="flex-1">
-              <div className="text-[12px] font-semibold text-ink">Attach a customer</div>
-              <div className="text-[10px] text-muted">For customer tabs</div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted/50" />
+            <span className="flex-1 text-[12px] font-semibold text-ink">Attach a customer</span>
+            <ChevronRight className="h-3.5 w-3.5 text-muted/50" />
           </button>
         )}
 
