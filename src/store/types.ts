@@ -6,6 +6,9 @@ import type {
 
 export type Result = { ok: true } | { ok: false; error: string }
 export type ActorResult = { ok: true; actor: User } | { ok: false; error: string }
+export type BackupExportResult =
+  | { ok: true; database: Database }
+  | { ok: false; error: string }
 
 export interface CreateOrderInput {
   items: OrderItem[]
@@ -169,5 +172,7 @@ export interface AppContextValue {
   updateStore: (storeId: string, patch: Partial<Store>) => Result
   setStoreStatus: (storeId: string, status: StoreStatus) => Result
   changePlan: (storeId: string, plan: Store['plan']) => Result
-  resetDemo: () => Promise<Result>
+  exportDatabaseBackup: () => BackupExportResult
+  importDatabaseBackup: (value: unknown) => Promise<Result>
+  resetDemo: (confirmation: string) => Promise<Result>
 }

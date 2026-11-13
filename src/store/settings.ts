@@ -441,9 +441,14 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     return { ok: true }
   }, [commitDb, dbRef, requireActor])
 
-  const resetDemo = useCallback(async () => {
+  const resetDemo = useCallback<AppContextValue['resetDemo']>(async (confirmation) => {
+    if (confirmation !== 'RESET') return { ok: false, error: 'Type RESET to confirm demo data reset.' }
     const actorResult = requireActor()
     if (!actorResult.ok) return actorResult
+    if (actorResult.actor.role !== 'admin' || !actorResult.actor.storeId) {
+      return { ok: false, error: 'Only a store owner can reset demo data.' }
+    }
+    const storeId = actorResult.actor.storeId
     const fresh = buildSeed()
     let users: User[]
     try {
@@ -452,14 +457,14 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         password: await hashSecret(candidate.password),
         pin: await hashSecret(candidate.pin),
       })))
-    } catch {
+    } catch (error) {
+      console.error('7anouti: could not securely rebuild demo credentials.', error)
       return { ok: false, error: 'Could not securely rebuild the demo credentials. Please try again.' }
     }
-    const latestActor = requireActor()
+    const latestActor = requireAdmin(storeId)
     if (!latestActor.ok) return latestActor
     commitDb((prev) => {
       const initial = { ...fresh, users, auditLogs: prev.auditLogs }
-      const storeId = latestActor.actor.storeId ?? 'system'
       const reset = addLog(initial, latestActor.actor, {
         storeId,
         action: 'demo_reset',
@@ -476,7 +481,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     userIdRef.current = null
     setUserId(null)
     return { ok: true as const }
-  }, [commitDb, requireActor, userIdRef, setUserId])
+  }, [commitDb, requireActor, requireAdmin, userIdRef, setUserId])
 
 
   return {

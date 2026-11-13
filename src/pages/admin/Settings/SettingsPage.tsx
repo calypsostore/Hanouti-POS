@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { RotateCcw, Save } from 'lucide-react'
+import { Save } from 'lucide-react'
 import { useApp } from '../../../store/AppStore'
 import type { Store, StoreSettings } from '../../../types'
-import { Button, Card, Modal, Segmented } from '../../../components/ui'
+import { Button, Segmented } from '../../../components/ui'
 import { PrintModal } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../../../lib/defaults'
@@ -14,16 +14,16 @@ import ProfileTab from './ProfileTab'
 import RegisterTab from './RegisterTab'
 import ReceiptTab from './ReceiptTab'
 import TablesTab from './TablesTab'
+import DataTab from './DataTab'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
-  const { store, updateStore, updateSettings, updateStaff, resetDemo, user } = useApp()
+  const { store, updateStore, updateSettings, updateStaff, user } = useApp()
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>('profile')
-  const [resetOpen, setResetOpen] = useState(false)
   const [form, setForm] = useState<StoreProfile>({
     name: store?.name ?? '',
     icon: store?.icon ?? 'Coffee',
@@ -95,9 +95,9 @@ export default function SettingsPage() {
             Shape how the register works for {store.name}.
           </p>
         </div>
-        <Button onClick={save}>
+        {tab !== 'data' && <Button onClick={save}>
           <Save className="h-4 w-4" /> Save changes
-        </Button>
+        </Button>}
       </div>
 
       <Segmented
@@ -109,6 +109,7 @@ export default function SettingsPage() {
           { value: 'register', label: 'Register & checkout' },
           { value: 'receipt', label: 'Receipt' },
           ...(settings.features.tables ? [{ value: 'tables' as const, label: 'Tables' }] : []),
+          ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
         ]}
       />
 
@@ -147,49 +148,7 @@ export default function SettingsPage() {
         />
       )}
       {tab === 'tables' && settings.features.tables && <TablesTab storeId={store.id} />}
-
-      <Card className="flex flex-wrap items-center justify-between gap-3 border-dashed p-4">
-        <div>
-          <div className="text-[12.5px] font-semibold text-ink">Demo tools</div>
-          <div className="text-[11.5px] text-muted">
-            Reset every store and order back to the original sample data.
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => setResetOpen(true)}>
-          <RotateCcw className="h-3.5 w-3.5" /> Reset demo data
-        </Button>
-      </Card>
-
-      <Modal
-        open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        title="Reset demo data?"
-        size="sm"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setResetOpen(false)}>Cancel</Button>
-            <Button
-              variant="danger"
-              onClick={async () => {
-                const result = await resetDemo()
-                if (!result.ok) {
-                  push(result.error, 'error')
-                  return
-                }
-                setResetOpen(false)
-                push('Demo data reset', 'info')
-              }}
-            >
-              Reset everything
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-[13px] leading-relaxed text-muted">
-          This deletes all changes you have made in this browser and signs you out. The demo store
-          data will be rebuilt fresh.
-        </p>
-      </Modal>
+      {tab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal
         job={

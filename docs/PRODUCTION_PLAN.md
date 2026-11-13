@@ -129,6 +129,23 @@ stored; no demo values are presented as production data.
   costing and automatic stock consumption; daily close/count reports; and
   staff consumption and allowances. These phases have not been implemented.
 
+### Browser-local data and backups
+
+- **Current behavior:** application data is stored per browser in IndexedDB;
+  pushing a code release does not transfer or merge another browser's records
+  or newly added seed data. Until the Phase 2 backend exists, exporting and
+  importing a JSON backup is the only supported way to move data between
+  browsers/devices.
+- Settings → Data is owner-only and provides full-database JSON export/import,
+  import confirmation counts, typed `RESET` confirmation for restoring demo
+  seed data, and the app/database/build version identifiers. Backups preserve
+  the stored password and PIN hashes. Imports are normalized and must include
+  the active owner and store.
+- Startup compares the previous IndexedDB build timestamp with the deployed
+  build, records an app-update audit event, and notifies the owner about
+  settings that remain off by default. This is a local notification only; it
+  does not synchronize data or seeds across browsers.
+
 ### Phase 1 — Business types and product options ✅ demo implementation
 
 - Stores support cafe, restaurant, bakery, snack, retail and salon templates.

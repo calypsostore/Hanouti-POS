@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../types'
 import { buildSeed } from '../data/seed'
 import { useToast } from '../components/toast'
-import { writeIndexedValue } from '../lib/storage'
+import { readIndexedValue, writeIndexedValue } from '../lib/storage'
+import { APP_BUILD_STORAGE_KEY, APP_BUILD_TIMESTAMP, APP_VERSION, getOffByDefaultSettings } from '../lib/appVersion'
 import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
+import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import type { Capability } from '../types'
 import type { ActorResult } from './types'
@@ -25,9 +27,15 @@ export function useDatabase(): DatabaseRuntime {
   const [loadError, setLoadError] = useState('')
   const reportStorageError = useCallback((operation: string, error: unknown) => {
     console.error(`7anouti: failed while ${operation}.`, error)
-    if (operation !== 'saving IndexedDB' || persistenceWarningShown.current) return
-    persistenceWarningShown.current = true
-    push('Changes could not be saved in this browser. They will remain available until you close this page.', 'error')
+    if (operation === 'saving IndexedDB') {
+      if (persistenceWarningShown.current) return
+      persistenceWarningShown.current = true
+      push('Changes could not be saved in this browser. They will remain available until you close this page.', 'error')
+      return
+    }
+    if (operation.includes('app build metadata')) {
+      push('Could not update app-version information in this browser.', 'error')
+    }
   }, [push])
   const commitDb = useCallback((update: (prev: Database) => Database) => {
     const next = update(dbRef.current)
@@ -38,19 +46,68 @@ export function useDatabase(): DatabaseRuntime {
 
   useEffect(() => {
     let active = true
-    void loadDb(dbRef.current, reportStorageError).then((loaded) => {
+    const initialize = async () => {
+      let previousBuildTimestamp: string | null = null
+      try {
+        previousBuildTimestamp = await readIndexedValue(APP_BUILD_STORAGE_KEY)
+      } catch (error) {
+        reportStorageError('reading app build metadata', error)
+      }
+      const { database: loaded, hasPersistedData } = await loadDb(dbRef.current, reportStorageError)
       if (!active) return
-      dbRef.current = loaded
-      setDbState(loaded)
+      const previousBuildTime = previousBuildTimestamp ? Date.parse(previousBuildTimestamp) : Number.NaN
+      const currentBuildTime = Date.parse(APP_BUILD_TIMESTAMP)
+      const isNewerBuild = Number.isFinite(previousBuildTime)
+        ? Number.isFinite(currentBuildTime) && currentBuildTime > previousBuildTime
+        : hasPersistedData
+      const next = isNewerBuild
+        ? loaded.stores.reduce((current, store) => addLog(current, {
+            id: 'system',
+            name: '7anouti',
+            role: 'unknown',
+          }, {
+            storeId: store.id,
+            action: 'app_updated',
+            entity: 'settings',
+            summary: `App updated to ${APP_VERSION}`,
+          }), loaded)
+        : loaded
+      let saveBuildUpdate = true
+      if (isNewerBuild) {
+        try {
+          await writeIndexedValue(DB_KEY, JSON.stringify(next))
+          clearLocalDatabaseCopies()
+        } catch (error) {
+          saveBuildUpdate = false
+          reportStorageError('saving IndexedDB', error)
+        }
+      }
+      dbRef.current = next
+      setDbState(next)
       setReady(true)
-    }).catch((error: unknown) => {
+      if (isNewerBuild) {
+        const newSettings = getOffByDefaultSettings(next)
+        const settingNote = newSettings.length
+          ? ` New settings off by default: ${newSettings.join(', ')}.`
+          : ''
+        push(`App updated to ${APP_VERSION}.${settingNote}`, 'info')
+      }
+      if (saveBuildUpdate) {
+        try {
+          await writeIndexedValue(APP_BUILD_STORAGE_KEY, APP_BUILD_TIMESTAMP)
+        } catch (error) {
+          reportStorageError('saving app build metadata', error)
+        }
+      }
+    }
+    void initialize().catch((error: unknown) => {
       if (!active) return
       console.error('7anouti: database initialization failed.', error)
       setLoadError(error instanceof Error ? error.message : 'Could not load the local database.')
       setReady(true)
     })
     return () => { active = false }
-  }, [reportStorageError])
+  }, [push, reportStorageError])
 
   useEffect(() => {
     if (!ready || loadError) return

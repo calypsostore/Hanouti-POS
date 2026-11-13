@@ -20,6 +20,8 @@ import { cn, money } from '../lib/utils'
 import { BRAND_NAME } from '../lib/brand'
 import { BrandLogo } from '../components/BrandLogo'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { APP_BUILD_TIMESTAMP, APP_VERSION } from '../lib/appVersion'
+import { DB_KEY } from '../store/database'
 
 type DemoAccount = {
   role: 'Super admin' | 'Store admin' | 'Staff'
@@ -360,6 +362,9 @@ export default function Login() {
             Demo workspace · all data is stored locally in your browser.
             <br />
             Owner/admin demo password: <span className="font-semibold text-muted">password</span>.
+          </p>
+          <p className="mt-3 break-all text-center text-[9.5px] leading-relaxed text-muted/70">
+            App {APP_VERSION} · Database {DB_KEY} · Built {APP_BUILD_TIMESTAMP}
           </p>
         </div>
       </div>

@@ -61,6 +61,7 @@ const auditActions: AuditAction[] = [
   'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
   'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
   'register_closed', 'settings_updated', 'login_success', 'login_failure', 'logout', 'demo_reset',
+  'app_updated', 'backup_exported', 'backup_imported',
   'inventory_opening', 'stock_adjusted', 'waste_recorded', 'stock_counted',
 ]
 const auditEntities: AuditEntity[] = [
@@ -139,7 +140,7 @@ const isOrderModifier = (value: unknown): value is OrderModifier =>
   typeof value.optionId === 'string' && typeof value.optionName === 'string' &&
   isFiniteNumber(value.priceDelta)
 
-const normalizeDb = (value: unknown, seed: Database): Database | null => {
+export const normalizeDb = (value: unknown, seed: Database): Database | null => {
   if (!isRecord(value)) return null
   const stores = Array.isArray(value.stores)
     ? value.stores.filter((s): s is Store =>
@@ -529,6 +530,23 @@ const normalizeDb = (value: unknown, seed: Database): Database | null => {
   }
 }
 
+const databaseCollectionKeys: Array<keyof Database> = [
+  'stores', 'users', 'categories', 'tables', 'inventoryItems', 'stockMovements',
+  'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
+  'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'auditLogs',
+]
+
+export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
+  if (!isRecord(value) || !databaseCollectionKeys.every((key) => Array.isArray(value[key]))) return null
+  const normalized = normalizeDb(value, seed)
+  if (!normalized) return null
+  if (databaseCollectionKeys.some((key) => {
+    const rawCollection = value[key]
+    return !Array.isArray(rawCollection) || normalized[key].length !== rawCollection.length
+  })) return null
+  return normalized
+}
+
 export const clearLocalDatabaseCopies = () => {
   for (const key of [DB_KEY, ...LEGACY_DB_KEYS]) {
     try {
@@ -542,9 +560,10 @@ export const clearLocalDatabaseCopies = () => {
 export const loadDb = async (
   seed: Database,
   reportStorageError: (operation: string, error: unknown) => void = () => {},
-): Promise<Database> => {
+): Promise<{ database: Database; hasPersistedData: boolean }> => {
   let db: Database | null = null
   let loadedFromIndexedDb = false
+  let hasPersistedData = false
   for (const key of [DB_KEY, ...INDEXED_DB_MIGRATION_KEYS]) {
     try {
       const raw = await readIndexedValue(key)
@@ -556,6 +575,7 @@ export const loadDb = async (
       }
       if (db) {
         loadedFromIndexedDb = true
+        hasPersistedData = true
         break
       }
     } catch (error) {
@@ -576,7 +596,10 @@ export const loadDb = async (
       try {
         db = normalizeDb(JSON.parse(raw), seed)
       } catch { /* Try the next key when local data is corrupted. */ }
-      if (db) break
+      if (db) {
+        hasPersistedData = true
+        break
+      }
     }
   }
   const source = db ?? seed
@@ -594,5 +617,5 @@ export const loadDb = async (
   })))
   const migrated = { ...source, users }
   if (loadedFromIndexedDb) clearLocalDatabaseCopies()
-  return migrated
+  return { database: migrated, hasPersistedData }
 }
