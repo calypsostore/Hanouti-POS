@@ -44,7 +44,10 @@ export function CartFooter({
   const showTabButton = allowCredit && !!customerId && !(quick && isOpenOrder)
 
   return (
-    <div className="glass-subtle flex min-h-0 max-h-32 shrink-0 flex-col overflow-hidden border-t border-line/70 px-3 py-2">
+    <div className={cn(
+      'glass-subtle flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-line/70 px-3 py-2',
+      isOpenOrder ? 'max-h-[50vh]' : 'max-h-32',
+    )}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <details className="group mb-1 rounded-lg">
           <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold text-muted transition hover:text-ink">
@@ -80,19 +83,19 @@ export function CartFooter({
             </div>
           )}
         </div>
-
-        {isOpenOrder && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <Button variant="secondary" className="w-full" disabled={!canSaveOpenOrder} onClick={onSaveOpenOrder}>
-              Save items
-            </Button>
-            <Button variant="secondary" className="w-full" disabled={!hasUnsentItems} onClick={onSendKitchen}>
-              Send to kitchen
-            </Button>
-            <Button variant="ghost" className="col-span-2 w-full" onClick={onOpenFloor}>Back to tables</Button>
-          </div>
-        )}
       </div>
+
+      {isOpenOrder && (
+        <div className="grid shrink-0 grid-cols-2 gap-2 py-2">
+          <Button variant="secondary" className="w-full" disabled={!canSaveOpenOrder} onClick={onSaveOpenOrder}>
+            Save items
+          </Button>
+          <Button variant="secondary" className="w-full" disabled={!hasUnsentItems} onClick={onSendKitchen}>
+            Send to kitchen
+          </Button>
+          <Button variant="ghost" className="col-span-2 w-full" onClick={onOpenFloor}>Back to tables</Button>
+        </div>
+      )}
 
       <div className="shrink-0 border-t border-line/50 pt-2">
         <div className="glass-tint-green flex items-baseline justify-between rounded-2xl border-t border-dashed border-line px-3 py-1.5">

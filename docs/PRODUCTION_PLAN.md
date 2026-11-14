@@ -211,6 +211,8 @@ stored; no demo values are presented as production data.
   has section tabs and My tables / All / Unassigned filter controls; Unassigned
   becomes populated when the handover pool is implemented. Manual mode takes
   a free-form table name with suggestions from currently open tables.
+- Settings tabs scroll horizontally on narrow screens without widening the
+  page beyond the viewport.
 - Guest-count policy is configurable as required, optional, or off; table-open
   and checkout mutations validate it. Open table cards and the cart identify
   the table, guest count, section where applicable, and owner staff. Kitchen
@@ -237,6 +239,9 @@ stored; no demo values are presented as production data.
   browser-local activity log. Quick-mode table completion creates a `recorded`
   unpaid order snapshot for the Orders page; later rounds update that snapshot,
   while payment replaces it with the paid order and cancellation removes it.
+- Table-order controls stay visible in the cart footer on narrow screens;
+  notes and totals may scroll independently instead of hiding the save, kitchen,
+  and floor actions.
 - Schema `7anouti.db.v16` defaults open orders to an empty list when migrating
   older records. This remains a demo workflow, not a production-safe
   multi-terminal kitchen queue.

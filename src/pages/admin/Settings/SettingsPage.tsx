@@ -125,18 +125,21 @@ export default function SettingsPage() {
         </Button>}
       </div>
 
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: 'profile', label: 'Store profile' },
-          { value: 'branding', label: 'Branding' },
-          { value: 'register', label: 'Register & checkout' },
-          { value: 'receipt', label: 'Receipt' },
-          { value: 'tables' as const, label: 'Tables' },
-          ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
-        ]}
-      />
+      <div className="min-w-0 max-w-full overflow-x-auto">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          className="w-max whitespace-nowrap"
+          options={[
+            { value: 'profile', label: 'Store profile' },
+            { value: 'branding', label: 'Branding' },
+            { value: 'register', label: 'Register & checkout' },
+            { value: 'receipt', label: 'Receipt' },
+            { value: 'tables' as const, label: 'Tables' },
+            ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
+          ]}
+        />
+      </div>
 
       {tab === 'profile' && (
         <ProfileTab
