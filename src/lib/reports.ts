@@ -1,4 +1,11 @@
-import type { Database, RegisterSession, RegisterSnapshot } from '../types'
+import type {
+  AuditJsonValue,
+  Database,
+  Order,
+  RegisterReportDetails,
+  RegisterSession,
+  RegisterSnapshot,
+} from '../types'
 import { round } from './pricing-utils'
 
 /**
@@ -12,6 +19,29 @@ import { round } from './pricing-utils'
 
 type TotalsSource = Pick<Database, 'orders' | 'ledger' | 'expenses' | 'purchasePayments'>
 
+const isInWindow = (value: string, start: number, end: number) => {
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end
+}
+
+const ordersCreatedInWindow = (
+  db: Pick<Database, 'orders'>,
+  storeId: string,
+  start: number,
+  end: number,
+) => db.orders.filter((order) =>
+  order.storeId === storeId &&
+  (order.status === 'completed' || order.status === 'void') &&
+  isInWindow(order.createdAt, start, end),
+)
+
+const completedOrdersAt = (orders: Order[], end: number) => orders.filter((order) =>
+  order.status === 'completed' ||
+  (order.status === 'void' && !!order.voidedAt && Date.parse(order.voidedAt) > end),
+)
+
+const sum = (values: number[]) => round(values.reduce((total, value) => total + value, 0))
+
 export const computeRegisterTotals = (
   db: TotalsSource,
   storeId: string,
@@ -22,85 +52,217 @@ export const computeRegisterTotals = (
   const start = new Date(startISO).getTime()
   const end = new Date(endISO).getTime()
 
-  const createdInWindow = db.orders.filter((o) => {
-    if (o.storeId !== storeId) return false
-    const t = new Date(o.createdAt).getTime()
-    return t >= start && t <= end
-  })
-  const voided = db.orders.filter((o) => {
-    if (o.storeId !== storeId || o.status !== 'void' || !o.voidedAt) return false
-    const t = new Date(o.voidedAt).getTime()
-    return t >= start && t <= end
-  })
-  const voidedInWindow = (o: (typeof db.orders)[number]) => {
-    if (!o.voidedAt) return false
-    const t = new Date(o.voidedAt).getTime()
-    return t >= start && t <= end
-  }
-  const done = createdInWindow.filter(
-    (o) => !voidedInWindow(o) && (o.status === 'completed' || o.status === 'void'),
+  const createdInWindow = ordersCreatedInWindow(db, storeId, start, end)
+  const completed = completedOrdersAt(createdInWindow, end)
+  const voided = db.orders.filter((order) =>
+    order.storeId === storeId &&
+    order.status === 'void' &&
+    !!order.voidedAt &&
+    isInWindow(order.voidedAt, start, end),
   )
 
-  const cashSales = round(
-    done.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0) +
-      voided
-        .filter((o) => {
-          const created = new Date(o.createdAt).getTime()
-          return o.paymentMethod === 'cash' && created >= start && created <= end
-        })
-        .reduce((a, o) => a + o.total, 0),
+  const cashSales = sum(completed.filter((order) => order.paymentMethod === 'cash').map((order) => order.total))
+  const cardSales = sum(completed.filter((order) => order.paymentMethod === 'card').map((order) => order.total))
+  const creditSales = sum(completed.filter((order) => order.paymentMethod === 'credit').map((order) => order.total))
+  const cashReceived = sum(
+    createdInWindow.filter((order) => order.paymentMethod === 'cash').map((order) => order.total),
   )
-  const cardSales = round(done.filter((o) => o.paymentMethod === 'card').reduce((a, o) => a + o.total, 0))
-  const creditSales = round(done.filter((o) => o.paymentMethod === 'credit').reduce((a, o) => a + o.total, 0))
-
-  // Refunds: a voided order that was already paid in cash returns to the drawer.
-  const cashRefunds = round(
-    voided.filter((o) => o.paymentMethod === 'cash').reduce((a, o) => a + o.total, 0),
+  const cashRefunds = sum(
+    voided.filter((order) => order.paymentMethod === 'cash').map((order) => order.total),
   )
 
   const payments = db.ledger.filter((l) => {
-    if (l.storeId !== storeId || l.type !== 'payment' || l.creditAdjustment) return false
-    const t = new Date(l.createdAt).getTime()
-    return t >= start && t <= end
+    return l.storeId === storeId &&
+      l.type === 'payment' &&
+      !l.creditAdjustment &&
+      isInWindow(l.createdAt, start, end)
   })
-  const cashSettlements = round(payments.filter((l) => l.method === 'cash').reduce((a, l) => a + l.amount, 0))
-  const cardSettlements = round(payments.filter((l) => l.method === 'card').reduce((a, l) => a + l.amount, 0))
+  const cashSettlements = sum(payments.filter((payment) => payment.method === 'cash').map((payment) => payment.amount))
+  const cardSettlements = sum(payments.filter((payment) => payment.method === 'card').map((payment) => payment.amount))
 
-  const expenses = round(
-    db.expenses
-      .filter((e) => {
-        if (e.storeId !== storeId) return false
-        const t = new Date(e.createdAt ?? e.date).getTime()
-        return t >= start && t <= end
-      })
-      .reduce((a, e) => a + e.amount, 0) +
-      db.purchasePayments
-        .filter((payment) => {
-          if (payment.storeId !== storeId || payment.method !== 'cash') return false
-          const t = new Date(payment.createdAt).getTime()
-          return t >= start && t <= end
-        })
-        .reduce((a, payment) => a + payment.amount, 0),
-  )
+  const cashExpenses = sum(db.expenses
+    .filter((expense) => expense.storeId === storeId && isInWindow(expense.createdAt ?? expense.date, start, end))
+    .map((expense) => expense.amount))
+  const supplierCashPayments = sum(db.purchasePayments
+    .filter((payment) =>
+      payment.storeId === storeId &&
+      payment.method === 'cash' &&
+      isInWindow(payment.createdAt, start, end),
+    )
+    .map((payment) => payment.amount))
+  const expenses = round(cashExpenses + supplierCashPayments)
 
   return {
     salesTotal: round(cashSales + cardSales + creditSales),
     cashSales,
     cardSales,
     creditSales,
-    ordersCount: done.length,
+    ordersCount: completed.length,
     voidedCount: voided.length,
-    voidedTotal: round(voided.reduce((a, o) => a + o.total, 0)),
+    voidedTotal: sum(voided.map((order) => order.total)),
     cashRefunds,
-    discounts: round(done.reduce((a, o) => a + o.discount, 0)),
-    tax: round(done.reduce((a, o) => a + o.tax, 0)),
-    service: round(done.reduce((a, o) => a + o.service, 0)),
+    discounts: sum(completed.map((order) => order.discount)),
+    tax: sum(completed.map((order) => order.tax)),
+    service: sum(completed.map((order) => order.service)),
     expenses,
     cashSettlements,
     cardSettlements,
     settlementCount: payments.length,
-    // Drawer expectation: opening float + cash taken in − cash handed out.
-    expectedCash: round(openingCash + cashSales + cashSettlements - expenses - cashRefunds),
+    expectedCash: round(openingCash + cashReceived + cashSettlements - expenses - cashRefunds),
+  }
+}
+
+const auditString = (value: AuditJsonValue | undefined): string =>
+  typeof value === 'string' ? value : ''
+
+const auditNumber = (value: AuditJsonValue | undefined): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0
+
+const auditItems = (value: AuditJsonValue | undefined): string[] => {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return []
+    const name = auditString(entry.name)
+    const qty = auditNumber(entry.qty)
+    return name ? [`${qty || 1} x ${name}`] : []
+  })
+}
+
+export const registerReportDetails = (
+  db: Database,
+  session: RegisterSession,
+  endISO = new Date().toISOString(),
+): RegisterReportDetails => {
+  const store = db.stores.find((candidate) => candidate.id === session.storeId)
+  if (!store) throw new Error('Store not found for register report.')
+  const start = Date.parse(session.openedAt)
+  const end = Date.parse(endISO)
+  const createdInWindow = ordersCreatedInWindow(db, session.storeId, start, end)
+  const completed = completedOrdersAt(createdInWindow, end)
+  const snapshot = computeRegisterTotals(db, session.storeId, session.openedAt, endISO, session.openingCash)
+  const refunds = db.ledger.filter((entry) =>
+    entry.storeId === session.storeId &&
+    entry.type === 'payment' &&
+    entry.creditAdjustment === true &&
+    isInWindow(entry.createdAt, start, end),
+  )
+  const taxByRate = new Map<number | null, number>()
+  const byEmployee = new Map<string, { count: number; total: number }>()
+  const byCategory = new Map<string, { qty: number; total: number }>()
+  const byProduct = new Map<string, { name: string; qty: number; total: number }>()
+
+  for (const order of completed) {
+    const taxRate = typeof order.taxRate === 'number' && Number.isFinite(order.taxRate) ? order.taxRate : null
+    taxByRate.set(taxRate, round((taxByRate.get(taxRate) ?? 0) + order.tax))
+
+    const employee = byEmployee.get(order.staffName) ?? { count: 0, total: 0 }
+    byEmployee.set(order.staffName, {
+      count: employee.count + 1,
+      total: round(employee.total + order.total),
+    })
+
+    for (const item of order.items) {
+      const lineTotal = round(item.price * item.qty)
+      const productKey = item.productId
+      const product = byProduct.get(productKey) ?? { name: item.name, qty: 0, total: 0 }
+      byProduct.set(productKey, {
+        name: item.name,
+        qty: round(product.qty + item.qty),
+        total: round(product.total + lineTotal),
+      })
+
+      const catalogProduct = db.products.find((candidate) => candidate.id === item.productId)
+      const category = db.categories.find((candidate) => candidate.id === catalogProduct?.categoryId)
+      const categoryName = category?.name ?? catalogProduct?.name ?? 'Other'
+      const categoryTotal = byCategory.get(categoryName) ?? { qty: 0, total: 0 }
+      byCategory.set(categoryName, {
+        qty: round(categoryTotal.qty + item.qty),
+        total: round(categoryTotal.total + lineTotal),
+      })
+    }
+  }
+
+  const voidedOrders = db.orders
+    .filter((order) =>
+      order.storeId === session.storeId &&
+      order.status === 'void' &&
+      !!order.voidedAt &&
+      isInWindow(order.voidedAt, start, end),
+    )
+    .map((order) => {
+      const log = db.auditLogs.find((entry) =>
+        entry.storeId === session.storeId &&
+        entry.entity === 'order' &&
+        entry.entityId === order.id &&
+        entry.action === 'voided' &&
+        isInWindow(entry.createdAt, start, end),
+      )
+      return {
+        number: order.number,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        reason: auditString(log?.after?.reason),
+        items: order.items.map((item) => `${item.qty} x ${item.name}`),
+      }
+    })
+
+  const cancelledItems = db.auditLogs
+    .filter((entry) =>
+      entry.storeId === session.storeId &&
+      entry.entity === 'order' &&
+      entry.action === 'voided' &&
+      !!entry.entityId &&
+      !db.orders.some((order) => order.id === entry.entityId) &&
+      isInWindow(entry.createdAt, start, end),
+    )
+    .map((entry) => ({
+      tableName: auditString(entry.before?.tableName) || 'Table order',
+      total: auditNumber(entry.before?.total),
+      items: auditItems(entry.before?.items),
+    }))
+
+  const cashExpenses = sum(db.expenses
+    .filter((expense) =>
+      expense.storeId === session.storeId &&
+      isInWindow(expense.createdAt ?? expense.date, start, end),
+    )
+    .map((expense) => expense.amount))
+  const supplierCashPayments = sum(db.purchasePayments
+    .filter((payment) =>
+      payment.storeId === session.storeId &&
+      payment.method === 'cash' &&
+      isInWindow(payment.createdAt, start, end),
+    )
+    .map((payment) => payment.amount))
+
+  return {
+    storeName: store.name,
+    storeAddress: store.address,
+    storeCity: store.city,
+    storePhone: store.phone,
+    receiptWidth: store.settings.printer.width,
+    grossSales: sum(completed.map((order) => order.total + order.discount)),
+    netSales: sum(completed.map((order) => order.total)),
+    completedOrders: completed.length,
+    totalTransactions: completed.length + snapshot.settlementCount,
+    storeCreditRefunds: sum(refunds.map((entry) => entry.amount)),
+    cashReceived: sum(createdInWindow
+      .filter((order) => order.paymentMethod === 'cash')
+      .map((order) => order.total)),
+    cashExpenses,
+    supplierCashPayments,
+    taxBreakdown: [...taxByRate.entries()]
+      .map(([rate, amount]) => ({ rate, amount }))
+      .sort((a, b) => (a.rate ?? Number.POSITIVE_INFINITY) - (b.rate ?? Number.POSITIVE_INFINITY)),
+    byEmployee: [...byEmployee.entries()]
+      .map(([name, value]) => ({ name, ...value }))
+      .sort((a, b) => b.total - a.total),
+    byCategory: [...byCategory.entries()]
+      .map(([name, value]) => ({ name, ...value }))
+      .sort((a, b) => b.total - a.total),
+    topProducts: [...byProduct.values()].sort((a, b) => b.qty - a.qty || b.total - a.total).slice(0, 10),
+    voidedOrders,
+    cancelledItems,
   }
 }
 
@@ -129,11 +291,10 @@ export const registerBreakdown = (
   const start = new Date(session.openedAt).getTime()
   const end = new Date(endISO).getTime()
 
-  const done = db.orders.filter((o) => {
-    if (o.storeId !== session.storeId || o.status !== 'completed') return false
-    const t = new Date(o.createdAt).getTime()
-    return t >= start && t <= end
-  })
+  const done = completedOrdersAt(
+    ordersCreatedInWindow(db, session.storeId, start, end),
+    end,
+  )
 
   const byEmployee = new Map<string, { count: number; total: number }>()
   for (const o of done) {

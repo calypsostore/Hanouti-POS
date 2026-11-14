@@ -307,20 +307,34 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 ### Phase 4 — X / Z cash register reports ✅ implemented
 
 - `RegisterSession` model: unique id, store, status open/closed, opening cash,
-  opener, closer, counted cash, difference, close note, **immutable snapshot**.
-- **X report** (`src/pages/admin/Register.tsx`): live interim totals computed
-  from persisted orders/ledger/expenses inside the session window — opening
-  cash, sales by method, discounts, tax, service, tab payments, voids, refunds,
-  expenses, expected cash in drawer, by-employee and by-category breakdowns,
-  transaction count, generation time + employee. Never mutates the session.
-- **Z closing**: counted cash input with live difference, close note, on
-  confirm the snapshot is computed **once** and frozen (`closedAt`,
-  `closedByName`, `countedCash`, `difference`). A closed session cannot be
-  reopened or edited; a duplicate close is rejected; opening a new session is
+  opener, closer, counted cash, difference, close note, sequential Z number,
+  frozen financial snapshot, and frozen report details.
+- **X report**: a read-only interim snapshot. It never mutates or closes the
+  session. **Z report**: closing computes and saves the snapshot and report
+  detail once; duplicate closes are rejected, and reprints use the same
+  frozen figures and receipt metadata without creating a new close record.
+- X and Z use the same session-window calculation. Cash drawer expectation
+  includes cash received, cash tab settlements, expenses and cash refunds;
+  card sales and card tab settlements are excluded from physical cash. Sales
+  exclude orders voided by the report cutoff. Refund totals include only
+  tracked cash refunds and store-credit adjustments; card refund processing
+  is not recorded by the current POS. Tax detail is grouped by the tax rate
+  saved on each new order; legacy orders without a saved rate show as
+  unrecorded rather than being assigned a guessed rate.
+- The shared thermal receipt preview supports 58 mm and 80 mm paper, ESC/POS
+  via the existing WebSerial connection, browser printing, and direct PDF
+  download. Z history opens the receipt preview rather than a dashboard-style
+  summary. New open-table cancellations preserve their item names in the
+  closing report; older cancellation logs may not contain item-level detail.
+- Existing Z reports are reprinted from frozen session details where available;
+  legacy sessions without a recorded counted-cash value display it as
+  unavailable instead of assuming zero.
+- Existing closed sessions retain their frozen financial totals and receive
+  a sequential Z number during the v22 database migration. Historical sessions
+  do not have the new frozen item/tax breakdown, so those sections are marked
+  unavailable instead of being reconstructed from potentially changed data.
+- A closed session cannot be reopened or edited; opening a new session is
   blocked while one is open.
-- Z history: every closed session listed with its difference (±, colour-coded),
-  viewable and **re-printable exactly as it was closed** (prints from the
-  frozen snapshot, not recomputed).
 - Void authorization: staff voids require a manager PIN (validated against the
   store's active admins inside the store layer); the void records
   `voidedById/Name/At`, restores tracked stock, and reverses the outstanding
@@ -416,16 +430,19 @@ amounts are fully supported.
 
 Executed in-browser (Chrome, dev build) against the seeded demo data:
 
-- DB migrates to `7anouti.db.v8` from legacy `cafepos.db.v8`, v7 and v6 keys,
+- DB migrates to `7anouti.db.v22` from `7anouti.db.v21` and earlier keys,
   hashing legacy credentials and retaining
   2 closed Z sessions + 1 open session per store; register nav visible for admin; staff without `register` permission
   redirected from `/admin/register`; staff with permission can access.
-- X report matches on-screen expected cash (opening + cash sales + tab
-  payments − expenses − refunds) and does not mutate the session.
-- Z close: counted-cash modal shows live difference; closing freezes the
-  session (id becomes `closed`, appears in history); duplicate close and
-  reopening are rejected; new session opens after close.
-- Z reprint from history prints the frozen snapshot numbers.
+- X report is read-only and expected cash uses physical cash movements only;
+  card sales are not added to the drawer.
+- Z close: counted-cash modal shows live difference; closing freezes totals,
+  detail, metadata and report number; duplicate close and reopening are
+  rejected; reprinting opens the same receipt without another close.
+- Receipt-preview scenarios still require manual verification on 58 mm and
+  80 mm devices: screen preview, browser print, ESC/POS, PDF export, long
+  reports, multiple employees, payment methods, cash variance and old Z
+  reprints.
 - Orders reprint shows `*** REPRINT ***`; staff void demands a manager PIN;
   wrong PIN rejected; correct PIN voids and records `voidedByName` (visible in
   the order drawer); tab charge reversal lands in the ledger.
@@ -437,6 +454,10 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
   one is connected and otherwise falls back to the print dialog — verified
   manually with `mode: auto` on a clean profile.
 - `npm run build` passes clean (tsc + vite).
+- Latest source validation: `npm run build` and `npm run lint` both exit
+  successfully. Vite reports the existing large-chunk warning; Oxlint reports
+  warnings, including hook-dependency and purity warnings. Real browser print,
+  PDF-reader rendering and physical ESC/POS output still require manual checks.
 
 Phase 1 build/type validation also passes. Manual browser scenarios still to run:
 

@@ -27,6 +27,7 @@ import { dateKey, isoDaysAgo, uid } from '../lib/utils'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
+import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
   starter: { label: 'Starter', price: 29, blurb: 'Single counter, up to 3 staff' },
@@ -784,6 +785,7 @@ export function buildSeed(): Database {
 
           const seller = pick(rng, staffPool)
           const channel = rng() < 0.72 ? 'takeaway' : rng() < 0.85 ? 'dine-in' : 'delivery'
+          const isVoided = rng() < 0.015
           const table = store.id === 'st_darchai' && channel === 'dine-in' && seededDineInCount < tables.length
             ? tables[seededDineInCount++]
             : undefined
@@ -797,10 +799,12 @@ export function buildSeed(): Database {
             service,
             discount: 0,
             total,
+            taxRate: settings.taxRate,
             channel,
             tableId: table?.id,
             tableName: table?.name,
-            status: rng() < 0.015 ? 'void' : 'completed',
+            status: isVoided ? 'void' : 'completed',
+            voidedAt: isVoided ? createdAt : undefined,
             paymentMethod,
             customerId: customer?.id,
             staffId: seller?.id ?? '',
@@ -1014,7 +1018,7 @@ export function buildSeed(): Database {
     })
   }
 
-  return {
+  const database: Database = {
     stores,
     users,
     categories,
@@ -1037,4 +1041,29 @@ export function buildSeed(): Database {
     registerSessions,
     auditLogs: [],
   }
+
+  const closedByStore = new Map<string, RegisterSession[]>()
+  for (const session of database.registerSessions) {
+    if (session.status !== 'closed' || !session.closedAt) continue
+    const sessions = closedByStore.get(session.storeId) ?? []
+    sessions.push(session)
+    closedByStore.set(session.storeId, sessions)
+  }
+  for (const sessions of closedByStore.values()) {
+    sessions.sort((a, b) => (a.closedAt ?? '').localeCompare(b.closedAt ?? ''))
+    sessions.forEach((session, index) => {
+      session.zReportNumber = index + 1
+      session.snapshot = computeRegisterTotals(
+        database,
+        session.storeId,
+        session.openedAt,
+        session.closedAt ?? session.openedAt,
+        session.openingCash,
+      )
+      session.reportDetails = registerReportDetails(database, session, session.closedAt)
+      session.countedCash ??= session.snapshot.expectedCash
+      session.difference ??= round(session.countedCash - session.snapshot.expectedCash)
+    })
+  }
+  return database
 }

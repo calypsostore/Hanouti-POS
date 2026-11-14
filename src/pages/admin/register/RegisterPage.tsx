@@ -4,7 +4,7 @@ import { Play, Printer, Square } from 'lucide-react'
 import { Button } from '../../../components/ui'
 import type { PrintJob } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
-import { registerBreakdown, sessionSnapshot } from '../../../lib/reports'
+import { registerBreakdown, registerReportDetails, sessionSnapshot } from '../../../lib/reports'
 import { buildReportLines, linesToEscpos, type ReportData } from '../../../lib/escpos'
 import type { RegisterSession } from '../../../types'
 import { money } from '../../../lib/utils'
@@ -22,7 +22,6 @@ export default function RegisterPage() {
   const [closeModal, setCloseModal] = useState(false)
   const [countedInput, setCountedInput] = useState('')
   const [closeNote, setCloseNote] = useState('')
-  const [viewId, setViewId] = useState<string | null>(null)
   const [printJob, setPrintJob] = useState<PrintJob | null>(null)
 
   useEffect(() => {
@@ -43,7 +42,6 @@ export default function RegisterPage() {
   const open = sessions.find((session) => session.status === 'open') ?? null
   const anyOpen = allSessions.find((session) => session.status === 'open') ?? null
   const closed = sessions.filter((session) => session.status === 'closed')
-  const viewing = sessions.find((session) => session.id === viewId) ?? null
 
   const scopeBreakdown = (breakdown: ReturnType<typeof registerBreakdown>) =>
     canSeeAll
@@ -57,44 +55,59 @@ export default function RegisterPage() {
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
   const liveBreakdown = open ? scopeBreakdown(registerBreakdown(db, open, nowISO)) : null
   const expected = liveSnapshot?.expectedCash ?? 0
-  const viewingBreakdown =
-    viewing?.snapshot
-      ? scopeBreakdown(registerBreakdown(db, viewing, viewing.closedAt ?? nowISO))
-      : null
 
   const reportData = (
     kind: 'X' | 'Z',
     session: RegisterSession,
     snapshot: NonNullable<ReturnType<typeof sessionSnapshot>>,
     endISO: string,
-  ): ReportData => ({
-    kind,
-    store,
-    session,
-    snapshot,
-    generatedAt: kind === 'X' ? new Date().toISOString() : session.closedAt ?? endISO,
-    generatedBy: kind === 'X' ? user.name : session.closedByName ?? user.name,
-    breakdown: scopeBreakdown(registerBreakdown(db, session, endISO)),
-  })
+  ): ReportData => {
+    const generatedAt = kind === 'X' ? endISO : session.closedAt ?? endISO
+    const details = kind === 'Z'
+      ? session.reportDetails ?? null
+      : registerReportDetails(db, session, endISO)
+    return {
+      kind,
+      store,
+      session,
+      snapshot,
+      details: details && kind === 'X' && !canSeeAll
+        ? { ...details, byEmployee: details.byEmployee.filter((employee) => employee.name === user.name) }
+        : details,
+      width: details?.receiptWidth ?? store.settings.printer.width,
+      reportNumber: kind === 'Z'
+        ? `Z-${String(session.zReportNumber).padStart(6, '0')}`
+        : `X-${session.id.slice(-6)}-${Date.parse(generatedAt).toString(36).toUpperCase()}`,
+      generatedAt,
+      generatedBy: kind === 'X' ? user.name : session.closedByName ?? user.name,
+    }
+  }
 
   const printReport = (kind: 'X' | 'Z', session: RegisterSession) => {
+    if (kind === 'Z' && session.zReportNumber === undefined) {
+      push('This closed session has no Z report number.', 'error')
+      return
+    }
+    const generatedAt = kind === 'X' ? new Date().toISOString() : session.closedAt ?? new Date().toISOString()
     const snapshot =
       kind === 'X'
-        ? sessionSnapshot(db, session, new Date().toISOString())
+        ? sessionSnapshot(db, session, generatedAt)
         : session.snapshot
     if (!snapshot) return
     const data = reportData(
       kind,
       session,
       snapshot,
-      kind === 'X' ? new Date().toISOString() : session.closedAt ?? new Date().toISOString(),
+      generatedAt,
     )
+    const lines = buildReportLines(data)
     setPrintJob({
-      title: kind === 'X' ? 'X report — interim' : 'Z report — day closed',
-      subtitle: `${store.name} · session ${session.id}`,
-      lines: buildReportLines(data),
-      bytes: linesToEscpos(buildReportLines(data), store.settings.printer.width),
+      title: `${kind} Report · ${data.reportNumber}`,
+      subtitle: `${data.details?.storeName ?? store.name} · session ${session.id}`,
+      lines,
+      bytes: linesToEscpos(lines, data.width),
       kind: 'report',
+      width: data.width,
     })
   }
 
@@ -165,11 +178,7 @@ export default function RegisterPage() {
 
       <SessionHistory
         closed={closed}
-        viewing={viewing}
         canSeeAll={canSeeAll}
-        viewingBreakdown={viewingBreakdown}
-        onView={setViewId}
-        onCloseView={() => setViewId(null)}
         onPrint={(session) => printReport('Z', session)}
       />
 

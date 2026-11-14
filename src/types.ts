@@ -406,6 +406,7 @@ export interface Order {
   service: number
   discount: number
   total: number
+  taxRate?: number
   channel: OrderChannel
   tableId?: string
   tableName?: string
@@ -537,6 +538,38 @@ export interface RegisterSnapshot {
   expectedCash: number
 }
 
+export interface RegisterReportDetails {
+  storeName: string
+  storeAddress: string
+  storeCity: string
+  storePhone: string
+  receiptWidth: PrinterWidth
+  grossSales: number
+  netSales: number
+  completedOrders: number
+  totalTransactions: number
+  storeCreditRefunds: number
+  cashReceived: number
+  cashExpenses: number
+  supplierCashPayments: number
+  taxBreakdown: Array<{ rate: number | null; amount: number }>
+  byEmployee: Array<{ name: string; count: number; total: number }>
+  byCategory: Array<{ name: string; qty: number; total: number }>
+  topProducts: Array<{ name: string; qty: number; total: number }>
+  voidedOrders: Array<{
+    number: number
+    total: number
+    paymentMethod: PaymentMethod
+    reason: string
+    items: string[]
+  }>
+  cancelledItems: Array<{
+    tableName: string
+    total: number
+    items: string[]
+  }>
+}
+
 export interface RegisterSession {
   id: string
   storeId: string
@@ -552,6 +585,8 @@ export interface RegisterSession {
   difference?: number
   note?: string
   snapshot?: RegisterSnapshot
+  zReportNumber?: number
+  reportDetails?: RegisterReportDetails
 }
 
 export interface AuditLog {

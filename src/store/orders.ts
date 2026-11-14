@@ -188,6 +188,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         service: totals.service,
         discount,
         total: totals.total,
+        taxRate: target.settings.taxRate,
         channel: input.channel,
         tableId: table?.id,
         tableName: table?.name,

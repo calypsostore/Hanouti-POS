@@ -3,7 +3,7 @@ import type { RegisterSession } from '../types'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
-import { computeRegisterTotals } from '../lib/reports'
+import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
 import { addLog } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -86,6 +86,10 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       const counted = round(countedCash)
 
       const difference = round(counted - snapshot.expectedCash)
+      const zReportNumber = current.registerSessions
+        .filter((candidate) => candidate.storeId === session.storeId)
+        .reduce((max, candidate) => Math.max(max, candidate.zReportNumber ?? 0), 0) + 1
+      const reportDetails = registerReportDetails(current, session, closedAt)
       commitDb((prev) => addLog({
         ...prev,
         registerSessions: prev.registerSessions.map((s) =>
@@ -100,6 +104,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
                 difference,
                 note: note?.trim() || undefined,
                 snapshot,
+                zReportNumber,
+                reportDetails,
               }
             : s,
         ),

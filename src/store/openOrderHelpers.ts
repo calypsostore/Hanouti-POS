@@ -10,6 +10,7 @@ export const openOrderSnapshot = (order: OpenOrder): Record<string, AuditJsonVal
   itemCount: order.items.length,
   total: order.total,
   discount: order.discount,
+  items: order.items.map((item) => ({ name: item.name, qty: item.qty })),
 })
 
 export const buildUpdatedOpenOrder = (

@@ -1,4 +1,13 @@
-import type { OpenOrder, Order, OrderItem, PrinterWidth, RegisterSession, RegisterSnapshot, Store } from '../types'
+import type {
+  OpenOrder,
+  Order,
+  OrderItem,
+  PrinterWidth,
+  RegisterReportDetails,
+  RegisterSession,
+  RegisterSnapshot,
+  Store,
+} from '../types'
 import { fmtDate, fmtDateTime, fmtTime } from './utils'
 import { round } from './pricing-utils'
 import { BRAND_NAME } from './brand'
@@ -84,7 +93,7 @@ const CP1252_HIGH: Record<number, number> = {
   0x017e: 0x9e, 0x0178: 0x9f,
 }
 
-const encodeCp1252 = (text: string): Uint8Array => {
+export const encodeCp1252 = (text: string): Uint8Array => {
   const bytes: number[] = []
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0
@@ -230,108 +239,184 @@ export interface ReportData {
   store: Store
   session: RegisterSession
   snapshot: RegisterSnapshot
+  details: RegisterReportDetails | null
+  reportNumber: string
+  width: PrinterWidth
   generatedAt: string
   generatedBy: string
-  breakdown?: {
-    byEmployee: Array<{ name: string; count: number; total: number }>
-    byCategory: Array<{ name: string; qty: number; total: number }>
-  }
 }
 
 const reportRows = (rows: Array<[string, string]>, cols: number): ReceiptLine[] =>
   rows.map(([label, value]) => ({ text: twoCol(label, value, cols) }))
 
 export const buildReportLines = (data: ReportData): ReceiptLine[] => {
-  const cols = columnsFor(data.store.settings.printer.width)
+  const cols = columnsFor(data.width)
   const s = data.snapshot
+  const details = data.details
+  const reportAmount = (value: number) => `${amount(value)} DT`
+  const cashIn = (details?.cashReceived ?? s.cashSales) + s.cashSettlements
+  const cashOut = s.expenses + s.cashRefunds
+  const refunds = s.cashRefunds + (details?.storeCreditRefunds ?? 0)
+  const countedCash = data.session.countedCash === undefined
+    ? 'Not recorded'
+    : reportAmount(data.session.countedCash)
+  const cashDifference = data.session.difference === undefined
+    ? 'Not recorded'
+    : data.session.difference > 0
+      ? `+${reportAmount(data.session.difference)}`
+      : data.session.difference < 0
+        ? `-${reportAmount(Math.abs(data.session.difference))}`
+        : reportAmount(0)
   const lines: ReceiptLine[] = []
 
-  lines.push({ text: `${data.kind} REPORT`, align: 'center', bold: true, size: 'double' })
-  lines.push({ text: data.store.name, align: 'center' })
-  lines.push({ text: `${data.store.city} · ${data.store.phone}`, align: 'center' })
+  lines.push({ text: details?.storeName ?? data.store.name, align: 'center', bold: true })
+  const address = details?.storeAddress ?? data.store.address
+  const city = details?.storeCity ?? data.store.city
+  const phone = details?.storePhone ?? data.store.phone
+  if (address) lines.push({ text: address, align: 'center' })
+  lines.push({ text: `${city} · ${phone}`, align: 'center' })
   lines.push({ text: divider(cols) })
-  lines.push({ text: twoCol('Session', data.session.id, cols) })
+  lines.push({ text: `${data.kind} REPORT`, align: 'center', bold: true, size: 'double' })
+  lines.push({
+    text: data.kind === 'X' ? 'INTERIM - SESSION REMAINS OPEN' : 'OFFICIAL SESSION CLOSE',
+    align: 'center',
+    bold: true,
+  })
+  lines.push({ text: twoCol('Report no.', data.reportNumber, cols) })
+  lines.push({ text: twoCol('Printed', fmtDateTime(data.generatedAt), cols) })
+  lines.push({ text: twoCol('Session ID', data.session.id, cols) })
+  lines.push({ text: twoCol('Cashier', data.session.openedByName, cols) })
   lines.push({ text: twoCol('Opened', `${fmtDate(data.session.openedAt)} ${fmtTime(data.session.openedAt)}`, cols) })
-  if (data.kind === 'Z' && data.session.closedAt) {
-    lines.push({ text: twoCol('Closed', `${fmtDate(data.session.closedAt)} ${fmtTime(data.session.closedAt)}`, cols) })
-    lines.push({ text: twoCol('Closed by', data.session.closedByName ?? '', cols) })
+  if (data.kind === 'Z') {
+    lines.push({ text: twoCol('Closed by', data.session.closedByName ?? data.generatedBy, cols) })
+    if (data.session.closedAt) {
+      lines.push({ text: twoCol('Closed', `${fmtDate(data.session.closedAt)} ${fmtTime(data.session.closedAt)}`, cols) })
+    }
   }
   lines.push({ text: divider(cols) })
   lines.push({ text: 'SALES', bold: true })
   lines.push(
     ...reportRows(
       [
-        ['Transactions', String(s.ordersCount)],
-        ['Total sales', amount(s.salesTotal)],
-        ['Cash sales', amount(s.cashSales)],
-        ['Card sales', amount(s.cardSales)],
-        ['Tab sales', amount(s.creditSales)],
-        ['Discounts', amount(s.discounts)],
-        ['Tax', amount(s.tax)],
-        ['Service', amount(s.service)],
+        ['Transactions', String(details?.totalTransactions ?? s.ordersCount + s.settlementCount)],
+        ['Completed orders', String(details?.completedOrders ?? s.ordersCount)],
+        ['Gross sales', reportAmount(details?.grossSales ?? s.salesTotal + s.discounts)],
+        ['Discounts', `-${reportAmount(s.discounts)}`],
+        ['Tracked refunds', `-${reportAmount(refunds)}`],
+        ['Net sales', reportAmount(details?.netSales ?? s.salesTotal)],
+        ['Cash', reportAmount(s.cashSales)],
+        ['Card', reportAmount(s.cardSales)],
+        ['Tab', reportAmount(s.creditSales)],
       ],
       cols,
     ),
   )
   lines.push({ text: divider(cols) })
-  lines.push({ text: 'TABS & REFUNDS', bold: true })
-  lines.push(
-    ...reportRows(
-      [
-        ['Tab payments', `${s.settlementCount} / ${amount(s.cashSettlements + s.cardSettlements)}`],
-        [`  cash`, amount(s.cashSettlements)],
-        [`  card`, amount(s.cardSettlements)],
-        ['Voided orders', `${s.voidedCount} / ${amount(s.voidedTotal)}`],
-        ['Cash refunds', amount(s.cashRefunds)],
-      ],
+  lines.push({ text: 'TAX & SERVICE', bold: true })
+  if (details?.taxBreakdown.length) {
+    lines.push(...reportRows(
+      details.taxBreakdown.map((tax) => [
+        tax.rate === null ? 'Tax · rate not recorded' : `Tax @ ${tax.rate}%`,
+        reportAmount(tax.amount),
+      ]),
       cols,
-    ),
-  )
+    ))
+  } else if (!details) {
+    lines.push({ text: 'Legacy tax detail not saved' })
+  } else {
+    lines.push({ text: twoCol('Tax', reportAmount(s.tax), cols) })
+  }
+  lines.push({ text: twoCol('Service charges', reportAmount(s.service), cols) })
   lines.push({ text: divider(cols) })
-  lines.push({ text: 'EXPENSES', bold: true })
-  lines.push({ text: twoCol('Paid from drawer', amount(s.expenses), cols) })
+  lines.push({ text: 'TAB PAYMENTS', bold: true })
+  lines.push({ text: twoCol(`Transactions (${s.settlementCount})`, reportAmount(s.cashSettlements + s.cardSettlements), cols) })
+  lines.push({ text: twoCol('Cash collected', reportAmount(s.cashSettlements), cols) })
+  lines.push({ text: twoCol('Card collected', reportAmount(s.cardSettlements), cols) })
   lines.push({ text: divider(cols) })
-  lines.push({ text: 'CASH DRAWER', bold: true })
+  lines.push({ text: 'CASH MOVEMENTS', bold: true })
   lines.push(
     ...reportRows(
       [
         ['Opening cash', amount(data.session.openingCash)],
-        ['Cash sales', `+${amount(s.cashSales)}`],
-        ['Tab payments', `+${amount(s.cashSettlements)}`],
-        ['Expenses', `-${amount(s.expenses)}`],
-        ['Refunds', `-${amount(s.cashRefunds)}`],
+        ['Cash sales received', `+${reportAmount(details?.cashReceived ?? s.cashSales)}`],
+        ['Cash tab payments', `+${reportAmount(s.cashSettlements)}`],
+        ['Cash in', `+${reportAmount(cashIn)}`],
+        ['Expenses paid', `-${reportAmount(details?.cashExpenses ?? s.expenses)}`],
+        ['Supplier cash payments', `-${reportAmount(details?.supplierCashPayments ?? 0)}`],
+        ['Cash refunds', `-${reportAmount(s.cashRefunds)}`],
+        ['Cash out', `-${reportAmount(cashOut)}`],
       ],
       cols,
     ),
   )
   lines.push({ text: divider(cols) })
   if (data.kind === 'Z') {
-    lines.push({ text: twoCol('Counted cash', amount(data.session.countedCash ?? 0), cols), bold: true })
-    const diff = data.session.difference ?? 0
-    lines.push({
-      text: twoCol('Difference', `${diff >= 0 ? '+' : ''}${amount(diff)}`, cols),
-      bold: true,
-    })
+    lines.push({ text: twoCol('Expected cash', reportAmount(s.expectedCash), cols), bold: true })
+    lines.push({ text: twoCol('Actual counted cash', countedCash, cols), bold: true })
+    lines.push({ text: twoCol('Cash difference', cashDifference, cols), bold: true })
   } else {
-    lines.push({ text: twoCol('Expected cash', amount(s.expectedCash), cols), bold: true })
-  }
-  if (data.breakdown?.byEmployee.length) {
-    lines.push({ text: divider(cols) })
-    lines.push({ text: 'BY EMPLOYEE', bold: true })
-    for (const e of data.breakdown.byEmployee.slice(0, 8)) {
-      lines.push({ text: twoCol(`${e.name} (${e.count})`, amount(e.total), cols) })
-    }
-  }
-  if (data.breakdown?.byCategory.length) {
-    lines.push({ text: divider(cols) })
-    lines.push({ text: 'BY CATEGORY', bold: true })
-    for (const c of data.breakdown.byCategory.slice(0, 8)) {
-      lines.push({ text: twoCol(`${c.name} (${c.qty})`, amount(c.total), cols) })
-    }
+    lines.push({ text: twoCol('Expected cash', reportAmount(s.expectedCash), cols), bold: true })
   }
   lines.push({ text: divider(cols) })
-  lines.push({ text: twoCol(`${data.kind} report`, fmtDateTime(data.generatedAt), cols) })
-  lines.push({ text: data.generatedBy, align: 'right' })
+  lines.push({ text: 'VOIDED ORDERS', bold: true })
+  lines.push({ text: twoCol('Voided count / total', `${s.voidedCount} / ${reportAmount(s.voidedTotal)}`, cols) })
+  lines.push({ text: twoCol('Cash refunds', reportAmount(s.cashRefunds), cols) })
+  if (!details) lines.push({ text: 'Legacy void details not saved' })
+  else if (details.voidedOrders.length) {
+    for (const order of details.voidedOrders) {
+      lines.push({ text: twoCol(`#${order.number} ${order.paymentMethod}`, reportAmount(order.total), cols) })
+      if (order.reason) lines.push({ text: `  Reason: ${order.reason}` })
+      if (order.paymentMethod === 'card') lines.push({ text: '  Card refund status not recorded' })
+      for (const item of order.items) lines.push({ text: `  ${item}` })
+    }
+  } else {
+    lines.push({ text: 'No voided orders in this session' })
+  }
+  lines.push({ text: divider(cols) })
+  lines.push({ text: 'CANCELLED TABLE ITEMS', bold: true })
+  if (!details) lines.push({ text: 'Legacy cancellation details not saved' })
+  else if (details.cancelledItems.length) {
+    for (const cancellation of details.cancelledItems) {
+      lines.push({ text: twoCol(cancellation.tableName, reportAmount(cancellation.total), cols) })
+      for (const item of cancellation.items) lines.push({ text: `  ${item}` })
+      if (!cancellation.items.length) lines.push({ text: '  Item detail unavailable' })
+    }
+  } else {
+    lines.push({ text: 'No cancelled table orders in this session' })
+  }
+  if (details?.byEmployee.length) {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'BY EMPLOYEE', bold: true })
+    for (const employee of details.byEmployee) {
+      lines.push({ text: twoCol(`${employee.name} (${employee.count})`, reportAmount(employee.total), cols) })
+    }
+  }
+  if (details?.byCategory.length) {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'BY CATEGORY', bold: true })
+    for (const category of details.byCategory) {
+      lines.push({ text: twoCol(`${category.name} (${category.qty})`, reportAmount(category.total), cols) })
+    }
+  }
+  if (details?.topProducts.length) {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'TOP-SELLING PRODUCTS', bold: true })
+    for (const product of details.topProducts) {
+      lines.push({ text: twoCol(`${product.name} (${product.qty})`, reportAmount(product.total), cols) })
+    }
+  }
+  if (data.kind === 'Z') {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'FINAL CLOSING SUMMARY', bold: true })
+    lines.push({ text: twoCol('Sales net of discounts', reportAmount(details?.netSales ?? s.salesTotal), cols) })
+    lines.push({ text: twoCol('Expected cash', reportAmount(s.expectedCash), cols) })
+    lines.push({ text: twoCol('Counted cash', countedCash, cols) })
+    lines.push({ text: twoCol('Cash difference', cashDifference, cols) })
+    if (data.session.note) lines.push({ text: `Note: ${data.session.note}` })
+  }
+  lines.push({ text: divider(cols) })
+  lines.push({ text: twoCol('Report generated', fmtDateTime(data.generatedAt), cols) })
+  lines.push({ text: twoCol('Generated by', data.generatedBy, cols) })
   lines.push({ text: '' })
   lines.push({ text: `Powered by ${BRAND_NAME}`, align: 'center' })
   return lines

@@ -1,8 +1,8 @@
 import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
-  InventoryUnit, Order, OpenOrder, OrderModifier, Payroll, Product, ProductModifierGroup,
-  ProductVariant, Purchase, PurchasePayment, RegisterSession, SaleUnit, Shift, StockMovement,
+  InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
+  ProductVariant, Purchase, PurchasePayment, RegisterReportDetails, RegisterSession, SaleUnit, Shift, StockMovement,
   Store, StoreSettings, Supplier, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
@@ -14,10 +14,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v21'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v22'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -58,6 +58,107 @@ const withoutLegacyEmoji = <T extends object>(record: T): Omit<T, 'emoji'> => {
 }
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
+const isPaymentMethod = (value: unknown): value is PaymentMethod =>
+  value === 'cash' || value === 'card' || value === 'credit' || value === 'unpaid'
+const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefined => {
+  if (!isRecord(value)) return undefined
+  const isAmount = (candidate: unknown): candidate is number =>
+    isFiniteNumber(candidate) && candidate >= 0
+  const taxBreakdown = Array.isArray(value.taxBreakdown)
+    ? value.taxBreakdown.flatMap((row) =>
+        isRecord(row) &&
+        (row.rate === null || (isFiniteNumber(row.rate) && row.rate >= 0)) &&
+        isAmount(row.amount)
+          ? [{ rate: row.rate as number | null, amount: row.amount }]
+          : [],
+      )
+    : null
+  const byEmployee = Array.isArray(value.byEmployee)
+    ? value.byEmployee.flatMap((row) =>
+        isRecord(row) && typeof row.name === 'string' &&
+        Number.isSafeInteger(row.count) && Number(row.count) >= 0 && isAmount(row.total)
+          ? [{ name: row.name.slice(0, 100), count: Number(row.count), total: row.total }]
+          : [],
+      )
+    : null
+  const byCategory = Array.isArray(value.byCategory)
+    ? value.byCategory.flatMap((row) =>
+        isRecord(row) && typeof row.name === 'string' &&
+        isAmount(row.qty) && isAmount(row.total)
+          ? [{ name: row.name.slice(0, 100), qty: row.qty, total: row.total }]
+          : [],
+      )
+    : null
+  const topProducts = Array.isArray(value.topProducts)
+    ? value.topProducts.flatMap((row) =>
+        isRecord(row) && typeof row.name === 'string' &&
+        isAmount(row.qty) && isAmount(row.total)
+          ? [{ name: row.name.slice(0, 100), qty: row.qty, total: row.total }]
+          : [],
+      )
+    : null
+  const voidedOrders = Array.isArray(value.voidedOrders)
+    ? value.voidedOrders.flatMap((row) =>
+        isRecord(row) && Number.isSafeInteger(row.number) && isAmount(row.total) &&
+        isPaymentMethod(row.paymentMethod) &&
+        typeof row.reason === 'string' && Array.isArray(row.items) &&
+        row.items.every((item) => typeof item === 'string')
+          ? [{
+              number: Number(row.number),
+              total: row.total,
+              paymentMethod: row.paymentMethod,
+              reason: row.reason.slice(0, 240),
+              items: row.items.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 120)),
+            }]
+          : [],
+      )
+    : null
+  const cancelledItems = Array.isArray(value.cancelledItems)
+    ? value.cancelledItems.flatMap((row) =>
+        isRecord(row) && typeof row.tableName === 'string' &&
+        isAmount(row.total) && Array.isArray(row.items) &&
+        row.items.every((item) => typeof item === 'string')
+          ? [{
+              tableName: row.tableName.slice(0, 100),
+              total: row.total,
+              items: row.items.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 120)),
+            }]
+          : [],
+      )
+    : null
+  if (
+    typeof value.storeName !== 'string' || typeof value.storeAddress !== 'string' ||
+    typeof value.storeCity !== 'string' || typeof value.storePhone !== 'string' ||
+    (value.receiptWidth !== 58 && value.receiptWidth !== 80) ||
+    !isAmount(value.grossSales) || !isAmount(value.netSales) ||
+    !Number.isSafeInteger(value.completedOrders) || Number(value.completedOrders) < 0 ||
+    !Number.isSafeInteger(value.totalTransactions) || Number(value.totalTransactions) < 0 ||
+    !isAmount(value.storeCreditRefunds) || !isAmount(value.cashReceived) ||
+    !isAmount(value.cashExpenses) || !isAmount(value.supplierCashPayments) ||
+    !taxBreakdown || !byEmployee || !byCategory || !topProducts || !voidedOrders || !cancelledItems
+  ) return undefined
+  return {
+    storeName: value.storeName.slice(0, 100),
+    storeAddress: value.storeAddress.slice(0, 240),
+    storeCity: value.storeCity.slice(0, 100),
+    storePhone: value.storePhone.slice(0, 40),
+    receiptWidth: value.receiptWidth,
+    grossSales: value.grossSales,
+    netSales: value.netSales,
+    completedOrders: Number(value.completedOrders),
+    totalTransactions: Number(value.totalTransactions),
+    storeCreditRefunds: value.storeCreditRefunds,
+    cashReceived: value.cashReceived,
+    cashExpenses: value.cashExpenses,
+    supplierCashPayments: value.supplierCashPayments,
+    taxBreakdown,
+    byEmployee,
+    byCategory,
+    topProducts,
+    voidedOrders,
+    cancelledItems,
+  }
+}
 const auditActions: AuditAction[] = [
   'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
   'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
@@ -265,6 +366,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     (item.channel === 'takeaway' || item.channel === 'dine-in' || item.channel === 'delivery'),
   ).map((order) => ({
     ...order,
+    taxRate: isFiniteNumber(order.taxRate) && order.taxRate >= 0 ? order.taxRate : undefined,
     tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
     tableName: typeof order.tableName === 'string' ? order.tableName : undefined,
     guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
@@ -547,6 +649,50 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         users.some((actor) => actor.id === shift.createdBy && actor.storeId === shift.storeId),
       )
     : []
+  const rawRegisterSessions = collection<RegisterSession>('registerSessions', (item): item is RegisterSession =>
+    hasId(item) && typeof item.storeId === 'string' &&
+    (item.status === 'open' || item.status === 'closed') && typeof item.openedAt === 'string' &&
+    typeof item.openedById === 'string' && typeof item.openedByName === 'string' &&
+    isFiniteNumber(item.openingCash),
+  ).map((session) => ({
+    ...session,
+    snapshot: isRecord(session.snapshot) &&
+      Object.values(session.snapshot).length === 16 &&
+      Object.values(session.snapshot).every(isFiniteNumber)
+      ? session.snapshot as RegisterSession['snapshot']
+      : undefined,
+    reportDetails: normalizeReportDetails(session.reportDetails),
+    zReportNumber: Number.isSafeInteger(session.zReportNumber) && Number(session.zReportNumber) > 0
+      ? Number(session.zReportNumber)
+      : undefined,
+  }))
+  const usedReportNumbers = new Map<string, Set<number>>()
+  const orderedClosedSessions = rawRegisterSessions
+    .filter((session) => session.status === 'closed')
+    .sort((a, b) => (a.closedAt ?? a.openedAt).localeCompare(b.closedAt ?? b.openedAt))
+  const reportNumbers = new Map<RegisterSession, number>()
+  for (const session of orderedClosedSessions) {
+    const used = usedReportNumbers.get(session.storeId) ?? new Set<number>()
+    if (session.zReportNumber !== undefined && !used.has(session.zReportNumber)) {
+      used.add(session.zReportNumber)
+      reportNumbers.set(session, session.zReportNumber)
+      usedReportNumbers.set(session.storeId, used)
+    }
+  }
+  for (const session of orderedClosedSessions) {
+    if (reportNumbers.has(session)) continue
+    const used = usedReportNumbers.get(session.storeId) ?? new Set<number>()
+    let number = 1
+    while (used.has(number)) number += 1
+    used.add(number)
+    reportNumbers.set(session, number)
+    usedReportNumbers.set(session.storeId, used)
+  }
+  const registerSessions = rawRegisterSessions.map((session) => ({
+    ...session,
+    zReportNumber: reportNumbers.get(session),
+  }))
+
   return {
     stores,
     users,
@@ -602,19 +748,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     advances,
     payrolls,
     shifts,
-    registerSessions: collection<RegisterSession>('registerSessions', (item): item is RegisterSession =>
-      hasId(item) && typeof item.storeId === 'string' &&
-      (item.status === 'open' || item.status === 'closed') && typeof item.openedAt === 'string' &&
-      typeof item.openedById === 'string' && typeof item.openedByName === 'string' &&
-      isFiniteNumber(item.openingCash),
-    ).map((session) => ({
-      ...session,
-      snapshot: isRecord(session.snapshot) &&
-        Object.values(session.snapshot).length === 16 &&
-        Object.values(session.snapshot).every(isFiniteNumber)
-        ? session.snapshot as RegisterSession['snapshot']
-        : undefined,
-    })),
+    registerSessions,
     auditLogs,
   }
 }
