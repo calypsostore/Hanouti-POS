@@ -6,6 +6,8 @@ import { uid } from '../lib/utils'
 import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
+import { guestCountError } from '../lib/tableService'
+import { openShiftForStaff } from '../lib/registerShifts'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -14,6 +16,7 @@ const recordedOrderFromOpenOrder = (
   openOrder: OpenOrder,
   previous: Order | undefined,
   number: number,
+  shiftId = openOrder.shiftId,
 ): Order => ({
   id: previous?.id ?? uid('ord'),
   storeId: openOrder.storeId,
@@ -27,13 +30,19 @@ const recordedOrderFromOpenOrder = (
   channel: 'dine-in',
   tableId: openOrder.tableId,
   tableName: openOrder.tableName,
+  sectionId: openOrder.sectionId,
+  sectionName: openOrder.sectionName,
   guests: openOrder.guests,
   status: 'recorded',
   paymentMethod: 'unpaid',
+  shiftId,
   staffId: openOrder.staffId,
   staffName: openOrder.staffName,
+  ownerStaffId: openOrder.staffId,
+  ownerStaffName: openOrder.staffName,
   note: openOrder.note,
   createdAt: previous?.createdAt ?? openOrder.createdAt,
+  tableHistory: openOrder.tableHistory,
 })
 
 export function useOpenOrdersSlice(
@@ -42,31 +51,56 @@ export function useOpenOrdersSlice(
 ) {
   const { dbRef, commitDb, requireActor } = dependencies
 
-  const openTableOrder = useCallback<AppContextValue['openTableOrder']>((storeId, tableId, guests) => {
+  const openTableOrder = useCallback<AppContextValue['openTableOrder']>((storeId, tableId, guests, requestedTableName) => {
     const actorResult = requireActor(storeId)
     if (!actorResult.ok) return actorResult
     const current = dbRef.current
+    const shift = openShiftForStaff(current, storeId, actorResult.actor.id)
     const store = current.stores.find((item) => item.id === storeId)
     if (!store?.settings.features.tables) return { ok: false, error: 'Tables are disabled for this store.' }
-    const table = current.tables.find((item) => item.id === tableId && item.storeId === storeId && item.active)
-    if (!table) return { ok: false, error: 'Choose an active table from this store.' }
-    if (current.openOrders.some((order) => order.storeId === storeId && order.tableId === tableId)) {
+    const manualTables = store.settings.tableMode === 'manual'
+    const table = tableId
+      ? current.tables.find((item) => item.id === tableId && item.storeId === storeId && item.active)
+      : undefined
+    const tableName = manualTables ? requestedTableName?.trim() : table?.name
+    if (manualTables) {
+      if (tableId || !tableName || tableName.length > 60) {
+        return { ok: false, error: 'Enter a table name up to 60 characters.' }
+      }
+    } else if (!table) {
+      return { ok: false, error: 'Choose an active table from this store.' }
+    }
+    if (current.openOrders.some((order) =>
+      order.storeId === storeId && (table ? order.tableId === table.id : order.tableName.toLowerCase() === tableName?.toLowerCase()),
+    )) {
       return { ok: false, error: 'This table already has an open order.' }
     }
-    if (!current.registerSessions.some((session) => session.storeId === storeId && session.status === 'open')) {
-      return { ok: false, error: 'Open the register first.' }
+    if (store.settings.requireShiftForOrders && !shift) {
+      return { ok: false, error: 'Open your shift before taking table orders.' }
     }
-    if (guests !== undefined && (!Number.isSafeInteger(guests) || guests < 1 || guests > 50)) {
-      return { ok: false, error: 'Guests must be a whole number from 1 to 50.' }
-    }
+    const guestsError = guestCountError(guests, store.settings.guestRequirement)
+    if (guestsError) return { ok: false, error: guestsError }
     const actor = actorResult.actor
     const now = new Date().toISOString()
     const order: OpenOrder = {
       id: uid('open'),
       storeId,
-      tableId: table.id,
-      tableName: table.name,
-      guests,
+      shiftId: shift?.id,
+      tableHistory: [{
+        id: uid('evt'),
+        type: 'opened',
+        actorId: actorResult.actor.id,
+        actorName: actorResult.actor.name,
+        at: now,
+        details: tableName ?? 'Table',
+      }],
+      tableId: table?.id,
+      tableName: tableName ?? 'Table',
+      sectionId: table?.sectionId,
+      sectionName: table?.sectionId
+        ? current.sections.find((section) => section.id === table.sectionId)?.name
+        : undefined,
+      guests: store.settings.guestRequirement === 'off' ? undefined : guests,
       items: [],
       subtotal: 0,
       tax: 0,
@@ -88,8 +122,8 @@ export function useOpenOrdersSlice(
       action: 'created',
       entity: 'order',
       entityId: order.id,
-      summary: `Opened ${table.name}`,
-      after: { tableName: table.name, guests: guests ?? 0 },
+      summary: `Opened ${order.tableName}`,
+      after: { tableName: order.tableName, guests: guests ?? 0 },
     }))
     return { ok: true, order }
   }, [commitDb, dbRef, requireActor])
@@ -101,6 +135,11 @@ export function useOpenOrdersSlice(
       if (!order) return { ok: false, error: 'Open table order not found.' }
       const actorResult = requireActor(order.storeId)
       if (!actorResult.ok) return actorResult
+      const store = current.stores.find((item) => item.id === order.storeId)
+      const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+      if (store?.settings.requireShiftForOrders && !shift) {
+        return { ok: false, error: 'Open your shift before adding items to table orders.' }
+      }
       if (!Array.isArray(items)) return { ok: false, error: 'The order items are invalid.' }
       if (!items.length && discount === undefined && note === undefined) {
         return { ok: false, error: 'Add items or make a change before saving.' }
@@ -115,7 +154,7 @@ export function useOpenOrdersSlice(
         openOrders: prev.openOrders.map((item) => item.id === order.id ? result.order : item),
         orders: recordedOrder
           ? prev.orders.map((item) => item.id === recordedOrder.id
-              ? recordedOrderFromOpenOrder(result.order, recordedOrder, recordedOrder.number)
+              ? recordedOrderFromOpenOrder(result.order, recordedOrder, recordedOrder.number, shift?.id)
               : item)
           : prev.orders,
       }, actorResult.actor, {
@@ -139,6 +178,11 @@ export function useOpenOrdersSlice(
       if (!order) return { ok: false, error: 'Open table order not found.' }
       const actorResult = requireActor(order.storeId)
       if (!actorResult.ok) return actorResult
+      const store = current.stores.find((item) => item.id === order.storeId)
+      const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+      if (store?.settings.requireShiftForOrders && !shift) {
+        return { ok: false, error: 'Open your shift before sending table orders to the kitchen.' }
+      }
       if (!Array.isArray(items)) return { ok: false, error: 'The order items are invalid.' }
       const result = buildUpdatedOpenOrder(order, items, discount, note, actorResult.actor, current)
       if (!result.ok) return result
@@ -154,7 +198,7 @@ export function useOpenOrdersSlice(
         openOrders: prev.openOrders.map((item) => item.id === order.id ? updated : item),
         orders: order.recordedOrderId
           ? prev.orders.map((item) => item.id === order.recordedOrderId
-              ? recordedOrderFromOpenOrder(updated, item, item.number)
+              ? recordedOrderFromOpenOrder(updated, item, item.number, shift?.id)
               : item)
           : prev.orders,
       }, actorResult.actor, {
@@ -181,6 +225,7 @@ export function useOpenOrdersSlice(
         items: order.items,
         channel: 'dine-in',
         tableId: order.tableId,
+        tableName: order.tableName,
         guests: order.guests,
         paymentMethod,
         customerId,
@@ -190,12 +235,39 @@ export function useOpenOrdersSlice(
       if (!paid.ok) return paid
       const actor = requireActor(order.storeId)
       if (!actor.ok) return actor
+      const paidAt = new Date().toISOString()
+      const paymentHistory = [
+        ...(order.tableHistory ?? []),
+        {
+          id: uid('evt'),
+          type: 'payment' as const,
+          actorId: actor.actor.id,
+          actorName: actor.actor.name,
+          at: paidAt,
+          details: `${paymentMethod} · ${paid.order.total.toFixed(3)} DT`,
+        },
+        {
+          id: uid('evt'),
+          type: 'closed' as const,
+          actorId: actor.actor.id,
+          actorName: actor.actor.name,
+          at: paidAt,
+        },
+      ]
       commitDb((prev) => addLog({
         ...prev,
         openOrders: prev.openOrders.filter((item) => item.id !== order.id),
-        orders: order.recordedOrderId
-          ? prev.orders.filter((item) => item.id !== order.recordedOrderId)
-          : prev.orders,
+        orders: [
+          ...prev.orders
+            .filter((item) => item.id !== order.recordedOrderId && item.id !== paid.order.id)
+            .map((item) => item),
+          {
+            ...paid.order,
+            ownerStaffId: order.staffId,
+            ownerStaffName: order.staffName,
+            tableHistory: paymentHistory,
+          },
+        ],
       }, actor.actor, {
         storeId: order.storeId,
         action: 'edited',
@@ -219,12 +291,19 @@ export function useOpenOrdersSlice(
     if (!order.items.length) return { ok: false, error: 'Add items before recording this table order.' }
     const store = current.stores.find((item) => item.id === order.storeId)
     if (!store?.settings.features.tables) return { ok: false, error: 'Tables are disabled for this store.' }
-    if (!current.tables.some((table) =>
-      table.id === order.tableId && table.storeId === order.storeId && table.active,
-    )) return { ok: false, error: 'Choose an active table from this store.' }
-    if (!current.registerSessions.some((session) =>
-      session.storeId === order.storeId && session.status === 'open',
-    )) return { ok: false, error: 'Open the register first.' }
+    if (order.tableId) {
+      if (!current.tables.some((table) =>
+        table.id === order.tableId && table.storeId === order.storeId && table.active,
+      )) return { ok: false, error: 'Choose an active table from this store.' }
+    } else if (!order.tableName.trim() || order.tableName.length > 60) {
+      return { ok: false, error: 'Enter a valid table name.' }
+    }
+    const guestsError = guestCountError(order.guests, store.settings.guestRequirement)
+    if (guestsError) return { ok: false, error: guestsError }
+    const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+    if (store.settings.requireShiftForOrders && !shift) {
+      return { ok: false, error: 'Open your shift before recording table orders.' }
+    }
     const previous = order.recordedOrderId
       ? current.orders.find((item) => item.id === order.recordedOrderId)
       : undefined
@@ -234,7 +313,7 @@ export function useOpenOrdersSlice(
     const number = previous?.number ?? current.orders
       .filter((item) => item.storeId === order.storeId)
       .reduce((max, item) => Math.max(max, item.number), 1000) + 1
-    const recorded = recordedOrderFromOpenOrder(order, previous, number)
+    const recorded = recordedOrderFromOpenOrder(order, previous, number, shift?.id ?? order.shiftId)
     commitDb((prev) => addLog({
       ...prev,
       openOrders: prev.openOrders.map((item) =>
@@ -266,13 +345,37 @@ export function useOpenOrdersSlice(
     if (table.id !== order.tableId && current.openOrders.some((item) =>
       item.storeId === order.storeId && item.tableId === table.id,
     )) return { ok: false, error: 'The destination table already has an open order.' }
-    const updated = { ...order, tableId: table.id, tableName: table.name, updatedAt: new Date().toISOString() }
+    const updated = {
+      ...order,
+      tableId: table.id,
+      tableName: table.name,
+      sectionId: table.sectionId,
+      sectionName: current.sections.find((section) => section.id === table.sectionId)?.name,
+      updatedAt: new Date().toISOString(),
+      tableHistory: [
+        ...(order.tableHistory ?? []),
+        {
+          id: uid('evt'),
+          type: 'moved' as const,
+          actorId: actorResult.actor.id,
+          actorName: actorResult.actor.name,
+          at: new Date().toISOString(),
+          details: `${order.tableName} → ${table.name}`,
+        },
+      ],
+    }
     commitDb((prev) => addLog({
       ...prev,
       openOrders: prev.openOrders.map((item) => item.id === order.id ? updated : item),
       orders: order.recordedOrderId
         ? prev.orders.map((item) => item.id === order.recordedOrderId
-            ? { ...item, tableId: table.id, tableName: table.name }
+            ? {
+                ...item,
+                tableId: table.id,
+                tableName: table.name,
+                sectionId: table.sectionId,
+                sectionName: current.sections.find((section) => section.id === table.sectionId)?.name,
+              }
             : item)
         : prev.orders,
     }, actorResult.actor, {
@@ -309,6 +412,18 @@ export function useOpenOrdersSlice(
     const updated: OpenOrder = {
       ...target,
       recordedOrderId,
+      tableHistory: [
+        ...(target.tableHistory ?? []),
+        ...(source.tableHistory ?? []),
+        {
+          id: uid('evt'),
+          type: 'merged',
+          actorId: actorResult.actor.id,
+          actorName: actorResult.actor.name,
+          at: new Date().toISOString(),
+          details: `${source.tableName} → ${target.tableName}`,
+        },
+      ],
       items,
       ...computeTotals(items, store.settings, discount),
       discount,

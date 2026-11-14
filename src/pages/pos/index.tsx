@@ -16,6 +16,7 @@ import { ReceiptModal } from './ReceiptModal'
 import { ProductOptionsModal } from './ProductOptionsModal'
 import { createPOSActions } from './posActions'
 import { useProductCart } from './useProductCart'
+import { openShiftForStaff } from '../../lib/registerShifts'
 
 export default function POS() {
   const {
@@ -43,6 +44,7 @@ export default function POS() {
         : 'takeaway',
   )
   const [tableId, setTableId] = useState<string>()
+  const [tableName, setTableName] = useState('')
   const [guests, setGuests] = useState<number>()
   const [customerId, setCustomerId] = useState<string | undefined>(linkedCustomerId)
   const [discount, setDiscount] = useState(0)
@@ -92,11 +94,22 @@ export default function POS() {
   const tables = db.tables
     .filter((table) => table.storeId === store.id && table.active)
     .sort((a, b) => a.sort - b.sort)
+  const sections = db.sections
+    .filter((section) => section.storeId === store.id && section.active)
+    .sort((a, b) => a.sort - b.sort)
+  const openTables = db.openOrders.filter((order) => order.storeId === store.id)
   const customer = customers.find((c) => c.id === customerId)
   const displayCart = openOrder ? [...openOrder.items, ...cart] : cart
   const activeDiscount = openOrder ? openDiscount ?? openOrder.discount : discount
   const activeNote = openOrder ? openNote ?? openOrder.note ?? '' : note
   const activeTableId = openOrder?.tableId ?? tableId
+  const activeTableName = openOrder?.tableName ??
+    tables.find((table) => table.id === tableId)?.name ??
+    tableName
+  const activeSectionId = openOrder?.sectionId ??
+    tables.find((table) => table.id === activeTableId)?.sectionId
+  const activeSectionName = sections.find((section) => section.id === activeSectionId)?.name ??
+    openOrder?.sectionName
   const totals = computeTotals(displayCart, store.settings, activeDiscount)
   const count = displayCart.reduce((a, i) => a + i.qty, 0)
   const pendingCount = cart.reduce((sum, item) => sum + item.qty, 0)
@@ -107,8 +120,8 @@ export default function POS() {
   )
   const hasUnsentItems = displayCart.some((item) => !item.sentAt)
   const quick = store.settings.posMode === 'quick'
-  const registerOpen = db.registerSessions.some((session) => session.storeId === store.id && session.status === 'open')
-  const canOpenRegister = user.role === 'admin' || user.permissions.register
+  const registerOpen = !!openShiftForStaff(db, store.id, user.id)
+  const canOpenRegister = can(user, 'openShift')
   const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
 
@@ -126,6 +139,7 @@ export default function POS() {
     store,
     channel,
     tableId,
+    tableName: activeTableName,
     guests,
     openOrder,
     quick,
@@ -151,6 +165,7 @@ export default function POS() {
     setOpenNote,
     setChannel,
     setTableId,
+    setTableName,
     setGuests,
     setCustomerId,
     setCustomerOpen,
@@ -169,6 +184,7 @@ export default function POS() {
     setChannel(next)
     if (next !== 'dine-in') {
       setTableId(undefined)
+      setTableName('')
       setGuests(undefined)
     }
   }
@@ -200,9 +216,15 @@ export default function POS() {
     deliveryEnabled: store.settings.features.delivery,
     tablesEnabled: store.settings.features.tables,
     tables,
+    sections,
+    openTables,
+    tableMode: store.settings.tableMode,
+    guestRequirement: store.settings.guestRequirement,
     tableId: activeTableId,
     setTableId,
-    guests,
+    tableNameInput: openOrder ? '' : tableName,
+    setTableNameInput: setTableName,
+    guests: openOrder?.guests ?? guests,
     setGuests,
     focusTablePicker: tablePickerFocus,
     customer,
@@ -225,7 +247,9 @@ export default function POS() {
     onAddToTab: addToTab,
     count,
     isOpenOrder: !!openOrder,
-    tableName: openOrder?.tableName,
+    tableName: activeTableName,
+    sectionName: activeSectionName,
+    ownerStaffName: openOrder?.staffName ?? user.name,
     pendingCount,
     persistedLineIds: openOrder?.items.map((item) => item.lineId ?? ''),
     canSaveOpenOrder,

@@ -1,7 +1,8 @@
 import { Play, Square } from 'lucide-react'
 import { Button, Field, Input, Modal, Textarea } from '../../../components/ui'
 import { PrintModal, type PrintJob } from '../../../components/PrintPreview'
-import type { RegisterSession } from '../../../types'
+import { RegisterItemsTable } from '../../../components/RegisterItemsTable'
+import type { RegisterItemsReport, RegisterSession } from '../../../types'
 import { cn, fmtTime, money } from '../../../lib/utils'
 
 type Store = NonNullable<ReturnType<typeof import('../../../store/AppStore').useApp>['store']>
@@ -21,6 +22,7 @@ export function RegisterDialogs({
   onCountedInputChange,
   closeNote,
   onCloseNoteChange,
+  itemsReport,
   onCloseRegister,
   printJob,
   onPrintClose,
@@ -39,19 +41,20 @@ export function RegisterDialogs({
   onCountedInputChange: (value: string) => void
   closeNote: string
   onCloseNoteChange: (value: string) => void
+  itemsReport?: RegisterItemsReport
   onCloseRegister: () => void
   printJob: PrintJob | null
   onPrintClose: () => void
 }) {
   const countedValue = Number(countedInput) || 0
-  const difference = countedValue - expected
+  const difference = store.settings.posMode === 'quick' ? 0 : countedValue - expected
 
   return (
     <>
       <Modal
         open={openModal}
         onClose={() => onOpenModalChange(false)}
-        title="Open the register"
+        title="Open your shift"
         subtitle={store.name}
         size="sm"
         footer={
@@ -60,13 +63,13 @@ export function RegisterDialogs({
               Cancel
             </Button>
             <Button disabled={!(Number(openingInput) >= 0)} onClick={onOpenRegister}>
-              <Play className="h-4 w-4" /> Open register
+              <Play className="h-4 w-4" /> Open shift
             </Button>
           </div>
         }
       >
         <div className="space-y-3.5">
-          <Field label="Opening cash in drawer (DT)" hint="Count the float before opening">
+          <Field label="Opening float in drawer (DT)" hint="Count the float before opening">
             <Input
               type="number"
               min={0}
@@ -80,8 +83,8 @@ export function RegisterDialogs({
             />
           </Field>
           <p className="text-[11.5px] leading-relaxed text-muted">
-            This float is the baseline of today's X and Z reports. Opening creates a new session id —
-            the previous Z report stays untouched in the history below.
+            This float is the baseline of your shift report. Opening creates a new shift; previous
+            Z reports stay untouched in the history below.
           </p>
         </div>
       </Modal>
@@ -89,8 +92,8 @@ export function RegisterDialogs({
       <Modal
         open={closeModal}
         onClose={() => onCloseModalChange(false)}
-        title="Close register — Z report"
-        subtitle={open ? `Session ${open.id} · ${fmtTime(open.openedAt)}` : ''}
+        title="Close shift — Z report"
+        subtitle={open ? `${open.shiftNumber ?? open.id} · ${fmtTime(open.openedAt)}` : ''}
         size="sm"
         footer={
           <div className="flex items-center justify-between gap-2">
@@ -115,11 +118,13 @@ export function RegisterDialogs({
         <div className="space-y-4">
           <div className="rounded-2xl bg-espresso-900 px-5 py-4 text-cream-50">
             <div className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/40">
-              Expected cash (from orders & ledger)
+              {store.settings.posMode === 'quick' ? 'Cash accountability is off in Quick mode' : 'Expected cash (from orders & ledger)'}
             </div>
             <div className="mt-1 text-[28px] font-extrabold tracking-tight tabular">{money(expected)}</div>
             <div className="mt-1 text-[11px] text-white/45">
-              Opening {money(open?.openingCash ?? 0)} + cash sales + tab payments − expenses − refunds
+              {store.settings.posMode === 'quick'
+                ? 'No cash expected or cash difference is calculated.'
+                : `Opening ${money(open?.openingCash ?? 0)} + cash sales + tab payments − expenses − refunds`}
             </div>
           </div>
           <Field label="Counted cash in drawer (DT)">
@@ -147,9 +152,15 @@ export function RegisterDialogs({
               rows={2}
             />
           </Field>
+          {itemsReport && (
+            <RegisterItemsTable
+              report={itemsReport}
+              title="Items in this Z report"
+            />
+          )}
           <p className="text-[11.5px] leading-relaxed text-muted">
-            Closing freezes this session permanently: the stored Z report can be viewed or reprinted
-            but never edited. The next open register starts a new session.
+            Closing freezes this shift permanently: its Z report can be viewed or reprinted but never
+            edited. The next shift gets a separate report.
           </p>
         </div>
       </Modal>

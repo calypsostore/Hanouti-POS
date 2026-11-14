@@ -1,12 +1,18 @@
 import type {
   AuditJsonValue,
   Database,
-  Order,
   RegisterReportDetails,
   RegisterSession,
   RegisterSnapshot,
 } from '../types'
-import { round } from './pricing-utils'
+import { round } from './pricing-utils.ts'
+import {
+  completedOrdersAt,
+  ordersCreatedInWindow,
+  ordersForRegisterSession,
+  registerSessionItems,
+  voidedOrdersForRegisterSession,
+} from './registerItems.ts'
 
 /**
  * Cash-register report engine.
@@ -17,28 +23,13 @@ import { round } from './pricing-utils'
  * changes afterwards.
  */
 
-type TotalsSource = Pick<Database, 'orders' | 'ledger' | 'expenses' | 'purchasePayments'>
+type TotalsSource = Pick<Database, 'orders' | 'ledger' | 'expenses' | 'purchasePayments'> &
+  Partial<Pick<Database, 'stores'>>
 
 const isInWindow = (value: string, start: number, end: number) => {
   const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end
 }
-
-const ordersCreatedInWindow = (
-  db: Pick<Database, 'orders'>,
-  storeId: string,
-  start: number,
-  end: number,
-) => db.orders.filter((order) =>
-  order.storeId === storeId &&
-  (order.status === 'completed' || order.status === 'void') &&
-  isInWindow(order.createdAt, start, end),
-)
-
-const completedOrdersAt = (orders: Order[], end: number) => orders.filter((order) =>
-  order.status === 'completed' ||
-  (order.status === 'void' && !!order.voidedAt && Date.parse(order.voidedAt) > end),
-)
 
 const sum = (values: number[]) => round(values.reduce((total, value) => total + value, 0))
 
@@ -48,24 +39,31 @@ export const computeRegisterTotals = (
   startISO: string,
   endISO: string,
   openingCash: number,
+  sessionId?: string,
 ): RegisterSnapshot => {
   const start = new Date(startISO).getTime()
   const end = new Date(endISO).getTime()
 
-  const createdInWindow = ordersCreatedInWindow(db, storeId, start, end)
+  const createdInWindow = sessionId
+    ? ordersForRegisterSession(db, { id: sessionId, storeId, openedAt: startISO }, endISO)
+    : ordersCreatedInWindow(db, storeId, start, end)
   const completed = completedOrdersAt(createdInWindow, end)
-  const voided = db.orders.filter((order) =>
-    order.storeId === storeId &&
-    order.status === 'void' &&
-    !!order.voidedAt &&
-    isInWindow(order.voidedAt, start, end),
-  )
+  const voided = sessionId
+    ? voidedOrdersForRegisterSession(db, { id: sessionId, storeId, openedAt: startISO }, endISO)
+    : db.orders.filter((order) =>
+        order.storeId === storeId &&
+        order.status === 'void' &&
+        !!order.voidedAt &&
+        isInWindow(order.voidedAt, start, end),
+      )
 
   const cashSales = sum(completed.filter((order) => order.paymentMethod === 'cash').map((order) => order.total))
   const cardSales = sum(completed.filter((order) => order.paymentMethod === 'card').map((order) => order.total))
   const creditSales = sum(completed.filter((order) => order.paymentMethod === 'credit').map((order) => order.total))
   const cashReceived = sum(
-    createdInWindow.filter((order) => order.paymentMethod === 'cash').map((order) => order.total),
+    createdInWindow.filter((order) =>
+      order.paymentMethod === 'cash' && order.status !== 'recorded',
+    ).map((order) => order.total),
   )
   const cashRefunds = sum(
     voided.filter((order) => order.paymentMethod === 'cash').map((order) => order.total),
@@ -75,22 +73,24 @@ export const computeRegisterTotals = (
     return l.storeId === storeId &&
       l.type === 'payment' &&
       !l.creditAdjustment &&
-      isInWindow(l.createdAt, start, end)
+      (sessionId ? l.shiftId === sessionId : isInWindow(l.createdAt, start, end))
   })
   const cashSettlements = sum(payments.filter((payment) => payment.method === 'cash').map((payment) => payment.amount))
   const cardSettlements = sum(payments.filter((payment) => payment.method === 'card').map((payment) => payment.amount))
 
   const cashExpenses = sum(db.expenses
-    .filter((expense) => expense.storeId === storeId && isInWindow(expense.createdAt ?? expense.date, start, end))
+    .filter((expense) => expense.storeId === storeId &&
+      (sessionId ? expense.shiftId === sessionId : isInWindow(expense.createdAt ?? expense.date, start, end)))
     .map((expense) => expense.amount))
   const supplierCashPayments = sum(db.purchasePayments
     .filter((payment) =>
       payment.storeId === storeId &&
       payment.method === 'cash' &&
-      isInWindow(payment.createdAt, start, end),
+      (sessionId ? payment.shiftId === sessionId : isInWindow(payment.createdAt, start, end)),
     )
     .map((payment) => payment.amount))
   const expenses = round(cashExpenses + supplierCashPayments)
+  const quickMode = db.stores?.find((store) => store.id === storeId)?.settings.posMode === 'quick'
 
   return {
     salesTotal: round(cashSales + cardSales + creditSales),
@@ -108,7 +108,7 @@ export const computeRegisterTotals = (
     cashSettlements,
     cardSettlements,
     settlementCount: payments.length,
-    expectedCash: round(openingCash + cashReceived + cashSettlements - expenses - cashRefunds),
+    expectedCash: quickMode ? 0 : round(openingCash + cashReceived + cashSettlements - expenses - cashRefunds),
   }
 }
 
@@ -132,45 +132,40 @@ export const registerReportDetails = (
   db: Database,
   session: RegisterSession,
   endISO = new Date().toISOString(),
+  staffId?: string,
 ): RegisterReportDetails => {
   const store = db.stores.find((candidate) => candidate.id === session.storeId)
   if (!store) throw new Error('Store not found for register report.')
   const start = Date.parse(session.openedAt)
   const end = Date.parse(endISO)
-  const createdInWindow = ordersCreatedInWindow(db, session.storeId, start, end)
+  const createdInWindow = ordersForRegisterSession(db, session, endISO)
   const completed = completedOrdersAt(createdInWindow, end)
-  const snapshot = computeRegisterTotals(db, session.storeId, session.openedAt, endISO, session.openingCash)
+  const snapshot = computeRegisterTotals(db, session.storeId, session.openedAt, endISO, session.openingCash, session.id)
   const refunds = db.ledger.filter((entry) =>
     entry.storeId === session.storeId &&
     entry.type === 'payment' &&
     entry.creditAdjustment === true &&
-    isInWindow(entry.createdAt, start, end),
+    entry.shiftId === session.id,
   )
   const taxByRate = new Map<number | null, number>()
   const byEmployee = new Map<string, { count: number; total: number }>()
   const byCategory = new Map<string, { qty: number; total: number }>()
-  const byProduct = new Map<string, { name: string; qty: number; total: number }>()
+  const items = registerSessionItems(db, session, endISO, staffId)
 
   for (const order of completed) {
     const taxRate = typeof order.taxRate === 'number' && Number.isFinite(order.taxRate) ? order.taxRate : null
     taxByRate.set(taxRate, round((taxByRate.get(taxRate) ?? 0) + order.tax))
 
-    const employee = byEmployee.get(order.staffName) ?? { count: 0, total: 0 }
-    byEmployee.set(order.staffName, {
-      count: employee.count + 1,
-      total: round(employee.total + order.total),
-    })
+    if (!staffId || order.staffId === staffId) {
+      const employee = byEmployee.get(order.staffName) ?? { count: 0, total: 0 }
+      byEmployee.set(order.staffName, {
+        count: employee.count + 1,
+        total: round(employee.total + order.total),
+      })
+    }
 
     for (const item of order.items) {
       const lineTotal = round(item.price * item.qty)
-      const productKey = item.productId
-      const product = byProduct.get(productKey) ?? { name: item.name, qty: 0, total: 0 }
-      byProduct.set(productKey, {
-        name: item.name,
-        qty: round(product.qty + item.qty),
-        total: round(product.total + lineTotal),
-      })
-
       const catalogProduct = db.products.find((candidate) => candidate.id === item.productId)
       const category = db.categories.find((candidate) => candidate.id === catalogProduct?.categoryId)
       const categoryName = category?.name ?? catalogProduct?.name ?? 'Other'
@@ -182,13 +177,8 @@ export const registerReportDetails = (
     }
   }
 
-  const voidedOrders = db.orders
-    .filter((order) =>
-      order.storeId === session.storeId &&
-      order.status === 'void' &&
-      !!order.voidedAt &&
-      isInWindow(order.voidedAt, start, end),
-    )
+  const voidedOrders = voidedOrdersForRegisterSession(db, session, endISO)
+    .filter((order) => !staffId || order.voidedById === staffId)
     .map((order) => {
       const log = db.auditLogs.find((entry) =>
         entry.storeId === session.storeId &&
@@ -224,14 +214,14 @@ export const registerReportDetails = (
   const cashExpenses = sum(db.expenses
     .filter((expense) =>
       expense.storeId === session.storeId &&
-      isInWindow(expense.createdAt ?? expense.date, start, end),
+      expense.shiftId === session.id,
     )
     .map((expense) => expense.amount))
   const supplierCashPayments = sum(db.purchasePayments
     .filter((payment) =>
       payment.storeId === session.storeId &&
       payment.method === 'cash' &&
-      isInWindow(payment.createdAt, start, end),
+      payment.shiftId === session.id,
     )
     .map((payment) => payment.amount))
 
@@ -247,7 +237,7 @@ export const registerReportDetails = (
     totalTransactions: completed.length + snapshot.settlementCount,
     storeCreditRefunds: sum(refunds.map((entry) => entry.amount)),
     cashReceived: sum(createdInWindow
-      .filter((order) => order.paymentMethod === 'cash')
+      .filter((order) => order.paymentMethod === 'cash' && order.status !== 'recorded')
       .map((order) => order.total)),
     cashExpenses,
     supplierCashPayments,
@@ -260,7 +250,7 @@ export const registerReportDetails = (
     byCategory: [...byCategory.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.total - a.total),
-    topProducts: [...byProduct.values()].sort((a, b) => b.qty - a.qty || b.total - a.total).slice(0, 10),
+    ...items,
     voidedOrders,
     cancelledItems,
   }
@@ -274,7 +264,7 @@ export const sessionSnapshot = (
 ): RegisterSnapshot | null => {
   if (session.status === 'closed' && session.snapshot) return session.snapshot
   if (session.status !== 'open') return null
-  return computeRegisterTotals(db, session.storeId, session.openedAt, now, session.openingCash)
+  return computeRegisterTotals(db, session.storeId, session.openedAt, now, session.openingCash, session.id)
 }
 
 export interface RegisterBreakdown {
@@ -287,17 +277,18 @@ export const registerBreakdown = (
   db: Database,
   session: RegisterSession,
   endISO = new Date().toISOString(),
+  staffId?: string,
 ): RegisterBreakdown => {
-  const start = new Date(session.openedAt).getTime()
   const end = new Date(endISO).getTime()
 
   const done = completedOrdersAt(
-    ordersCreatedInWindow(db, session.storeId, start, end),
+    ordersForRegisterSession(db, session, endISO),
     end,
   )
 
   const byEmployee = new Map<string, { count: number; total: number }>()
   for (const o of done) {
+    if (staffId && o.staffId !== staffId) continue
     const cur = byEmployee.get(o.staffName) ?? { count: 0, total: 0 }
     byEmployee.set(o.staffName, { count: cur.count + 1, total: round(cur.total + o.total) })
   }

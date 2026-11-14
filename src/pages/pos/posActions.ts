@@ -8,6 +8,7 @@ type Props = {
   store: Store
   channel: OrderChannel
   tableId?: string
+  tableName?: string
   guests?: number
   openOrder?: OpenOrder
   quick: boolean
@@ -33,6 +34,7 @@ type Props = {
   setOpenNote: (note: string | undefined) => void
   setChannel: (channel: OrderChannel) => void
   setTableId: (tableId: string | undefined) => void
+  setTableName: (tableName: string) => void
   setGuests: (guests: number | undefined) => void
   setCustomerId: (customerId: string | undefined) => void
   setCustomerOpen: (open: boolean) => void
@@ -52,6 +54,7 @@ export const createPOSActions = (props: Props) => {
     props.setCustomerId(undefined)
     props.setChannel('takeaway')
     props.setTableId(undefined)
+    props.setTableName('')
     props.setGuests(undefined)
     props.setPaymentOpen(false)
     props.setMobileCartOpen(false)
@@ -64,8 +67,11 @@ export const createPOSActions = (props: Props) => {
 
   const completeSale = (method: PaymentMethod) => {
     if (!props.openOrder && props.channel === 'dine-in' &&
-      props.store.settings.features.tables && !props.tableId) {
-      props.push('Choose a table before checking out.', 'error')
+      props.store.settings.features.tables &&
+      (props.store.settings.tableMode === 'manual'
+        ? !props.tableName?.trim()
+        : !props.tableId)) {
+      props.push(props.store.settings.tableMode === 'manual' ? 'Enter a table name.' : 'Choose a table before checking out.', 'error')
       props.focusTablePicker()
       return
     }
@@ -129,6 +135,7 @@ export const createPOSActions = (props: Props) => {
       items: props.cart,
       channel: props.channel,
       tableId: props.tableId,
+      tableName: props.tableName,
       guests: props.guests,
       paymentMethod: method,
       customerId: props.customerId,
@@ -149,8 +156,11 @@ export const createPOSActions = (props: Props) => {
   const checkout = () => {
     if (!props.count) return
     if (!props.openOrder && props.channel === 'dine-in' &&
-      props.store.settings.features.tables && !props.tableId) {
-      props.push('Choose a table before checking out.', 'error')
+      props.store.settings.features.tables &&
+      (props.store.settings.tableMode === 'manual'
+        ? !props.tableName?.trim()
+        : !props.tableId)) {
+      props.push(props.store.settings.tableMode === 'manual' ? 'Enter a table name.' : 'Choose a table before checking out.', 'error')
       props.focusTablePicker()
       return
     }

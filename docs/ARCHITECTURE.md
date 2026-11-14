@@ -16,7 +16,11 @@
   controls (tables, toolbars, CSV export and delete confirmation) live in
   `src/components/data/`.
 - `src/lib/` contains reusable domain helpers and pure business calculations.
-  Keep React and UI dependencies out of this layer.
+  Keep React and UI dependencies out of this layer. `registerItems.ts` owns
+  the pure session-window aggregation for sold, recorded and voided register
+  items; it does not add recorded orders to financial totals.
+- `src/components/RegisterItemsTable.tsx` is the shared grouped register-item
+  table used by the live X view, report preview, Z close dialog and Z history.
 - `src/store/AppStore.tsx` composes the provider and exports `useApp()`.
   Feature slices live in `src/store/` (`auth`, `orders`, `register`,
   `catalog`, `customers`, `staff`, `inventory`, `purchases`, and `settings`). `runtime.ts` owns shared
@@ -34,6 +38,12 @@
 - Table service is controlled independently from POS mode. Active table rounds
   remain in `openOrders`; Quick-mode completion also keeps an unpaid `recorded`
   order snapshot until the order is paid or cancelled.
+- Table setup is store-scoped: `StoreSettings.tableMode` selects sections plus
+  tables, tables-only, or manual table names; `TableSection` owns zone metadata
+  and `DiningTable.sectionId` replaces legacy `zone`. Database normalization
+  migrates legacy zones and supplies guest-count defaults. Table mutations live
+  in `src/store/tables.ts`; section/table setup lives in
+  `src/pages/admin/Settings/`.
 
 ## Adding a page
 
@@ -65,8 +75,13 @@
    `src/data/seed.ts`.
 2. Bump `DB_KEY` in `src/store/database.ts` and add a migration/normalization
    path in `loadDb` so existing IndexedDB and localStorage data remains readable.
+   The v24 normalizer converts legacy table zones into sections and fills the
+   table-mode and guest-count settings.
 3. Preserve frozen register snapshots and other historical records where
-   applicable. Update `docs/PRODUCTION_PLAN.md` with what is implemented and
-   what remains demo-only.
+   applicable. New register-item rows are frozen with Z reports. Older closed
+   sessions without them rebuild only the item view from session orders and
+   are marked; their frozen financial totals are not rewritten. Update
+   `docs/PRODUCTION_PLAN.md` with what is implemented and what remains
+   demo-only.
 4. Run `npm run build` and `npm run lint`, then manually test both fresh seed
    data and data migrated from the previous key.

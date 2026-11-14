@@ -67,7 +67,7 @@ function CapabilityGate({ capability, children }: { capability: Capability; chil
 function RegisterGate({ children }: { children: React.ReactNode }) {
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  if (user.role !== 'admin' && !user.permissions.register) {
+  if (!can(user, 'openShift') && !can(user, 'closeShift')) {
     return <Navigate to={user.role === 'staff' ? '/pos' : '/admin'} replace />
   }
   return <>{children}</>

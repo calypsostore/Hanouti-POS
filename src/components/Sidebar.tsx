@@ -69,7 +69,9 @@ export function Sidebar({
           ...(can(user, 'recordPurchases')
             ? [{ to: '/admin/purchases', label: 'Purchases', icon: Truck, tone: 'amber' as const }]
             : []),
-          ...(user.permissions.register ? [{ to: '/admin/register', label: 'Register', icon: Calculator, tone: 'green' as const }] : []),
+          ...(can(user, 'openShift') || can(user, 'closeShift')
+            ? [{ to: '/admin/register', label: 'My shift', icon: Calculator, tone: 'green' as const }]
+            : []),
           ...(user.permissions.supervisor ? [{ to: '/admin/staff', label: 'Team', icon: Users, tone: 'purple' as const }] : []),
           { to: '/admin/expenses', label: 'My attendance', icon: Wallet, tone: 'rose' },
         ] }]
@@ -110,7 +112,7 @@ export function Sidebar({
           if (item.to === '/admin/purchases') return can(user, 'recordPurchases')
           if (item.to === '/admin/staff') return can(user, 'manageStaff')
           if (item.to === '/admin/reports' || item.to === '/admin/logs') return can(user, 'viewReports')
-          if (item.to === '/admin/register') return user.permissions.register
+          if (item.to === '/admin/register') return can(user, 'openShift') || can(user, 'closeShift')
           if (item.to === '/admin/customers') return user.permissions.credit
           if (item.to === '/admin/settings') return can(user, 'manageSettings')
           if (item.to === '/admin/expenses') return can(user, 'managePayroll')

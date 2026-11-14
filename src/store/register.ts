@@ -4,6 +4,8 @@ import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
+import { can } from '../lib/permissions'
+import { nextShiftNumber, openShiftForStaff } from '../lib/registerShifts'
 import { addLog } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -15,14 +17,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       const actorResult = requireActor(storeId)
       if (!actorResult.ok) return actorResult
       const actor = actorResult.actor
-      if (actor.role !== 'admin' && !actor.permissions.register) {
-        return { ok: false, error: 'You do not have permission to open the register.' }
+      if (!can(actor, 'openShift')) {
+        return { ok: false, error: 'You do not have permission to open a shift.' }
       }
       if (!Number.isFinite(openingCash) || openingCash < 0) {
         return { ok: false, error: 'Enter a valid opening cash amount.' }
       }
-      if (dbRef.current.registerSessions.some((s) => s.storeId === storeId && s.status === 'open')) {
-        return { ok: false, error: 'A register session is already open for this store.' }
+      if (openShiftForStaff(dbRef.current, storeId, actor.id)) {
+        return { ok: false, error: 'You already have an open shift for this store.' }
       }
       const session: RegisterSession = {
         id: uid('reg'),
@@ -31,6 +33,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         openedAt: new Date().toISOString(),
         openedById: actor.id,
         openedByName: actor.name,
+        staffId: actor.id,
+        shiftNumber: nextShiftNumber(dbRef.current.registerSessions, storeId),
         openingCash: round(openingCash),
       }
       commitDb((prev) => addLog({
@@ -41,12 +45,12 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         action: 'register_opened',
         entity: 'register',
         entityId: session.id,
-        summary: `Opened register with ${session.openingCash.toFixed(3)} DT opening cash`,
+        summary: `Opened shift ${session.shiftNumber} with ${session.openingCash.toFixed(3)} DT opening cash`,
         after: { openingCash: session.openingCash },
       }))
       return { ok: true }
     },
-    [commitDb, requireActor],
+    [commitDb, dbRef, requireActor],
   )
 
   const closeRegister = useCallback<AppContextValue['closeRegister']>(
@@ -60,11 +64,11 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       if (session.status !== 'open') {
         return { ok: false, error: 'This session was already closed and cannot change.' }
       }
-      if (actor.role !== 'admin' && !actor.permissions.supervisor && session.openedById !== actor.id) {
-        return { ok: false, error: 'You can only close a register session you opened.' }
+      if (actor.role !== 'admin' && (session.staffId ?? session.openedById) !== actor.id) {
+        return { ok: false, error: 'You can only close your own shift.' }
       }
-      if (actor.role !== 'admin' && !actor.permissions.register) {
-        return { ok: false, error: 'You do not have permission to close the register.' }
+      if (!can(actor, 'closeShift')) {
+        return { ok: false, error: 'You do not have permission to close shifts.' }
       }
       if (current.openOrders.some((order) => order.storeId === session.storeId)) {
         return { ok: false, error: 'Close or cancel all open table orders before closing the register.' }
@@ -82,10 +86,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         session.openedAt,
         closedAt,
         session.openingCash,
+        session.id,
       )
       const counted = round(countedCash)
 
-      const difference = round(counted - snapshot.expectedCash)
+      const store = current.stores.find((candidate) => candidate.id === session.storeId)
+      const difference = store?.settings.posMode === 'quick'
+        ? 0
+        : round(counted - snapshot.expectedCash)
       const zReportNumber = current.registerSessions
         .filter((candidate) => candidate.storeId === session.storeId)
         .reduce((max, candidate) => Math.max(max, candidate.zReportNumber ?? 0), 0) + 1
@@ -114,12 +122,12 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         action: 'register_closed',
         entity: 'register',
         entityId: session.id,
-        summary: `Closed register with ${counted.toFixed(3)} DT counted cash (difference ${difference.toFixed(3)} DT)`,
+        summary: `Closed shift ${session.shiftNumber ?? ''} with ${counted.toFixed(3)} DT counted cash (difference ${difference.toFixed(3)} DT)`,
         after: { countedCash: counted, difference, expectedCash: snapshot.expectedCash },
       }))
       return { ok: true }
     },
-    [commitDb, requireActor],
+    [commitDb, dbRef, requireActor],
   )
 
   const settleCredit = useCallback<AppContextValue['settleCredit']>(
@@ -139,6 +147,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         return { ok: false, error: `Amount exceeds the outstanding balance (${balance.toFixed(3)} DT).` }
       }
       const remainingBalance = round(balance - amount)
+      const shift = openShiftForStaff(current, customer.storeId, actor.id)
       commitDb((prev) => addLog({
         ...prev,
         ledger: [
@@ -151,6 +160,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
             method,
             note: note || 'Tab settlement',
             staffName: actor.name,
+            shiftId: shift?.id,
             createdAt: new Date().toISOString(),
           },
           ...prev.ledger,
@@ -166,7 +176,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireActor],
+    [commitDb, dbRef, requireActor],
   )
 
 

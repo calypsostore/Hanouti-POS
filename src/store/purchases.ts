@@ -3,6 +3,7 @@ import type { Purchase, StockMovement, Supplier } from '../types'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { addLog } from './audit'
+import { openShiftForStaff } from '../lib/registerShifts'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 import {
@@ -236,6 +237,7 @@ export function usePurchasesSlice(dependencies: StoreSliceDependencies) {
       userId: actorResult.actor.id,
       userName: actorResult.actor.name,
       createdAt: new Date().toISOString(),
+      shiftId: openShiftForStaff(dbRef.current, purchase.storeId, actorResult.actor.id)?.id,
     }
     const paidAmount = round(purchase.paidAmount + payment.amount)
     commitDb((prev) => addLog({

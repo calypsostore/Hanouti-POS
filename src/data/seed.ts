@@ -21,6 +21,7 @@ import type {
   Store,
   StoreSettings,
   Supplier,
+  TableSection,
   User,
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
@@ -48,6 +49,10 @@ const defaultSettings = (
   requireCustomerForCredit: true,
   receiptFooter: businessTemplate(businessType).receiptFooter,
   lowStockThreshold: 10,
+  tableMode: 'sections_tables',
+  guestRequirement: 'required',
+  staffPickSectionsOnShift: false,
+  requireShiftForOrders: (over.posMode ?? businessTemplate(businessType).posMode) === 'cashier',
   accent: '7anouti',
   colorMode: 'light',
   printer: { ...DEFAULT_PRINTER },
@@ -486,6 +491,11 @@ const users = ([
   ...user,
   salaryType: 'none' as const,
   salaryAmount: 0,
+  permissions: {
+    ...user.permissions,
+    openShift: user.role !== 'super',
+    closeShift: user.role !== 'super',
+  },
 }))
 
 const customerSeed: Record<
@@ -620,12 +630,16 @@ export function buildSeed(): Database {
     createdAt: purchaseCreatedAt,
   }]
   const registerSessions: RegisterSession[] = []
+  const sections: TableSection[] = [
+    { id: 'sec_darchai_inside', storeId: 'st_darchai', name: 'Inside', color: 'blue', icon: 'Utensils', active: true, sort: 0 },
+    { id: 'sec_darchai_terrace', storeId: 'st_darchai', name: 'Terrace', color: 'green', icon: 'Utensils', active: true, sort: 1 },
+  ]
   const tables: DiningTable[] = Array.from({ length: 8 }, (_, index) => ({
     id: `tbl_darchai_${index + 1}`,
     storeId: 'st_darchai',
     name: `Table ${index + 1}`,
     seats: index % 4 < 2 ? 2 : 4,
-    zone: index < 4 ? 'Inside' : 'Terrace',
+    sectionId: index < 4 ? sections[0].id : sections[1].id,
     active: true,
     sort: index,
   }))
@@ -1022,6 +1036,7 @@ export function buildSeed(): Database {
     stores,
     users,
     categories,
+    sections,
     tables,
     inventoryItems,
     stockMovements,
@@ -1042,6 +1057,47 @@ export function buildSeed(): Database {
     auditLogs: [],
   }
 
+  const sessionsByStore = new Map<string, RegisterSession[]>()
+  for (const session of database.registerSessions) {
+    const sessions = sessionsByStore.get(session.storeId) ?? []
+    sessions.push(session)
+    sessionsByStore.set(session.storeId, sessions)
+  }
+  for (const sessions of sessionsByStore.values()) {
+    sessions.sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+    sessions.forEach((session, index) => {
+      session.staffId = session.openedById
+      session.shiftNumber = `S-${String(index + 1).padStart(6, '0')}`
+    })
+  }
+  const sessionAt = (storeId: string, value: string) => {
+    const timestamp = Date.parse(value)
+    return database.registerSessions.find((session) =>
+      session.storeId === storeId &&
+      timestamp >= Date.parse(session.openedAt) &&
+      timestamp <= Date.parse(session.closedAt ?? new Date().toISOString()),
+    )
+  }
+  database.orders = database.orders.map((order) => ({
+    ...order,
+    shiftId: order.shiftId ?? sessionAt(order.storeId, order.createdAt)?.id,
+    voidShiftId: order.voidedAt
+      ? order.voidShiftId ?? sessionAt(order.storeId, order.voidedAt)?.id
+      : undefined,
+  }))
+  database.ledger = database.ledger.map((entry) => ({
+    ...entry,
+    shiftId: entry.shiftId ?? sessionAt(entry.storeId, entry.createdAt)?.id,
+  }))
+  database.expenses = database.expenses.map((expense) => ({
+    ...expense,
+    shiftId: expense.shiftId ?? sessionAt(expense.storeId, expense.createdAt ?? expense.date)?.id,
+  }))
+  database.purchasePayments = database.purchasePayments.map((payment) => ({
+    ...payment,
+    shiftId: payment.shiftId ?? sessionAt(payment.storeId, payment.createdAt)?.id,
+  }))
+
   const closedByStore = new Map<string, RegisterSession[]>()
   for (const session of database.registerSessions) {
     if (session.status !== 'closed' || !session.closedAt) continue
@@ -1059,6 +1115,7 @@ export function buildSeed(): Database {
         session.openedAt,
         session.closedAt ?? session.openedAt,
         session.openingCash,
+        session.id,
       )
       session.reportDetails = registerReportDetails(database, session, session.closedAt)
       session.countedCash ??= session.snapshot.expectedCash

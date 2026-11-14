@@ -11,6 +11,10 @@ export type Capability =
   | 'manageStaff'
   | 'manageSettings'
   | 'managePayroll'
+  | 'manageTables'
+  | 'manageSections'
+  | 'openShift'
+  | 'closeShift'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
 export type StockMovementType =
   | 'opening'
@@ -44,6 +48,7 @@ export type AuditEntity =
   | 'payroll'
   | 'shift'
   | 'table'
+  | 'section'
   | 'inventory'
   | 'purchase'
   | 'supplier'
@@ -81,6 +86,8 @@ export type AuditJsonValue =
   | { [key: string]: AuditJsonValue }
 
 export type PosMode = 'quick' | 'cashier'
+export type TableMode = 'sections_tables' | 'tables_only' | 'manual'
+export type GuestRequirement = 'required' | 'optional' | 'off'
 export type Plan = 'starter' | 'growth' | 'pro'
 export type StoreStatus = 'active' | 'trial' | 'suspended'
 export type OrderChannel = 'takeaway' | 'dine-in' | 'delivery'
@@ -140,6 +147,10 @@ export interface StoreSettings {
   requireCustomerForCredit: boolean
   receiptFooter: string
   lowStockThreshold: number
+  tableMode: TableMode
+  guestRequirement: GuestRequirement
+  staffPickSectionsOnShift: boolean
+  requireShiftForOrders: boolean
   accent: string
   colorMode: 'light' | 'dark'
   printer: PrinterSettings
@@ -201,6 +212,10 @@ export interface User {
     manageStaff?: boolean
     manageSettings?: boolean
     managePayroll?: boolean
+    manageTables?: boolean
+    manageSections?: boolean
+    openShift?: boolean
+    closeShift?: boolean
   }
 }
 
@@ -218,9 +233,19 @@ export interface DiningTable {
   storeId: string
   name: string
   seats: number
-  zone?: string
+  sectionId?: string
   active: boolean
   sort: number
+}
+
+export interface TableSection {
+  id: string
+  storeId: string
+  name: string
+  color: IconColor
+  icon: IconName
+  sort: number
+  active: boolean
 }
 
 export interface InventoryPackage {
@@ -314,6 +339,7 @@ export interface PurchasePayment {
   userId: string
   userName: string
   createdAt: string
+  shiftId?: string
 }
 
 export interface Product {
@@ -376,6 +402,8 @@ export interface Customer {
 export interface OrderItem {
   lineId?: string
   sentAt?: string
+  addedById?: string
+  addedByName?: string
   productId: string
   name: string
   price: number
@@ -396,6 +424,15 @@ export interface OrderModifier {
   priceDelta: number
 }
 
+export interface TableOrderEvent {
+  id: string
+  type: 'opened' | 'items_added' | 'items_removed' | 'guests_changed' | 'moved' | 'merged' | 'transferred' | 'payment' | 'closed' | 'voided'
+  actorId: string
+  actorName: string
+  at: string
+  details?: string
+}
+
 export interface Order {
   id: string
   storeId: string
@@ -410,24 +447,34 @@ export interface Order {
   channel: OrderChannel
   tableId?: string
   tableName?: string
+  sectionId?: string
+  sectionName?: string
   guests?: number
   status: OrderStatus
   paymentMethod: PaymentMethod
   customerId?: string
+  shiftId?: string
   staffId: string
   staffName: string
+  ownerStaffId?: string
+  ownerStaffName?: string
   note?: string
   createdAt: string
   voidedById?: string
   voidedByName?: string
   voidedAt?: string
+  voidShiftId?: string
+  tableHistory?: TableOrderEvent[]
 }
 
 export interface OpenOrder {
   id: string
   storeId: string
-  tableId: string
+  shiftId?: string
+  tableId?: string
   tableName: string
+  sectionId?: string
+  sectionName?: string
   recordedOrderId?: string
   guests?: number
   items: OrderItem[]
@@ -441,6 +488,7 @@ export interface OpenOrder {
   staffId: string
   staffName: string
   note?: string
+  tableHistory?: TableOrderEvent[]
   createdAt: string
   updatedAt: string
 }
@@ -456,6 +504,7 @@ export interface LedgerEntry {
   note?: string
   creditAdjustment?: boolean
   staffName?: string
+  shiftId?: string
   createdAt: string
 }
 
@@ -468,6 +517,7 @@ export interface Expense {
   date: string
   createdAt?: string
   createdBy: string
+  shiftId?: string
 }
 
 export interface Attendance {
@@ -538,6 +588,29 @@ export interface RegisterSnapshot {
   expectedCash: number
 }
 
+export interface RegisterItemRow {
+  key: string
+  productId: string
+  variantId?: string
+  category: string
+  name: string
+  qty: number
+  soldByWeight: boolean
+  saleUnit?: SaleUnit
+  unitPrice: number | null
+  total: number
+}
+
+export interface RegisterVoidedItemRow extends RegisterItemRow {
+  voidedByName: string
+}
+
+export interface RegisterItemsReport {
+  itemsSold: RegisterItemRow[]
+  recordedItems: RegisterItemRow[]
+  voidedItems: RegisterVoidedItemRow[]
+}
+
 export interface RegisterReportDetails {
   storeName: string
   storeAddress: string
@@ -555,7 +628,9 @@ export interface RegisterReportDetails {
   taxBreakdown: Array<{ rate: number | null; amount: number }>
   byEmployee: Array<{ name: string; count: number; total: number }>
   byCategory: Array<{ name: string; qty: number; total: number }>
-  topProducts: Array<{ name: string; qty: number; total: number }>
+  itemsSold?: RegisterItemRow[]
+  recordedItems?: RegisterItemRow[]
+  voidedItems?: RegisterVoidedItemRow[]
   voidedOrders: Array<{
     number: number
     total: number
@@ -577,6 +652,8 @@ export interface RegisterSession {
   openedAt: string
   openedById: string
   openedByName: string
+  staffId?: string
+  shiftNumber?: string
   openingCash: number
   closedAt?: string
   closedById?: string
@@ -608,6 +685,7 @@ export interface Database {
   stores: Store[]
   users: User[]
   categories: Category[]
+  sections: TableSection[]
   tables: DiningTable[]
   inventoryItems: InventoryItem[]
   stockMovements: StockMovement[]

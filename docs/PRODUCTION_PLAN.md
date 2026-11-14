@@ -6,9 +6,9 @@ the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
 Last updated: 2026-11-14 · shipped: **POS hardening, architecture refactor,
-business templates, visual/icon upgrade, and dine-in table setup with
-table-aware immediate orders, and compact POS cart layout**. Persistent open
-table orders remain in progress.
+business templates, visual/icon upgrade, section/manual table modes, persistent
+table rounds, table-aware orders and compact POS cart layout**. Per-staff
+register shifts, handover and cash accountability remain in progress.
 
 ## Code organization update (2026-11-12)
 
@@ -203,6 +203,24 @@ stored; no demo values are presented as production data.
   data and legacy `7anouti.db.v9`, v8, `cafepos.db.v8`, v7 and v6 databases with
   safe defaults for new fields, including staff usernames. Seed data includes
   realistic sample stores for all six business types.
+
+### Phase 1 — Table modes and sections ✅ browser-local demo implementation
+
+- Settings → Tables supports `sections_tables`, `tables_only`, and `manual`,
+  including section/table CRUD, assignment, filtering, and ordering. The floor
+  has section tabs and My tables / All / Unassigned filter controls; Unassigned
+  becomes populated when the handover pool is implemented. Manual mode takes
+  a free-form table name with suggestions from currently open tables.
+- Guest-count policy is configurable as required, optional, or off; table-open
+  and checkout mutations validate it. Open table cards and the cart identify
+  the table, guest count, section where applicable, and owner staff. Kitchen
+  ticket preview includes the table, guests and staff. Legacy `DiningTable.zone`
+  values migrate to `TableSection` records and `sectionId` under
+  `7anouti.db.v24`.
+- The “staff pick sections” setting is stored, but section claiming depends on
+  the not-yet-implemented per-staff shift workflow. Table records and audit
+  events are still local to one browser; there is no realtime multi-device
+  handover.
 - All of this remains browser-local demo behavior. It is not authoritative or
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
@@ -326,13 +344,20 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   download. Z history opens the receipt preview rather than a dashboard-style
   summary. New open-table cancellations preserve their item names in the
   closing report; older cancellation logs may not contain item-level detail.
+- X and Z receipts list every item sold, grouped by category, variant and
+  price-changing modifier, with wrapped thermal lines and category subtotals.
+  Quick-mode recorded orders are shown separately and do not enter sales or
+  drawer totals. Voided items are a separate list with the authorizer. The
+  live X view provides search, category/quantity sorting and CSV export; its
+  item rows are staff-scoped unless the user is a supervisor or admin.
 - Existing Z reports are reprinted from frozen session details where available;
   legacy sessions without a recorded counted-cash value display it as
   unavailable instead of assuming zero.
 - Existing closed sessions retain their frozen financial totals and receive
-  a sequential Z number during the v22 database migration. Historical sessions
-  do not have the new frozen item/tax breakdown, so those sections are marked
-  unavailable instead of being reconstructed from potentially changed data.
+  a sequential Z number during database migration. The v23 normalizer accepts
+  old report details without item rows; those rows are rebuilt from session
+  orders at view time and marked `Rebuilt from orders`, without rewriting the
+  frozen totals.
 - A closed session cannot be reopened or edited; opening a new session is
   blocked while one is open.
 - Void authorization: staff voids require a manager PIN (validated against the
@@ -430,10 +455,18 @@ amounts are fully supported.
 
 Executed in-browser (Chrome, dev build) against the seeded demo data:
 
-- DB migrates to `7anouti.db.v22` from `7anouti.db.v21` and earlier keys,
+- Historical v22 browser smoke verified migration from `7anouti.db.v21` and earlier keys,
   hashing legacy credentials and retaining
   2 closed Z sessions + 1 open session per store; register nav visible for admin; staff without `register` permission
   redirected from `/admin/register`; staff with permission can access.
+- The current `7anouti.db.v24` normalizer preserves frozen Z details while
+  accepting old reports without item rows; legacy item detail is rebuilt only
+  when viewed. Browser migration QA for v24 remains pending.
+- An isolated fresh-origin browser smoke on the seeded v23 session verified
+  the live X item table and 80 mm receipt preview (68 quantity across 21
+  distinct items and four employees), the Z close dialog, saved `Z-000003`,
+  history item detail and reprint. Reprinting left the three-session history
+  unchanged. No real sales or the existing 5173-origin data were modified.
 - X report is read-only and expected cash uses physical cash movements only;
   card sales are not added to the drawer.
 - Z close: counted-cash modal shows live difference; closing freezes totals,
@@ -454,6 +487,13 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
   one is connected and otherwise falls back to the print dialog — verified
   manually with `mode: auto` on a clean profile.
 - `npm run build` passes clean (tsc + vite).
+- `npm run test:register-items` covers variant/modifier aggregation, weight
+  precision, recorded orders, void timing, two-staff scoping, drawer-total
+  exclusion, complete output and 58/80 mm line widths.
+- Still unverified in browser: creating a fresh 12+ item sale across staff,
+  Quick-mode recorded items, CSV download, 58 mm visual preview, browser print,
+  PDF-reader rendering and physical ESC/POS output. The pure tests cover
+  aggregation, long-name wrapping and 58/80 mm line widths.
 - Latest source validation: `npm run build` and `npm run lint` both exit
   successfully. Vite reports the existing large-chunk warning; Oxlint reports
   warnings, including hook-dependency and purity warnings. Real browser print,

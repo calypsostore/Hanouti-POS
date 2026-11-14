@@ -24,9 +24,13 @@ export function MobileNav() {
             : []),
           ...(user.permissions.supervisor
             ? [{ to: '/admin/staff', label: 'Team', icon: Users }]
-            : user.permissions.register
-            ? [{ to: '/admin/register', label: 'Register', icon: BarChart3 }]
-            : [{ to: '/admin/customers', label: 'Tabs', icon: Users }]),
+            : []),
+          ...(can(user, 'openShift') || can(user, 'closeShift')
+            ? [{ to: '/admin/register', label: 'Shift', icon: BarChart3 }]
+            : []),
+          ...(user.permissions.credit || user.permissions.settle
+            ? [{ to: '/admin/customers', label: 'Tabs', icon: Users }]
+            : []),
         ]
       : user.role === 'manager'
         ? [
@@ -50,8 +54,8 @@ export function MobileNav() {
             ...(can(user, 'recordPurchases')
               ? [{ to: '/admin/purchases', label: 'Purchases', icon: Truck }]
               : []),
-            ...(user.permissions.register
-              ? [{ to: '/admin/register', label: 'Register', icon: BarChart3 }]
+            ...(can(user, 'openShift') || can(user, 'closeShift')
+              ? [{ to: '/admin/register', label: 'Shift', icon: BarChart3 }]
               : []),
             ...(user.permissions.credit || user.permissions.settle
               ? [{ to: '/admin/customers', label: 'Tabs', icon: Users }]

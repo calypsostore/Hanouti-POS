@@ -5,9 +5,12 @@ import { Button } from '../../../components/ui'
 import type { PrintJob } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
 import { registerBreakdown, registerReportDetails, sessionSnapshot } from '../../../lib/reports'
+import { registerSessionItems } from '../../../lib/registerItems'
 import { buildReportLines, linesToEscpos, type ReportData } from '../../../lib/escpos'
-import type { RegisterSession } from '../../../types'
+import type { RegisterItemsReport, RegisterSession } from '../../../types'
 import { money } from '../../../lib/utils'
+import { can } from '../../../lib/permissions'
+import { openShiftForStaff } from '../../../lib/registerShifts'
 import { useApp } from '../../../store/AppStore'
 import { LiveRegister } from './LiveRegister'
 import { RegisterDialogs } from './RegisterDialogs'
@@ -30,7 +33,7 @@ export default function RegisterPage() {
   }, [])
 
   if (!user || !store) return null
-  if (user.role === 'staff' && !user.permissions.register) {
+  if (!can(user, 'openShift') && !can(user, 'closeShift')) {
     return <Navigate to="/pos" replace />
   }
 
@@ -38,22 +41,42 @@ export default function RegisterPage() {
     .filter((session) => session.storeId === store.id)
     .sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))
   const canSeeAll = user.role !== 'staff' || !!user.permissions.supervisor
-  const sessions = canSeeAll ? allSessions : allSessions.filter((session) => session.openedById === user.id)
-  const open = sessions.find((session) => session.status === 'open') ?? null
+  const sessions = canSeeAll ? allSessions : allSessions.filter((session) => (session.staffId ?? session.openedById) === user.id)
+  const open = openShiftForStaff(db, store.id, user.id) ?? null
   const anyOpen = allSessions.find((session) => session.status === 'open') ?? null
   const closed = sessions.filter((session) => session.status === 'closed')
 
-  const scopeBreakdown = (breakdown: ReturnType<typeof registerBreakdown>) =>
-    canSeeAll
-      ? breakdown
-      : {
-          byEmployee: breakdown.byEmployee.filter((employee) => employee.name === user.name),
-          byCategory: breakdown.byCategory,
-        }
-
   const nowISO = now.toISOString()
+  const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
-  const liveBreakdown = open ? scopeBreakdown(registerBreakdown(db, open, nowISO)) : null
+  const liveBreakdown = open ? registerBreakdown(db, open, nowISO, itemScope) : null
+  const itemDetailsForSession = (
+    session: RegisterSession,
+    endISO: string,
+    staffId?: string,
+  ): { report: RegisterItemsReport; rebuiltFromOrders: boolean } => {
+    const stored = session.reportDetails
+    if (
+      session.status === 'closed' &&
+      stored?.itemsSold !== undefined &&
+      stored.recordedItems !== undefined &&
+      stored.voidedItems !== undefined
+    ) {
+      return {
+        report: {
+          itemsSold: stored.itemsSold,
+          recordedItems: stored.recordedItems,
+          voidedItems: stored.voidedItems,
+        },
+        rebuiltFromOrders: false,
+      }
+    }
+    return {
+      report: registerSessionItems(db, session, endISO, staffId),
+      rebuiltFromOrders: session.status === 'closed',
+    }
+  }
+  const liveItems = open ? itemDetailsForSession(open, nowISO, itemScope).report : null
   const expected = liveSnapshot?.expectedCash ?? 0
 
   const reportData = (
@@ -63,17 +86,22 @@ export default function RegisterPage() {
     endISO: string,
   ): ReportData => {
     const generatedAt = kind === 'X' ? endISO : session.closedAt ?? endISO
+    const itemDetails = itemDetailsForSession(
+      session,
+      generatedAt,
+      kind === 'X' && !canSeeAll ? user.id : undefined,
+    )
     const details = kind === 'Z'
       ? session.reportDetails ?? null
-      : registerReportDetails(db, session, endISO)
+      : registerReportDetails(db, session, endISO, !canSeeAll ? user.id : undefined)
     return {
       kind,
       store,
       session,
       snapshot,
-      details: details && kind === 'X' && !canSeeAll
-        ? { ...details, byEmployee: details.byEmployee.filter((employee) => employee.name === user.name) }
-        : details,
+      itemsReport: itemDetails.report,
+      itemsRebuiltFromOrders: itemDetails.rebuiltFromOrders,
+      details,
       width: details?.receiptWidth ?? store.settings.printer.width,
       reportNumber: kind === 'Z'
         ? `Z-${String(session.zReportNumber).padStart(6, '0')}`
@@ -108,6 +136,8 @@ export default function RegisterPage() {
       bytes: linesToEscpos(lines, data.width),
       kind: 'report',
       width: data.width,
+      itemsReport: data.itemsReport,
+      itemsRebuiltFromOrders: data.itemsRebuiltFromOrders,
     })
   }
 
@@ -142,7 +172,7 @@ export default function RegisterPage() {
           <p className="mt-1 text-[13px] text-muted">
             {canSeeAll
               ? 'X reports any time without closing. Z closes the day and freezes the numbers.'
-              : 'Your shifts only — open the register, print your X report and close your day.'}
+              : 'Your shifts only — open your shift, print your X report and close it.'}
           </p>
         </div>
         {open ? (
@@ -157,12 +187,12 @@ export default function RegisterPage() {
                 setCloseModal(true)
               }}
             >
-              <Square className="h-4 w-4" /> Close register (Z)
+              <Square className="h-4 w-4" /> Close shift (Z)
             </Button>
           </div>
         ) : (
           <Button onClick={() => setOpenModal(true)}>
-            <Play className="h-4 w-4" /> Open register
+            <Play className="h-4 w-4" /> Open shift
           </Button>
         )}
       </div>
@@ -173,12 +203,17 @@ export default function RegisterPage() {
         canSeeAll={canSeeAll}
         liveSnapshot={liveSnapshot}
         liveBreakdown={liveBreakdown}
+        liveItems={liveItems}
         onOpen={() => setOpenModal(true)}
       />
 
       <SessionHistory
         closed={closed}
         canSeeAll={canSeeAll}
+        itemsForSession={(session) => itemDetailsForSession(
+          session,
+          session.closedAt ?? session.openedAt,
+        )}
         onPrint={(session) => printReport('Z', session)}
       />
 
@@ -186,6 +221,7 @@ export default function RegisterPage() {
         store={store}
         open={open}
         expected={expected}
+        itemsReport={open ? itemDetailsForSession(open, nowISO).report : undefined}
         openingInput={openingInput}
         onOpeningInputChange={setOpeningInput}
         openModal={openModal}

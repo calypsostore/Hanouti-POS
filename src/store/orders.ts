@@ -7,6 +7,8 @@ import { balanceFor } from '../lib/selectors'
 import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
+import { guestCountError } from '../lib/tableService'
+import { openShiftForStaff } from '../lib/registerShifts'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -29,25 +31,34 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (input.channel === 'delivery' && !target.settings.features.delivery) {
         return { ok: false, error: 'Delivery orders are disabled for this store.' }
       }
-      if (input.channel !== 'dine-in' && input.tableId) {
+      if (input.channel !== 'dine-in' && (input.tableId || input.tableName)) {
         return { ok: false, error: 'A table can only be assigned to a dine-in order.' }
       }
+      const manualTables = target.settings.tableMode === 'manual'
       const table = input.tableId
         ? current.tables.find((candidate) =>
             candidate.id === input.tableId && candidate.storeId === target.id && candidate.active,
           )
         : undefined
       if (input.tableId && !table) return { ok: false, error: 'Choose an active table from this store.' }
-      if (input.channel === 'dine-in' && target.settings.features.tables && !table) {
-        return { ok: false, error: 'Choose a table before checking out a dine-in order.' }
+      if (input.channel === 'dine-in' && target.settings.features.tables) {
+        if (manualTables) {
+          const tableName = typeof input.tableName === 'string' ? input.tableName.trim() : ''
+          if (input.tableId || !tableName || tableName.length > 60) {
+            return { ok: false, error: 'Enter a table name up to 60 characters.' }
+          }
+        } else if (!table) {
+          return { ok: false, error: 'Choose a table before checking out a dine-in order.' }
+        }
       }
-      if (input.guests !== undefined &&
-        (!Number.isSafeInteger(input.guests) || input.guests < 1 || input.guests > 50)) {
-        return { ok: false, error: 'Guests must be a whole number from 1 to 50.' }
+      if (input.channel === 'dine-in' && target.settings.features.tables) {
+        const guestsError = guestCountError(input.guests, target.settings.guestRequirement)
+        if (guestsError) return { ok: false, error: guestsError }
       }
       if (!input.items.length) return { ok: false, error: 'Cart is empty.' }
-      if (!current.registerSessions.some((session) => session.storeId === target.id && session.status === 'open')) {
-        return { ok: false, error: 'Open the register first' }
+      const shift = openShiftForStaff(current, target.id, seller.id)
+      if (target.settings.requireShiftForOrders && !shift) {
+        return { ok: false, error: 'Open your shift before taking orders.' }
       }
 
       const checkedItems: OrderItem[] = []
@@ -137,6 +148,8 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           variantName: variant?.name,
           modifiers: selected,
           note: typeof item.note === 'string' ? item.note.trim() : '',
+          addedById: seller.id,
+          addedByName: seller.name,
           saleUnit: product.soldByWeight ? product.saleUnit ?? 'piece' : undefined,
           soldByWeight: product.soldByWeight === true,
         })
@@ -178,6 +191,42 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           return { ok: false, error: `This order exceeds the customer's credit limit (${customer.limit.toFixed(3)} DT).` }
         }
       }
+      const createdAt = new Date().toISOString()
+      const tableHistory = input.channel === 'dine-in' && target.settings.features.tables
+        ? [
+            {
+              id: uid('evt'),
+              type: 'opened' as const,
+              actorId: seller.id,
+              actorName: seller.name,
+              at: createdAt,
+              details: table?.name ?? input.tableName ?? '',
+            },
+            {
+              id: uid('evt'),
+              type: 'items_added' as const,
+              actorId: seller.id,
+              actorName: seller.name,
+              at: createdAt,
+              details: `${checkedItems.length} item line${checkedItems.length === 1 ? '' : 's'}`,
+            },
+            {
+              id: uid('evt'),
+              type: 'payment' as const,
+              actorId: seller.id,
+              actorName: seller.name,
+              at: createdAt,
+              details: `${input.paymentMethod} · ${totals.total.toFixed(3)} DT`,
+            },
+            {
+              id: uid('evt'),
+              type: 'closed' as const,
+              actorId: seller.id,
+              actorName: seller.name,
+              at: createdAt,
+            },
+          ]
+        : undefined
       const order: Order = {
         id: uid('ord'),
         storeId: target.id,
@@ -191,15 +240,23 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         taxRate: target.settings.taxRate,
         channel: input.channel,
         tableId: table?.id,
-        tableName: table?.name,
-        guests: input.guests,
+        tableName: table?.name ?? (manualTables ? input.tableName?.trim() : undefined),
+        sectionId: table?.sectionId,
+        sectionName: table?.sectionId
+          ? current.sections.find((section) => section.id === table.sectionId)?.name
+          : undefined,
+        guests: target.settings.guestRequirement === 'off' ? undefined : input.guests,
         status: 'completed',
         paymentMethod: input.paymentMethod,
         customerId: input.customerId,
+        shiftId: shift?.id,
         staffId: seller.id,
         staffName: seller.name,
+        ownerStaffId: seller.id,
+        ownerStaffName: seller.name,
         note: input.note,
-        createdAt: new Date().toISOString(),
+        createdAt,
+        tableHistory,
       }
 
       commitDb((prev) => {
@@ -237,6 +294,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
                   amount: order.total,
                   orderId: order.id,
                   staffName: seller.name,
+                  shiftId: shift?.id,
                   createdAt: order.createdAt,
                 },
                 ...prev.ledger,
@@ -340,6 +398,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       const at = new Date().toISOString()
       const voidedById = authorizer.id
       const voidedByName = authorizer.name
+      const voidShift = openShiftForStaff(dbRef.current, order.storeId, latestActor.actor.id)
       commitDb((prev) => {
         const ledgerEntries: Database['ledger'] = []
         let creditRefund = 0
@@ -356,6 +415,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
               orderId: order.id,
               note: `Voided order #${order.number}`,
               staffName: voidedByName,
+              shiftId: voidShift?.id,
               createdAt: at,
             })
           }
@@ -372,6 +432,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
               note: `Customer credit from voided order #${order.number}`,
               creditAdjustment: true,
               staffName: voidedByName,
+              shiftId: voidShift?.id,
               createdAt: at,
             })
           }
@@ -380,7 +441,27 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         ...prev,
         orders: prev.orders.map((o) =>
           o.id === orderId
-            ? { ...o, status: 'void' as const, voidedById, voidedByName, voidedAt: at }
+            ? {
+                ...o,
+                status: 'void' as const,
+                voidedById,
+                voidedByName,
+                voidedAt: at,
+                voidShiftId: voidShift?.id,
+                tableHistory: o.tableHistory
+                  ? [
+                      ...o.tableHistory,
+                      {
+                        id: uid('evt'),
+                        type: 'voided' as const,
+                        actorId: latestActor.actor.id,
+                        actorName: latestActor.actor.name,
+                        at,
+                        details: reason,
+                      },
+                    ]
+                  : undefined,
+              }
             : o,
         ),
         products: prev.products.map((product) => {

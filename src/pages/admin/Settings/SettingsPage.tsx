@@ -48,6 +48,10 @@ export default function SettingsPage() {
         requireCustomerForCredit: true,
         receiptFooter: '',
         lowStockThreshold: 10,
+        tableMode: 'sections_tables',
+        guestRequirement: 'required',
+        staffPickSectionsOnShift: false,
+        requireShiftForOrders: true,
         accent: '7anouti',
         colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },
@@ -129,7 +133,7 @@ export default function SettingsPage() {
           { value: 'branding', label: 'Branding' },
           { value: 'register', label: 'Register & checkout' },
           { value: 'receipt', label: 'Receipt' },
-          ...(settings.features.tables ? [{ value: 'tables' as const, label: 'Tables' }] : []),
+          { value: 'tables' as const, label: 'Tables' },
           ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
         ]}
       />
@@ -175,7 +179,7 @@ export default function SettingsPage() {
           onTestPrint={() => setTestJob(true)}
         />
       )}
-      {tab === 'tables' && settings.features.tables && <TablesTab storeId={store.id} />}
+      {tab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
       {tab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal

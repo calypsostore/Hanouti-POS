@@ -52,6 +52,10 @@ The login screen has one-click demo buttons for the first three.
   `Cashier` (cash/card/tab + change + receipt)
 - POS with categories, search, stock awareness, notes, discounts, customer
   attachment and receipt printing
+- Table service supports section-based tables, tables-only and manual table
+  names, with required/optional/off guest counts, section/table setup, floor
+  ownership filters and table/guest/staff details on kitchen tickets. These
+  records remain browser-local demo data.
 - Orders history with filters, detail drawer, receipt reprint (`*** REPRINT ***`
   marker), CSV export and voids — staff voids require a manager PIN and record
   who authorized them
@@ -80,9 +84,17 @@ The login screen has one-click demo buttons for the first three.
 - **Cash register (X/Z)**: X report any time without closing; Z closing with
   counted cash and cash-difference; sessions are unique and become immutable
   once closed; full Z history can be viewed and re-printed exactly as closed.
+  Reports include every sold item grouped by category, variant and priced
+  modifier, with category subtotals and a served-items total. Quick-mode
+  recorded orders appear separately as unpaid; voided items name the
+  authorizer. The live X view supports item search, sorting and CSV export.
+  Plain staff see only their own item rows in X reports; supervisors and admins
+  see the full session. Legacy Z item details are rebuilt from session orders
+  on view and marked accordingly.
   Staff see only their own shifts unless they have the shift-supervisor
   permission (admins see everything)
 - Settings: store profile, tax and service charge, tab rules, low-stock alerts,
+  table mode/sections/guest-count rules,
   receipt footer, accent colour, **thermal printer setup** (58/80 mm, auto or
   manual, USB/WebSerial or browser, baud rate, kitchen tickets, test print),
   demo reset
@@ -125,10 +137,11 @@ src/
     escpos.ts              receipt / kitchen / X-Z report line models + raw ESC/POS encoder
     printer.ts             WebSerial bridge (connect, silent reconnect, chunked writes)
     reports.ts             register totals engine (X live, Z frozen snapshot)
+    registerItems.ts       session-window sold, recorded and voided item aggregation
     defaults.ts            printer defaults + permission normalizers
     ...                    money/date helpers, pricing, selectors, theme
   components/
-    ui, shell, charts, receipt, toasts
+    ui, shell, charts, receipt, toasts, RegisterItemsTable
     PrintPreview.tsx       shared print dialog (preview + ESC/POS send + browser fallback)
   pages/
     Login.tsx

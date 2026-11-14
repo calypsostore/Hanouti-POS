@@ -51,6 +51,8 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   reports: role !== 'staff',
   register: role !== 'staff',
   supervisor: role !== 'staff',
+  openShift: role !== 'super',
+  closeShift: role !== 'super',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
 
@@ -60,9 +62,11 @@ export const normalizeUser = (u: User): User => {
   const p = u.permissions ?? base
   const capability = (name: Capability) => name === 'recordPurchases'
     ? p[name] === true
-    : u.role === 'manager'
-      ? typeof p[name] === 'boolean' ? p[name] : MANAGER_DEFAULT_PERMISSIONS[name]
-      : false
+    : name === 'openShift' || name === 'closeShift'
+      ? typeof p[name] === 'boolean' ? p[name] : base[name]
+      : u.role === 'manager'
+        ? typeof p[name] === 'boolean' ? p[name] : MANAGER_DEFAULT_PERMISSIONS[name]
+        : false
   const enteredUsername = typeof u.username === 'string' ? normalizeUsername(u.username) : ''
   const emailName = u.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '-') ?? ''
   const fallbackName = `user-${u.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 19)}`
@@ -100,6 +104,10 @@ export const normalizeUser = (u: User): User => {
       manageStaff: capability('manageStaff'),
       manageSettings: capability('manageSettings'),
       managePayroll: capability('managePayroll'),
+      manageTables: capability('manageTables'),
+      manageSections: capability('manageSections'),
+      openShift: capability('openShift'),
+      closeShift: capability('closeShift'),
     },
   }
 }

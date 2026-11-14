@@ -8,13 +8,15 @@ import { QuickActionTile } from '../../../components/dashboard/QuickActionTile'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
 import { AdminHeader } from './AdminHeader'
 import { ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
+import { openShiftForStaff } from '../../../lib/registerShifts'
+import { can } from '../../../lib/permissions'
 
 export default function StaffDashboard() {
   const { db, store, user } = useApp()
   const [now] = useState(() => new Date())
   const data = useMemo(() => store && user ? getStaffDashboardData(db, store.id, user.id, now) : null, [db, now, store, user])
   if (!store || !user || !data) return null
-  const openRegister = db.registerSessions.some((session) => session.storeId === store.id && session.status === 'open')
+  const openRegister = !!openShiftForStaff(db, store.id, user.id)
   const canSeeMoney = canViewFinancials(user)
   const tableOccupancy = getTableOccupancy(db, store.id)
   return (
@@ -23,9 +25,9 @@ export default function StaffDashboard() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
         <GradientKpiCard icon={ReceiptText} tone="blue" label="Your orders today" value={data.count} caption={`${data.items} items sold`} sparkline={Array.from({ length: 24 }, (_, hour) => data.orders.filter((order) => new Date(order.createdAt).getHours() === hour).length)} />
         {canSeeMoney && <GradientKpiCard icon={Wallet} tone="green" label="Your sales today" value={money(data.total)} caption="Completed orders only" />}
-        <GradientKpiCard icon={ShoppingBag} tone="amber" label="Register status" value={openRegister ? 'Open' : 'Closed'} caption={user.permissions.register ? 'Your store register' : 'Ask a manager about register access'} />
+        <GradientKpiCard icon={ShoppingBag} tone="amber" label="Shift status" value={openRegister ? 'Open' : 'Closed'} caption={can(user, 'openShift') ? 'Your personal shift' : 'Ask a manager about shift access'} />
       </div>
-      {!user.permissions.register && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Shift tracking is not available in this demo.</div>}
+      {!can(user, 'openShift') && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Ask a manager to enable shift access.</div>}
       <SectionCard icon={ShoppingBag} tone="amber" title="Quick actions" subtitle="Pick up where you left off" bodyClassName="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-5">
         <QuickActionTile icon={ShoppingBag} tone="amber" label="New order" href="/pos" />
         {store.settings.features.tables && (
@@ -38,6 +40,7 @@ export default function StaffDashboard() {
           />
         )}
         <QuickActionTile icon={ReceiptText} tone="blue" label="My orders" href="/admin/orders?mine=true" />
+        {can(user, 'openShift') && <QuickActionTile icon={Wallet} tone="green" label={openRegister ? 'My shift' : 'Open shift'} href="/admin/register" />}
         {user.permissions.settle && <QuickActionTile icon={Users} tone="teal" label="Collect tab" href="/admin/customers" />}
       </SectionCard>
       <SectionCard icon={ReceiptText} tone="blue" title="Your recent orders" subtitle="Latest transactions" bodyClassName="px-4 pb-4 sm:px-5">

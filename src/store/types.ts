@@ -1,7 +1,7 @@
 import type {
   AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
   Order, OrderChannel, OrderItem, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
-  Store, StoreSettings, StoreStatus, User,
+  Store, StoreSettings, StoreStatus, TableSection, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -14,6 +14,7 @@ export interface CreateOrderInput {
   items: OrderItem[]
   channel: OrderChannel
   tableId?: string
+  tableName?: string
   guests?: number
   paymentMethod: PaymentMethod
   customerId?: string
@@ -102,7 +103,15 @@ export interface ShiftInput {
 export interface DiningTableInput {
   name: string
   seats: number
-  zone?: string
+  sectionId?: string
+  active?: boolean
+  sort?: number
+}
+
+export interface TableSectionInput {
+  name: string
+  color: TableSection['color']
+  icon: TableSection['icon']
   active?: boolean
   sort?: number
 }
@@ -139,10 +148,13 @@ export interface AppContextValue {
   loginPin: (username: string, pin: string) => Promise<Result>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
-  addTable: (storeId: string, data: Pick<DiningTableInput, 'name' | 'seats' | 'zone'>) => Result
+  addTable: (storeId: string, data: Pick<DiningTableInput, 'name' | 'seats' | 'sectionId'>) => Result
   updateTable: (id: string, patch: Partial<DiningTableInput>) => Result
   deleteTable: (id: string) => Result
-  openTableOrder: (storeId: string, tableId: string, guests?: number) => OpenOrderActionResult
+  addSection: (storeId: string, data: TableSectionInput) => Result
+  updateSection: (id: string, patch: Partial<TableSectionInput>) => Result
+  deleteSection: (id: string) => Result
+  openTableOrder: (storeId: string, tableId: string | undefined, guests?: number, tableName?: string) => OpenOrderActionResult
   recordOpenOrder: (orderId: string) => RecordedOrderResult
   addItemsToOpenOrder: (
     orderId: string,

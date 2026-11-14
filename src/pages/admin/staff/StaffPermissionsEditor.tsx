@@ -13,6 +13,8 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'manageStaff', label: 'Manage staff', description: 'Edit staff access, details, and permissions.' },
   { key: 'manageSettings', label: 'Manage store settings', description: 'Edit store settings and dining tables.' },
   { key: 'managePayroll', label: 'Manage payroll', description: 'Edit attendance, advances, and payroll.' },
+  { key: 'openShift', label: 'Open shifts', description: 'Start a personal cash-register shift.' },
+  { key: 'closeShift', label: 'Close shifts', description: 'Close personal shifts and print Z reports.' },
 ]
 
 export default function StaffPermissionsEditor({
@@ -38,6 +40,12 @@ export default function StaffPermissionsEditor({
         <Toggle checked={permissions.settle} onChange={(value) => toggle('settle', value)} label="Take customer payments" description="Can settle tab balances." />
         <Toggle checked={permissions.reports} onChange={(value) => toggle('reports', value)} label="Show financial summaries" description="Displays financial totals; it does not grant access to the Reports page." />
         <Toggle checked={permissions.register} onChange={(value) => toggle('register', value)} label="Open and close the register" description="Can open sessions, print X reports, and close with a Z report." />
+        {role === 'staff' && (
+          <>
+            <Toggle checked={permissions.openShift === true} onChange={(value) => toggle('openShift', value)} label="Open own shift" description="Start a personal shift before taking orders." />
+            <Toggle checked={permissions.closeShift === true} onChange={(value) => toggle('closeShift', value)} label="Close own shift" description="Close personal shifts and print a Z report." />
+          </>
+        )}
         <Toggle checked={permissions.supervisor} onChange={(value) => toggle('supervisor', value)} label="Shift supervisor" description="Can view team sales and register sessions and close another user's session." />
         {role === 'staff' && (
           <Toggle

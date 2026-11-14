@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Loader2, X } from 'lucide-react'
 import { cn, initials } from '../lib/utils'
 
@@ -316,7 +317,7 @@ export function Modal({
   if (!open) return null
   const widths = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-5xl' }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
       <div
         className="absolute inset-0 bg-espresso-900/45 backdrop-blur-[3px] animate-[fadeIn_.15s_ease-out]"
@@ -349,7 +350,8 @@ export function Modal({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
         {footer && <div className="glass-subtle border-t border-line/70 px-5 py-4 sm:px-6">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

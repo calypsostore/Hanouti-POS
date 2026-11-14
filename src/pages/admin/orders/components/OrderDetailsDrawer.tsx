@@ -2,7 +2,7 @@ import { Printer, ShieldAlert, Trash2, UserRound } from 'lucide-react'
 import type { Order, Store } from '../../../../types'
 import { Badge, Button, Drawer } from '../../../../components/ui'
 import { ReceiptView } from '../../../../components/ReceiptView'
-import { fmtDate, fmtTime, money } from '../../../../lib/utils'
+import { fmtDate, fmtTime, fmtDateTime, money } from '../../../../lib/utils'
 import { round } from '../../../../lib/pricing-utils'
 import { PaymentBadge } from './OrderPrimitives'
 
@@ -62,6 +62,8 @@ export default function OrderDetailsDrawer({
             </Badge>
             <Badge tone="neutral">{order.channel.replace('-', ' ')}</Badge>
             {order.tableName && <Badge tone="accent">{order.tableName}{order.guests ? ` · ${order.guests} guests` : ''}</Badge>}
+            {order.sectionName && <Badge tone="neutral">{order.sectionName}</Badge>}
+            {order.tableName && order.ownerStaffName && <Badge tone="neutral">Opened by {order.ownerStaffName}</Badge>}
             {order.customerId && (
               <Badge tone="accent">
                 <UserRound className="h-3 w-3" />
@@ -93,6 +95,7 @@ export default function OrderDetailsDrawer({
                     </div>
                     {item.variantName && <div className="text-[10px] text-muted">{item.variantName}</div>}
                     {!!item.modifiers?.length && <div className="text-[10px] text-muted">{item.modifiers.map((modifier) => modifier.optionName).join(', ')}</div>}
+                    {item.addedByName && <div className="text-[10px] text-muted">Added by {item.addedByName}</div>}
                     {item.note && <div className="text-[10px] italic text-muted">{item.note}</div>}
                   </div>
                   <span className="text-[12.5px] font-semibold tabular">
@@ -133,7 +136,7 @@ export default function OrderDetailsDrawer({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-line bg-white p-3">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted">Served by</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{order.tableName ? 'Closed by' : 'Served by'}</div>
               <div className="mt-1 text-[12.5px] font-semibold">{order.staffName}</div>
             </div>
             <div className="rounded-xl border border-line bg-white p-3">
@@ -151,6 +154,24 @@ export default function OrderDetailsDrawer({
               </div>
             </div>
           </div>
+
+          {!!order.tableHistory?.length && (
+            <section className="rounded-2xl border border-line bg-white p-4">
+              <h3 className="text-[12px] font-bold text-ink">Table history</h3>
+              <ol className="mt-3 space-y-3">
+                {order.tableHistory.map((event) => (
+                  <li key={event.id} className="flex items-start gap-2.5 text-[11px]">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold capitalize text-ink">{event.type.replaceAll('_', ' ')}</div>
+                      <div className="text-muted">{event.actorName} · {fmtDateTime(event.at)}</div>
+                      {event.details && <div className="mt-0.5 text-muted">{event.details}</div>}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
 
           {order.note && (
             <div className="rounded-xl bg-brand-amber-soft px-3.5 py-2.5 text-[12px] text-brand-navy">

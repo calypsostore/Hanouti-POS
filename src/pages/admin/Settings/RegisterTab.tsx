@@ -73,6 +73,23 @@ export default function RegisterTab({
         </Card>
 
         <Card className="p-5">
+          <h3 className="text-[15px] font-semibold tracking-tight">Staff shifts</h3>
+          <p className="mt-0.5 text-[12px] text-muted">
+            Each person has an independent shift and cash report.
+          </p>
+          <div className="mt-3.5">
+            <Toggle
+              checked={settings.requireShiftForOrders}
+              onChange={(value) => set('requireShiftForOrders', value)}
+              label="Require an open shift to take orders"
+              description={settings.posMode === 'quick'
+                ? 'Optional in Quick mode; Quick mode does not calculate expected cash.'
+                : 'Cashier mode requires staff to open their own shift before taking orders.'}
+            />
+          </div>
+        </Card>
+
+        <Card className="p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Totals & tax</h3>
           <div className="mt-4 grid gap-3.5 sm:grid-cols-2">
             <Field label="Tax rate (%)" hint="0 for no tax">

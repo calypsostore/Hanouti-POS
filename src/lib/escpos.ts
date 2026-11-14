@@ -4,13 +4,19 @@ import type {
   OrderItem,
   PrinterWidth,
   RegisterReportDetails,
+  RegisterItemsReport,
   RegisterSession,
   RegisterSnapshot,
   Store,
 } from '../types'
-import { fmtDate, fmtDateTime, fmtTime } from './utils'
-import { round } from './pricing-utils'
-import { BRAND_NAME } from './brand'
+import { fmtDate, fmtDateTime, fmtTime } from './utils.ts'
+import { round } from './pricing-utils.ts'
+import { BRAND_NAME } from './brand.ts'
+import {
+  formatRegisterItemQuantity,
+  groupRegisterItemRows,
+  summarizeRegisterItems,
+} from './registerItems.ts'
 
 /**
  * ESC/POS receipt builder.
@@ -189,7 +195,7 @@ export const buildReceiptLines = (
 
 /* ----------------------------- kitchen tickets ---------------------------- */
 
-type KitchenOrder = Pick<Order, 'createdAt' | 'channel' | 'items' | 'note' | 'tableName' | 'staffName'>
+type KitchenOrder = Pick<Order, 'createdAt' | 'channel' | 'items' | 'note' | 'tableName' | 'sectionName' | 'guests' | 'staffName'>
 
 const kitchenLines = (
   order: KitchenOrder,
@@ -201,6 +207,8 @@ const kitchenLines = (
   const lines: ReceiptLine[] = []
   lines.push({ text: 'KITCHEN', align: 'center', bold: true, size: 'double' })
   if (order.tableName) lines.push({ text: order.tableName.toUpperCase(), align: 'center', bold: true, size: 'double' })
+  if (order.sectionName) lines.push({ text: `SECTION: ${order.sectionName}`, align: 'center', bold: true })
+  if (order.guests !== undefined) lines.push({ text: `GUESTS: ${order.guests}`, align: 'center' })
   lines.push({
     text: twoCol(reference, fmtTime(order.createdAt), cols),
     bold: true,
@@ -240,6 +248,8 @@ export interface ReportData {
   session: RegisterSession
   snapshot: RegisterSnapshot
   details: RegisterReportDetails | null
+  itemsReport: RegisterItemsReport
+  itemsRebuiltFromOrders?: boolean
   reportNumber: string
   width: PrinterWidth
   generatedAt: string
@@ -248,6 +258,90 @@ export interface ReportData {
 
 const reportRows = (rows: Array<[string, string]>, cols: number): ReceiptLine[] =>
   rows.map(([label, value]) => ({ text: twoCol(label, value, cols) }))
+
+const wrapReceiptText = (text: string, width: number): string[] => {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const wordLength = Array.from(word).length
+    const lineLength = Array.from(line).length
+    if (line && lineLength + 1 + wordLength > width) {
+      lines.push(line)
+      line = ''
+    }
+    let remaining = Array.from(word)
+    while (remaining.length > width) {
+      lines.push(`${remaining.splice(0, width - 1).join('')}-`)
+    }
+    const remainder = remaining.join('')
+    line += `${line ? ' ' : ''}${remainder}`
+  }
+  if (line || lines.length === 0) lines.push(line)
+  return lines
+}
+
+const wrapReceiptRow = (label: string, total: string, cols: number): ReceiptLine[] => {
+  const firstWidth = Math.max(1, cols - Array.from(total).length - 1)
+  const words = label.split(/\s+/).filter(Boolean)
+  let first = ''
+  while (words.length) {
+    const next = words[0]
+    const candidate = `${first ? `${first} ` : ''}${next}`
+    if (Array.from(candidate).length > firstWidth) break
+    first = candidate
+    words.shift()
+  }
+  const lines: ReceiptLine[] = [{ text: twoCol(first, total, cols) }]
+  if (words.length) {
+    lines.push(...wrapReceiptText(words.join(' '), cols - 2).map((text) => ({ text: `  ${text}` })))
+  }
+  return lines
+}
+
+const qtyForRows = (qty: number, weighted: boolean) =>
+  weighted ? qty.toFixed(3) : String(Math.round(qty))
+
+const itemReceiptLines = (
+  items: RegisterItemsReport['itemsSold'],
+  title: string,
+  cols: number,
+  voided = false,
+): ReceiptLine[] => {
+  const lines: ReceiptLine[] = [
+    { text: divider(cols) },
+    { text: title, bold: true },
+  ]
+  const groups = groupRegisterItemRows(items)
+  if (!groups.length) {
+    lines.push({ text: 'No items' })
+    lines.push({ text: '0 qty · 0 distinct', bold: true })
+    if (!voided) lines.push({ text: twoCol('Section total', amount(0), cols), bold: true })
+    return lines
+  }
+  for (const group of groups) {
+    lines.push(...wrapReceiptText(group.category, cols).map((text) => ({ text, bold: true })))
+    for (const item of group.items) {
+      const qty = formatRegisterItemQuantity(item)
+      const unit = item.soldByWeight && item.saleUnit ? ` ${item.saleUnit}` : ''
+      const unitPrice = voided || item.unitPrice === null
+        ? ''
+        : ` @ ${amount(item.unitPrice)}${item.soldByWeight && item.saleUnit ? `/${item.saleUnit}` : ' ea'}`
+      const voider = voided && 'voidedByName' in item ? ` · voided by ${item.voidedByName}` : ''
+      const label = `${qty}${unit} x ${item.name}${unitPrice}${voider}`
+      if (voided) {
+        lines.push(...wrapReceiptText(label, cols).map((text) => ({ text })))
+        continue
+      }
+      lines.push(...wrapReceiptRow(label, amount(item.total), cols))
+    }
+    if (!voided) lines.push({ text: twoCol('Category subtotal', amount(group.total), cols), bold: true })
+  }
+  const summary = summarizeRegisterItems([items])
+  const weighted = items.some((item) => item.soldByWeight)
+  lines.push({ text: `${qtyForRows(summary.qty, weighted)} qty · ${summary.distinctItems} distinct`, bold: true })
+  if (!voided) lines.push({ text: twoCol('Section total', amount(summary.total), cols), bold: true })
+  return lines
+}
 
 export const buildReportLines = (data: ReportData): ReceiptLine[] => {
   const cols = columnsFor(data.width)
@@ -268,6 +362,7 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
         ? `-${reportAmount(Math.abs(data.session.difference))}`
         : reportAmount(0)
   const lines: ReceiptLine[] = []
+  const servedSummary = summarizeRegisterItems([data.itemsReport.itemsSold, data.itemsReport.recordedItems])
 
   lines.push({ text: details?.storeName ?? data.store.name, align: 'center', bold: true })
   const address = details?.storeAddress ?? data.store.address
@@ -311,6 +406,16 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
       cols,
     ),
   )
+  lines.push({ text: divider(cols) })
+  lines.push(...itemReceiptLines(data.itemsReport.itemsSold, 'ITEMS SOLD', cols))
+  lines.push(...itemReceiptLines(data.itemsReport.recordedItems, 'RECORDED (NO PAYMENT)', cols))
+  lines.push({ text: 'ITEMS SERVED TOTAL', bold: true })
+  lines.push({
+    text: `${qtyForRows(servedSummary.qty, [...data.itemsReport.itemsSold, ...data.itemsReport.recordedItems].some((item) => item.soldByWeight))} qty · ${servedSummary.distinctItems} distinct`,
+    bold: true,
+  })
+  lines.push(...itemReceiptLines(data.itemsReport.voidedItems, 'VOIDED ITEMS', cols, true))
+  if (data.itemsRebuiltFromOrders) lines.push({ text: 'Item detail rebuilt from orders' })
   lines.push({ text: divider(cols) })
   lines.push({ text: 'TAX & SERVICE', bold: true })
   if (details?.taxBreakdown.length) {
@@ -367,7 +472,6 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
       lines.push({ text: twoCol(`#${order.number} ${order.paymentMethod}`, reportAmount(order.total), cols) })
       if (order.reason) lines.push({ text: `  Reason: ${order.reason}` })
       if (order.paymentMethod === 'card') lines.push({ text: '  Card refund status not recorded' })
-      for (const item of order.items) lines.push({ text: `  ${item}` })
     }
   } else {
     lines.push({ text: 'No voided orders in this session' })
@@ -396,13 +500,6 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
     lines.push({ text: 'BY CATEGORY', bold: true })
     for (const category of details.byCategory) {
       lines.push({ text: twoCol(`${category.name} (${category.qty})`, reportAmount(category.total), cols) })
-    }
-  }
-  if (details?.topProducts.length) {
-    lines.push({ text: divider(cols) })
-    lines.push({ text: 'TOP-SELLING PRODUCTS', bold: true })
-    for (const product of details.topProducts) {
-      lines.push({ text: twoCol(`${product.name} (${product.qty})`, reportAmount(product.total), cols) })
     }
   }
   if (data.kind === 'Z') {

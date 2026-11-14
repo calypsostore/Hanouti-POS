@@ -93,13 +93,13 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
 
       {!registerOpen && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-brand-amber/40 bg-brand-amber-soft px-4 py-2.5 text-[12.5px] text-brand-navy sm:px-5">
-          <span>{canOpenRegister ? 'Open the register before taking orders.' : 'The register is closed. Ask a manager to open it before taking orders.'}</span>
+          <span>{canOpenRegister ? 'Open your shift before taking orders.' : 'Your shift is closed. Ask a manager to open one if you need access.'}</span>
           {canOpenRegister && (
             <Link
               to="/admin/register"
               className="shrink-0 rounded-lg bg-brand-amber px-3 py-1.5 font-semibold text-brand-navy hover:bg-brand-amber-hover"
             >
-              Open register
+              Open shift
             </Link>
           )}
         </div>

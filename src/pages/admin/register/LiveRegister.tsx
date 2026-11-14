@@ -16,7 +16,8 @@ import {
 import { Badge, Button, Card, EmptyState } from '../../../components/ui'
 import { money, fmtDateTime } from '../../../lib/utils'
 import { registerBreakdown, sessionSnapshot } from '../../../lib/reports'
-import type { RegisterSession } from '../../../types'
+import type { RegisterItemsReport, RegisterSession } from '../../../types'
+import { RegisterItemsTable } from '../../../components/RegisterItemsTable'
 import { Tile } from './RegisterParts'
 
 type Snapshot = NonNullable<ReturnType<typeof sessionSnapshot>>
@@ -28,6 +29,7 @@ export function LiveRegister({
   canSeeAll,
   liveSnapshot,
   liveBreakdown,
+  liveItems,
   onOpen,
 }: {
   open: RegisterSession | null
@@ -35,6 +37,7 @@ export function LiveRegister({
   canSeeAll: boolean
   liveSnapshot: Snapshot | null
   liveBreakdown: Breakdown | null
+  liveItems: RegisterItemsReport | null
   onOpen: () => void
 }) {
   if (!open || !liveSnapshot) {
@@ -46,7 +49,7 @@ export function LiveRegister({
               <Info className="h-4 w-4" />
             </div>
             <p className="text-[12.5px] leading-relaxed text-muted">
-              A register session is currently open by{' '}
+              Another staff member also has an open shift: {' '}
               <span className="font-semibold text-ink">{anyOpen.openedByName}</span>. You only see the
               sessions you open yourself. Your manager can make you a shift supervisor to see the
               whole team.
@@ -56,11 +59,11 @@ export function LiveRegister({
         <Card>
           <EmptyState
             icon={<Lock className="h-5 w-5" />}
-            title="Register is closed"
-            description="Open a session with the cash in the drawer before the first sale of the day."
+            title="Your shift is closed"
+            description="Open your own shift before taking orders."
             action={
               <Button size="sm" onClick={onOpen}>
-                <Play className="h-4 w-4" /> Open register
+                <Play className="h-4 w-4" /> Open shift
               </Button>
             }
           />
@@ -78,7 +81,7 @@ export function LiveRegister({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[13.5px] font-bold text-ink">Register open</span>
+              <span className="text-[13.5px] font-bold text-ink">Shift open</span>
               <Badge tone="success">Live</Badge>
             </div>
             <div className="text-[11.5px] text-muted">
@@ -115,6 +118,14 @@ export function LiveRegister({
         />
         <Tile label="Cash refunds" value={money(liveSnapshot.cashRefunds)} icon={<TrendingDown className="h-4 w-4" />} />
       </div>
+
+      {liveItems && (
+        <RegisterItemsTable
+          report={liveItems}
+          title="Items sold today"
+          interactive
+        />
+      )}
 
       {liveBreakdown && (liveBreakdown.byEmployee.length > 0 || liveBreakdown.byCategory.length > 0) && (
         <div className="grid gap-3 lg:grid-cols-2">

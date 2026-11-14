@@ -2,8 +2,9 @@ import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
-  ProductVariant, Purchase, PurchasePayment, RegisterReportDetails, RegisterSession, SaleUnit, Shift, StockMovement,
-  Store, StoreSettings, Supplier, User,
+  ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
+  SaleUnit, Shift, StockMovement,
+  Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
@@ -14,10 +15,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v22'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v25'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -60,6 +61,32 @@ const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const isPaymentMethod = (value: unknown): value is PaymentMethod =>
   value === 'cash' || value === 'card' || value === 'credit' || value === 'unpaid'
+const normalizeRegisterItem = (value: unknown): RegisterItemRow | undefined => {
+  if (
+    !isRecord(value) ||
+    typeof value.key !== 'string' ||
+    typeof value.productId !== 'string' ||
+    typeof value.category !== 'string' ||
+    typeof value.name !== 'string' ||
+    !isFiniteNumber(value.qty) || value.qty <= 0 ||
+    typeof value.soldByWeight !== 'boolean' ||
+    (value.saleUnit !== undefined && !isSaleUnit(value.saleUnit)) ||
+    (value.unitPrice !== null && (!isFiniteNumber(value.unitPrice) || value.unitPrice < 0)) ||
+    !isFiniteNumber(value.total) || value.total < 0
+  ) return undefined
+  return {
+    key: value.key,
+    productId: value.productId,
+    variantId: typeof value.variantId === 'string' ? value.variantId : undefined,
+    category: value.category,
+    name: value.name,
+    qty: value.qty,
+    soldByWeight: value.soldByWeight,
+    saleUnit: value.saleUnit,
+    unitPrice: value.unitPrice,
+    total: value.total,
+  }
+}
 const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefined => {
   if (!isRecord(value)) return undefined
   const isAmount = (candidate: unknown): candidate is number =>
@@ -89,14 +116,25 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
           : [],
       )
     : null
-  const topProducts = Array.isArray(value.topProducts)
-    ? value.topProducts.flatMap((row) =>
-        isRecord(row) && typeof row.name === 'string' &&
-        isAmount(row.qty) && isAmount(row.total)
-          ? [{ name: row.name.slice(0, 100), qty: row.qty, total: row.total }]
-          : [],
-      )
-    : null
+  const itemsSold = Array.isArray(value.itemsSold)
+    ? value.itemsSold.flatMap((row) => {
+        const item = normalizeRegisterItem(row)
+        return item ? [item] : []
+      })
+    : undefined
+  const recordedItems = Array.isArray(value.recordedItems)
+    ? value.recordedItems.flatMap((row) => {
+        const item = normalizeRegisterItem(row)
+        return item ? [item] : []
+      })
+    : undefined
+  const voidedItems = Array.isArray(value.voidedItems)
+    ? value.voidedItems.flatMap((row) => {
+        if (!isRecord(row) || typeof row.voidedByName !== 'string') return []
+        const item = normalizeRegisterItem(row)
+        return item ? [{ ...item, voidedByName: row.voidedByName }] : []
+      })
+    : undefined
   const voidedOrders = Array.isArray(value.voidedOrders)
     ? value.voidedOrders.flatMap((row) =>
         isRecord(row) && Number.isSafeInteger(row.number) && isAmount(row.total) &&
@@ -135,7 +173,7 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
     !Number.isSafeInteger(value.totalTransactions) || Number(value.totalTransactions) < 0 ||
     !isAmount(value.storeCreditRefunds) || !isAmount(value.cashReceived) ||
     !isAmount(value.cashExpenses) || !isAmount(value.supplierCashPayments) ||
-    !taxBreakdown || !byEmployee || !byCategory || !topProducts || !voidedOrders || !cancelledItems
+    !taxBreakdown || !byEmployee || !byCategory || !voidedOrders || !cancelledItems
   ) return undefined
   return {
     storeName: value.storeName.slice(0, 100),
@@ -154,11 +192,34 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
     taxBreakdown,
     byEmployee,
     byCategory,
-    topProducts,
+    itemsSold,
+    recordedItems,
+    voidedItems,
     voidedOrders,
     cancelledItems,
   }
 }
+const normalizeTableHistory = (value: unknown): TableOrderEvent[] =>
+  Array.isArray(value)
+    ? value.slice(-10_000).flatMap((event) =>
+        isRecord(event) &&
+        typeof event.id === 'string' &&
+        ['opened', 'items_added', 'items_removed', 'guests_changed', 'moved', 'merged', 'transferred', 'payment', 'closed', 'voided'].includes(String(event.type)) &&
+        typeof event.actorId === 'string' &&
+        typeof event.actorName === 'string' &&
+        typeof event.at === 'string' &&
+        Number.isFinite(Date.parse(event.at))
+          ? [{
+              id: event.id,
+              type: event.type as TableOrderEvent['type'],
+              actorId: event.actorId,
+              actorName: event.actorName.slice(0, 100),
+              at: event.at,
+              details: typeof event.details === 'string' ? event.details.slice(0, 240) : undefined,
+            }]
+          : [],
+      )
+    : []
 const auditActions: AuditAction[] = [
   'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
   'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
@@ -298,6 +359,18 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             : true,
           receiptFooter: typeof s.settings.receiptFooter === 'string' ? s.settings.receiptFooter : '',
           lowStockThreshold: isFiniteNumber(s.settings.lowStockThreshold) ? s.settings.lowStockThreshold : 10,
+          tableMode: s.settings.tableMode === 'tables_only'
+            ? 'tables_only' as const
+            : s.settings.tableMode === 'manual'
+              ? 'manual' as const
+              : 'sections_tables' as const,
+          guestRequirement: s.settings.guestRequirement === 'optional' || s.settings.guestRequirement === 'off'
+            ? s.settings.guestRequirement as 'optional' | 'off'
+            : 'required' as const,
+          staffPickSectionsOnShift: s.settings.staffPickSectionsOnShift === true,
+          requireShiftForOrders: typeof s.settings.requireShiftForOrders === 'boolean'
+            ? s.settings.requireShiftForOrders
+            : s.settings.posMode !== 'quick',
           accent: isAccentPalette(s.settings.accent) ? s.settings.accent : '7anouti',
           colorMode: s.settings.colorMode === 'dark' ? 'dark' as const : 'light' as const,
           printer: normalizePrinter(
@@ -369,9 +442,14 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     taxRate: isFiniteNumber(order.taxRate) && order.taxRate >= 0 ? order.taxRate : undefined,
     tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
     tableName: typeof order.tableName === 'string' ? order.tableName : undefined,
+    sectionId: typeof order.sectionId === 'string' ? order.sectionId : undefined,
+    sectionName: typeof order.sectionName === 'string' ? order.sectionName.slice(0, 60) : undefined,
     guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
       ? Number(order.guests)
       : undefined,
+    tableHistory: normalizeTableHistory(order.tableHistory),
+    ownerStaffId: typeof order.ownerStaffId === 'string' ? order.ownerStaffId : order.staffId,
+    ownerStaffName: typeof order.ownerStaffName === 'string' ? order.ownerStaffName.slice(0, 100) : order.staffName,
     items: order.items.filter((item) =>
       isRecord(item) && typeof item.productId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) &&
@@ -379,6 +457,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     ).map((item, index) => ({
       ...withoutLegacyEmoji(item),
       lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
+      addedById: typeof item.addedById === 'string' ? item.addedById : order.staffId,
+      addedByName: typeof item.addedByName === 'string' ? item.addedByName : order.staffName,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note : '',
       variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
@@ -387,16 +467,60 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       soldByWeight: item.soldByWeight === true,
     })),
   }))
-  const tables = collection<DiningTable>('tables', (item): item is DiningTable =>
+  const rawTables = collection<DiningTable & { zone?: unknown }>('tables', (item): item is DiningTable & { zone?: unknown } =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
     item.name.trim().length > 0 && isFiniteNumber(item.seats) &&
     Number.isSafeInteger(item.seats) && item.seats >= 1 && item.seats <= 50 &&
     typeof item.active === 'boolean' && isFiniteNumber(item.sort),
-  ).map((table) => ({
-    ...table,
-    name: table.name.trim().slice(0, 60),
-    zone: typeof table.zone === 'string' ? table.zone.trim().slice(0, 60) || undefined : undefined,
-  })).filter((table, index, list) =>
+  )
+  const sections = collection<TableSection>('sections', (item): item is TableSection =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    typeof item.active === 'boolean' && isFiniteNumber(item.sort),
+  ).map((section) => ({
+    ...section,
+    name: section.name.trim().slice(0, 60),
+    color: isIconColor(section.color) ? section.color : 'amber',
+    icon: isIconName(section.icon) ? section.icon : 'Utensils',
+  })).filter((section) =>
+    stores.some((store) => store.id === section.storeId) && section.name.length > 0,
+  )
+  const sectionByLegacyName = new Map<string, TableSection>()
+  for (const section of sections) {
+    sectionByLegacyName.set(`${section.storeId}:${section.name.toLowerCase()}`, section)
+  }
+  const migratedSections: TableSection[] = []
+  for (const table of rawTables) {
+    const zone = typeof table.zone === 'string' ? table.zone.trim().slice(0, 60) : ''
+    if (table.sectionId || !zone || !stores.some((store) => store.id === table.storeId)) continue
+    const key = `${table.storeId}:${zone.toLowerCase()}`
+    if (sectionByLegacyName.has(key)) continue
+    const section: TableSection = {
+      id: `sec_migrated_${table.storeId}_${migratedSections.length + 1}`,
+      storeId: table.storeId,
+      name: zone,
+      color: migratedSections.length % 2 === 0 ? 'blue' : 'amber',
+      icon: 'Utensils',
+      sort: migratedSections.filter((item) => item.storeId === table.storeId).length,
+      active: true,
+    }
+    migratedSections.push(section)
+    sectionByLegacyName.set(key, section)
+  }
+  const allSections = [...sections, ...migratedSections]
+  const tables = rawTables.map((table) => {
+    const { zone, ...withoutZone } = table
+    const legacySection = typeof zone === 'string'
+      ? sectionByLegacyName.get(`${table.storeId}:${zone.trim().toLowerCase()}`)
+      : undefined
+    const assignedSection = typeof table.sectionId === 'string'
+      ? allSections.find((section) => section.id === table.sectionId && section.storeId === table.storeId)
+      : legacySection
+    return {
+      ...withoutZone,
+      name: table.name.trim().slice(0, 60),
+      sectionId: assignedSection?.id,
+    }
+  }).filter((table, index, list) =>
     stores.some((store) => store.id === table.storeId) &&
     list.findIndex((other) =>
       other.id === table.id ||
@@ -531,7 +655,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
   )
   const usedOpenTables = new Set<string>()
   const openOrders = collection<OpenOrder>('openOrders', (item): item is OpenOrder =>
-    hasId(item) && typeof item.storeId === 'string' && typeof item.tableId === 'string' &&
+    hasId(item) && typeof item.storeId === 'string' &&
+    (item.tableId === undefined || typeof item.tableId === 'string') &&
     typeof item.tableName === 'string' && Array.isArray(item.items) &&
     isFiniteNumber(item.subtotal) && isFiniteNumber(item.tax) && isFiniteNumber(item.service) &&
     isFiniteNumber(item.discount) && isFiniteNumber(item.total) &&
@@ -541,10 +666,15 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt)),
   ).map((order) => ({
     ...order,
+    tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
+    shiftId: typeof order.shiftId === 'string' ? order.shiftId : undefined,
+    sectionId: typeof order.sectionId === 'string' ? order.sectionId : undefined,
+    sectionName: typeof order.sectionName === 'string' ? order.sectionName.slice(0, 60) : undefined,
     guests: Number.isSafeInteger(order.guests) && Number(order.guests) >= 1 && Number(order.guests) <= 50
       ? Number(order.guests)
       : undefined,
     recordedOrderId: typeof order.recordedOrderId === 'string' ? order.recordedOrderId : undefined,
+    tableHistory: normalizeTableHistory(order.tableHistory),
     note: typeof order.note === 'string' ? order.note.slice(0, 500) : undefined,
     items: order.items.filter((item) =>
       isRecord(item) && typeof item.productId === 'string' && typeof item.name === 'string' &&
@@ -552,6 +682,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     ).map((item, index) => ({
       ...withoutLegacyEmoji(item),
       lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
+      addedById: typeof item.addedById === 'string' ? item.addedById : order.staffId,
+      addedByName: typeof item.addedByName === 'string' ? item.addedByName : order.staffName,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note.slice(0, 240) : '',
       variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
@@ -563,9 +695,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         : undefined,
     })),
   })).filter((order) => {
-    const tableKey = `${order.storeId}:${order.tableId}`
+    const tableKey = order.tableId
+      ? `${order.storeId}:id:${order.tableId}`
+      : `${order.storeId}:name:${order.tableName.trim().toLowerCase()}`
     const valid = stores.some((store) => store.id === order.storeId) &&
-      tables.some((table) => table.id === order.tableId && table.storeId === order.storeId) &&
+      (order.tableId
+        ? tables.some((table) => table.id === order.tableId && table.storeId === order.storeId)
+        : order.tableName.trim().length > 0 && order.tableName.trim().length <= 60) &&
       !usedOpenTables.has(tableKey)
     if (valid) usedOpenTables.add(tableKey)
     return valid
@@ -688,9 +824,71 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     reportNumbers.set(session, number)
     usedReportNumbers.set(session.storeId, used)
   }
-  const registerSessions = rawRegisterSessions.map((session) => ({
-    ...session,
-    zReportNumber: reportNumbers.get(session),
+  const staffShiftNumbers = new Map<string, number>()
+  const registerSessions = rawRegisterSessions
+    .sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+    .map((session) => {
+      const staffId = typeof session.staffId === 'string' &&
+        users.some((member) => member.id === session.staffId && member.storeId === session.storeId)
+        ? session.staffId
+        : session.openedById
+      const key = `${session.storeId}:${staffId}`
+      const number = (staffShiftNumbers.get(key) ?? 0) + 1
+      staffShiftNumbers.set(key, number)
+      return {
+        ...session,
+        staffId,
+        shiftNumber: typeof session.shiftNumber === 'string' && /^S-\d{6}$/.test(session.shiftNumber)
+          ? session.shiftNumber
+          : `S-${String(number).padStart(6, '0')}`,
+        zReportNumber: reportNumbers.get(session),
+      }
+    })
+  const sessionForTimestamp = (storeId: string, value: string | undefined) => {
+    const time = value ? Date.parse(value) : Number.NaN
+    if (!Number.isFinite(time)) return undefined
+    return registerSessions
+      .filter((session) => session.storeId === storeId &&
+        time >= Date.parse(session.openedAt) &&
+        time <= Date.parse(session.closedAt ?? new Date().toISOString()))
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0]
+  }
+  const attributedOrders = orders.map((order) => {
+    const session = sessionForTimestamp(order.storeId, order.createdAt)
+    const voidSession = sessionForTimestamp(order.storeId, order.voidedAt)
+    return {
+      ...order,
+      shiftId: registerSessions.some((candidate) =>
+        candidate.id === order.shiftId && candidate.storeId === order.storeId,
+      ) ? order.shiftId : session?.id,
+      voidShiftId: registerSessions.some((candidate) =>
+        candidate.id === order.voidShiftId && candidate.storeId === order.storeId,
+      ) ? order.voidShiftId : voidSession?.id,
+    }
+  })
+  const attributedOpenOrders = openOrders.map((order) => ({
+    ...order,
+    shiftId: registerSessions.some((candidate) =>
+      candidate.id === order.shiftId && candidate.storeId === order.storeId,
+    ) ? order.shiftId : sessionForTimestamp(order.storeId, order.createdAt)?.id,
+  }))
+  const attributedLedger = ledger.map((entry) => ({
+    ...entry,
+    shiftId: registerSessions.some((candidate) =>
+      candidate.id === entry.shiftId && candidate.storeId === entry.storeId,
+    ) ? entry.shiftId : sessionForTimestamp(entry.storeId, entry.createdAt)?.id,
+  }))
+  const attributedExpenses = expenses.map((expense) => ({
+    ...expense,
+    shiftId: registerSessions.some((candidate) =>
+      candidate.id === expense.shiftId && candidate.storeId === expense.storeId,
+    ) ? expense.shiftId : sessionForTimestamp(expense.storeId, expense.createdAt ?? expense.date)?.id,
+  }))
+  const attributedPurchasePayments = purchasePayments.map((payment) => ({
+    ...payment,
+    shiftId: registerSessions.some((candidate) =>
+      candidate.id === payment.shiftId && candidate.storeId === payment.storeId,
+    ) ? payment.shiftId : sessionForTimestamp(payment.storeId, payment.createdAt)?.id,
   }))
 
   return {
@@ -704,13 +902,14 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       iconColor: isIconColor(category.iconColor) ? category.iconColor : 'amber',
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
+    sections: allSections,
     tables,
     inventoryItems,
     stockMovements,
     suppliers,
     purchases,
-    purchasePayments,
-    openOrders,
+    purchasePayments: attributedPurchasePayments,
+    openOrders: attributedOpenOrders,
     products: collection<Product>('products', (item): item is Product =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.categoryId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) && isFiniteNumber(item.cost) &&
@@ -741,9 +940,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       notes: typeof customer.notes === 'string' ? customer.notes : '',
       createdAt: typeof customer.createdAt === 'string' ? customer.createdAt : new Date(0).toISOString(),
     })),
-    orders,
-    ledger,
-    expenses,
+    orders: attributedOrders,
+    ledger: attributedLedger,
+    expenses: attributedExpenses,
     attendance,
     advances,
     payrolls,

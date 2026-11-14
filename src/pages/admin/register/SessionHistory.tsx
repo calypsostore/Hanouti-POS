@@ -1,15 +1,21 @@
 import { CalendarDays, Clock, Printer } from 'lucide-react'
 import { Badge, Button, Card, EmptyState } from '../../../components/ui'
-import type { RegisterSession } from '../../../types'
+import { RegisterItemsTable } from '../../../components/RegisterItemsTable'
+import type { RegisterItemsReport, RegisterSession } from '../../../types'
 import { fmtDate, fmtTime, money } from '../../../lib/utils'
 
 export function SessionHistory({
   closed,
   canSeeAll,
+  itemsForSession,
   onPrint,
 }: {
   closed: RegisterSession[]
   canSeeAll: boolean
+  itemsForSession: (session: RegisterSession) => {
+    report: RegisterItemsReport
+    rebuiltFromOrders: boolean
+  }
   onPrint: (session: RegisterSession) => void
 }) {
   return (
@@ -37,6 +43,7 @@ export function SessionHistory({
             <div className="divide-y divide-line/60">
               {closed.map((session) => {
                 const difference = session.difference ?? 0
+                const itemDetails = itemsForSession(session)
                 return (
                   <div key={session.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
@@ -64,6 +71,18 @@ export function SessionHistory({
                         <span className="sm:inline">Z report</span>
                       </Button>
                     </div>
+                    <details className="basis-full">
+                      <summary className="cursor-pointer text-[11px] font-semibold text-accent-foreground">
+                        Items in this Z report
+                      </summary>
+                      <div className="mt-2">
+                        <RegisterItemsTable
+                          report={itemDetails.report}
+                          title="Z report item detail"
+                          rebuiltFromOrders={itemDetails.rebuiltFromOrders}
+                        />
+                      </div>
+                    </details>
                   </div>
                 )
               })}

@@ -11,6 +11,13 @@ export const openOrderSnapshot = (order: OpenOrder): Record<string, AuditJsonVal
   total: order.total,
   discount: order.discount,
   items: order.items.map((item) => ({ name: item.name, qty: item.qty })),
+  tableHistory: (order.tableHistory ?? []).map((event) => ({
+    type: event.type,
+    actorId: event.actorId,
+    actorName: event.actorName,
+    at: event.at,
+    details: event.details ?? '',
+  })),
 })
 
 export const buildUpdatedOpenOrder = (
@@ -25,10 +32,29 @@ export const buildUpdatedOpenOrder = (
   if (!store) return { ok: false, error: 'Store not found.' }
   const resolved = resolveOpenOrderItems(current.products, store, requestedItems)
   if (!resolved.ok) return resolved
+  const addedAt = new Date().toISOString()
   const items = [
     ...order.items,
-    ...resolved.items.map((item) => ({ ...item, lineId: uid('line') })),
+    ...resolved.items.map((item) => ({
+      ...item,
+      lineId: uid('line'),
+      addedById: actor.id,
+      addedByName: actor.name,
+    })),
   ]
+  const tableHistory = resolved.items.length
+    ? [
+        ...(order.tableHistory ?? []),
+        {
+          id: uid('evt'),
+          type: 'items_added' as const,
+          actorId: actor.id,
+          actorName: actor.name,
+          at: addedAt,
+          details: `${resolved.items.length} item line${resolved.items.length === 1 ? '' : 's'}`,
+        },
+      ]
+    : order.tableHistory
   const nextDiscount = discount === undefined ? order.discount : round(discount)
   if (!Number.isFinite(nextDiscount) || nextDiscount < 0) {
     return { ok: false, error: 'Discount must be zero or a positive amount.' }
@@ -50,10 +76,11 @@ export const buildUpdatedOpenOrder = (
     order: {
       ...order,
       items,
+      tableHistory,
       ...totals,
       discount: nextDiscount,
       note: note === undefined ? order.note : note.trim() || undefined,
-      updatedAt: new Date().toISOString(),
+      updatedAt: addedAt,
     },
   }
 }

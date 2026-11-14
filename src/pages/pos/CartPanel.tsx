@@ -1,5 +1,5 @@
 import { ChevronRight, ShoppingBag, Trash2, UserRound, X } from 'lucide-react'
-import type { OrderChannel, OrderItem } from '../../types'
+import type { GuestRequirement, OrderChannel, OrderItem, OpenOrder, TableMode, TableSection } from '../../types'
 import { Avatar } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
 import { ChannelSwitch } from './ChannelSwitch'
@@ -39,8 +39,14 @@ export function CartPanel({
   deliveryEnabled,
   tablesEnabled,
   tables,
+  sections,
+  openTables,
+  tableMode,
+  guestRequirement,
   tableId,
   setTableId,
+  tableNameInput,
+  setTableNameInput,
   guests,
   setGuests,
   focusTablePicker,
@@ -65,6 +71,8 @@ export function CartPanel({
   count,
   isOpenOrder,
   tableName,
+  sectionName,
+  ownerStaffName,
   pendingCount,
   persistedLineIds,
   canSaveOpenOrder,
@@ -80,8 +88,14 @@ export function CartPanel({
   deliveryEnabled: boolean
   tablesEnabled: boolean
   tables: DiningTable[]
+  sections: TableSection[]
+  openTables: OpenOrder[]
+  tableMode: TableMode
+  guestRequirement: GuestRequirement
   tableId?: string
   setTableId: (id: string | undefined) => void
+  tableNameInput: string
+  setTableNameInput: (name: string) => void
   guests?: number
   setGuests: (guests: number | undefined) => void
   focusTablePicker?: boolean
@@ -106,6 +120,8 @@ export function CartPanel({
   count: number
   isOpenOrder?: boolean
   tableName?: string
+  sectionName?: string
+  ownerStaffName?: string
   pendingCount?: number
   persistedLineIds?: string[]
   canSaveOpenOrder?: boolean
@@ -148,13 +164,27 @@ export function CartPanel({
       {!isOpenOrder && <div className="shrink-0 border-b border-line/70 px-3 py-1.5">
         <ChannelSwitch channel={channel} setChannel={setChannel} allowDelivery={deliveryEnabled} />
       </div>}
+      {(isOpenOrder || channel === 'dine-in') && (
+        <div className="shrink-0 border-b border-line/70 px-3 py-2 text-[10.5px] text-muted">
+          <span className="font-semibold text-ink">{tableName || tableNameInput || 'Dine-in'}</span>
+          {guests !== undefined && <> · {guests} guests</>}
+          {sectionName && <> · {sectionName}</>}
+          {(ownerStaffName || !isOpenOrder) && <> · {ownerStaffName ?? 'Current staff'}</>}
+        </div>
+      )}
 
       <div className={cn('min-h-0 flex-1 overflow-y-auto px-3 py-2 thin-scrollbar', embedded && 'max-h-[36vh]')}>
         {!isOpenOrder && channel === 'dine-in' && tablesEnabled && (
           <TablePicker
             tables={tables}
+            sections={sections}
+            openTables={openTables}
+            tableMode={tableMode}
+            guestRequirement={guestRequirement}
             selectedId={tableId}
             onSelect={setTableId}
+            tableName={tableNameInput}
+            onTableNameChange={setTableNameInput}
             guests={guests}
             onGuestsChange={setGuests}
             autoFocus={focusTablePicker}

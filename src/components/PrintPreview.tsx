@@ -7,6 +7,8 @@ import { columnsFor, type ReceiptLine } from '../lib/escpos'
 import { downloadReceiptPdf } from '../lib/receiptPdf'
 import { ThermalReceipt } from './ThermalReceipt'
 import type { PrinterWidth } from '../types'
+import type { RegisterItemsReport } from '../types'
+import { RegisterItemsTable } from './RegisterItemsTable'
 import {
   connectPrinter,
   onPrinterState,
@@ -22,6 +24,8 @@ export interface PrintJob {
   bytes: Uint8Array | null
   kind: 'receipt' | 'kitchen' | 'report'
   width?: PrinterWidth
+  itemsReport?: RegisterItemsReport
+  itemsRebuiltFromOrders?: boolean
 }
 
 /**
@@ -127,7 +131,7 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
         </div>
       }
     >
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="text-center text-[11px] font-medium text-muted">
           Receipt width: {width} mm · {cols} characters per line
         </div>
@@ -140,6 +144,13 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
             <ThermalReceipt lines={job.lines} width={width} />
           </div>
         </div>
+        {job.itemsReport && (
+          <RegisterItemsTable
+            report={job.itemsReport}
+            title="Report item detail"
+            rebuiltFromOrders={job.itemsRebuiltFromOrders}
+          />
+        )}
       </div>
     </Modal>
   )

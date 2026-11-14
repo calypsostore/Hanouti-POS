@@ -6,6 +6,7 @@ import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
+import { openShiftForStaff } from '../lib/registerShifts'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { CreateStoreInput } from './types'
@@ -28,6 +29,10 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   requireCustomerForCredit: settings.requireCustomerForCredit,
   receiptFooter: settings.receiptFooter,
   lowStockThreshold: settings.lowStockThreshold,
+  tableMode: settings.tableMode,
+  guestRequirement: settings.guestRequirement,
+  staffPickSectionsOnShift: settings.staffPickSectionsOnShift,
+  requireShiftForOrders: settings.requireShiftForOrders,
   accent: settings.accent,
   colorMode: settings.colorMode,
   printer: { ...settings.printer },
@@ -69,6 +74,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       date: timestamp,
       createdAt: new Date().toISOString(),
       createdBy: actorResult.actor.id,
+      shiftId: openShiftForStaff(dbRef.current, storeId, actorResult.actor.id)?.id,
     }
     commitDb((prev) => addLog({
       ...prev,
@@ -82,7 +88,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       after: expenseSnapshot(expense),
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, dbRef, requireAdmin])
 
   const updateExpense = useCallback<AppContextValue['updateExpense']>((id, data) => {
     const expense = dbRef.current.expenses.find((candidate) => candidate.id === id)
@@ -143,6 +149,22 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
   const updateSettings = useCallback<AppContextValue['updateSettings']>((storeId, patch) => {
     const actorResult = requireCapability(storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
+    if (patch.tableMode !== undefined &&
+      !['sections_tables', 'tables_only', 'manual'].includes(patch.tableMode)) {
+      return { ok: false, error: 'Choose a valid table system mode.' }
+    }
+    if (patch.guestRequirement !== undefined &&
+      !['required', 'optional', 'off'].includes(patch.guestRequirement)) {
+      return { ok: false, error: 'Choose a valid guest-count requirement.' }
+    }
+    if (patch.staffPickSectionsOnShift !== undefined &&
+      typeof patch.staffPickSectionsOnShift !== 'boolean') {
+      return { ok: false, error: 'Choose whether staff may claim sections.' }
+    }
+    if (patch.requireShiftForOrders !== undefined &&
+      typeof patch.requireShiftForOrders !== 'boolean') {
+      return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
+    }
     if (patch.features) {
       const featureValues = Object.values(patch.features)
       if (featureValues.length !== 5 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
@@ -212,6 +234,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         settings: {
           ...currentStore.settings,
           posMode: template.posMode,
+          requireShiftForOrders: template.posMode === 'cashier',
           receiptFooter: template.receiptFooter,
           features: template.features,
         },
@@ -329,6 +352,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       settings: {
         posMode: template.posMode,
+        requireShiftForOrders: template.posMode === 'cashier',
         currency: 'TND',
         taxRate: 0,
         taxInclusive: true,
@@ -337,6 +361,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         requireCustomerForCredit: true,
         receiptFooter: template.receiptFooter,
         lowStockThreshold: 10,
+        tableMode: 'sections_tables',
+        guestRequirement: 'required',
+        staffPickSectionsOnShift: false,
         accent: '7anouti',
         colorMode: 'light',
         printer: { ...DEFAULT_PRINTER },

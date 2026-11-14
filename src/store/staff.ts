@@ -10,7 +10,7 @@ import type { Capability } from '../types'
 const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
   'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
-  'manageStaff', 'manageSettings', 'managePayroll',
+  'manageStaff', 'manageSettings', 'managePayroll', 'openShift', 'closeShift',
 ]
 const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'register', 'supervisor'] as const
 
@@ -26,7 +26,9 @@ const permissionsForRole = (
   const permissions = { ...defaultPermissions(role), ...existing, ...patch }
   if (role !== 'manager') {
     for (const capability of CAPABILITIES) {
-      if (capability !== 'recordPurchases') permissions[capability] = false
+      if (capability !== 'recordPurchases' && capability !== 'openShift' && capability !== 'closeShift') {
+        permissions[capability] = false
+      }
     }
   }
   return permissions
