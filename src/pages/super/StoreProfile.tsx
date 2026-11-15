@@ -19,6 +19,7 @@ import type { Plan, StoreStatus } from '../../types'
 import { Avatar, Badge, Button, Drawer, Select } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { balanceFor } from '../../lib/selectors'
+import { orderNumberLabel } from '../../lib/orderNumber'
 import { cn, dateKey, fmtDate, fmtDateTime, money, sum } from '../../lib/utils'
 import { AppIcon } from '../../components/AppIcon'
 import { ChartLegend } from '../../components/charts'
@@ -332,7 +333,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
                     #{o.number.toString().slice(-2)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12px] font-semibold">Order #{o.number}</div>
+                    <div className="text-[12px] font-semibold">Order #{orderNumberLabel(o)}</div>
                     <div className="text-[10px] text-muted">
                       {fmtDateTime(o.createdAt)} · {o.staffName}
                     </div>

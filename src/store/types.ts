@@ -22,6 +22,10 @@ export interface CreateOrderInput {
   customerId?: string
   discount?: number
   note?: string
+  /** Idempotency key for this checkout attempt. */
+  clientOrderId?: string
+  /** Open table order being paid: its own items are not a competing reservation. */
+  excludeOpenOrderId?: string
 }
 
 export interface CreateStoreInput {
@@ -163,7 +167,7 @@ export type SentItemVoidResult =
   | { ok: false; error: string }
 
 export type PaidOpenOrderResult =
-  | { ok: true; order: Order }
+  | { ok: true; order: Order; alreadyPaid?: boolean }
   | { ok: false; error: string }
 
 export interface AddAdvanceInput {
@@ -198,7 +202,7 @@ export interface AppContextValue {
     note?: string,
   ) => OpenOrderActionResult
   sendToStations: (orderId: string) => KitchenSendResult
-  updateOpenOrderItem: (orderId: string, lineId: string, patch: { qty?: number; note?: string }) => Result
+  updateOpenOrderItem: (orderId: string, lineId: string, patch: { qty?: number; note?: string; useCurrentPrice?: boolean }) => Result
   setOpenOrderItemStatus: (orderId: string, lineId: string, status: OrderItemStatus) => Result
   voidSentOrderItem: (orderId: string, lineId: string, reason: string) => SentItemVoidResult
   payOpenOrder: (

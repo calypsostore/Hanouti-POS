@@ -81,6 +81,9 @@ export function CartPanel({
   onOpenFloor,
   unavailableLineIds = [],
   hasUnavailableDraft = false,
+  issueByLine = {},
+  issueCount = 0,
+  onReview,
 }: {
   embedded?: boolean
   cart: OrderItem[]
@@ -131,6 +134,9 @@ export function CartPanel({
   onOpenFloor?: () => void
   unavailableLineIds?: string[]
   hasUnavailableDraft?: boolean
+  issueByLine?: Record<string, string>
+  issueCount?: number
+  onReview?: () => void
 }) {
   const newItemCount = pendingCount ?? cart.length
   return (
@@ -240,6 +246,7 @@ export function CartPanel({
             canVoidSentItems={canVoidSentItems}
             onVoidSentItem={onVoidSentItem}
             unavailableLineIds={unavailableLineIds}
+            issueByLine={issueByLine}
           />
         )}
       </div>
@@ -261,6 +268,8 @@ export function CartPanel({
         isOpenOrder={isOpenOrder}
         onOpenFloor={onOpenFloor}
         hasUnavailableDraft={hasUnavailableDraft}
+        issueCount={issueCount}
+        onReview={onReview}
       />
     </div>
   )

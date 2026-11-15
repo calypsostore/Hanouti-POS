@@ -2,6 +2,7 @@ import { KeyRound, Trash2 } from 'lucide-react'
 import type { Order } from '../../../../types'
 import { Button, Field, Input, Modal, Textarea } from '../../../../components/ui'
 import { money } from '../../../../lib/utils'
+import { orderNumberLabel } from '../../../../lib/orderNumber'
 
 type Props = {
   order: Order | null
@@ -29,7 +30,7 @@ export default function VoidOrderModal({
       open={!!order}
       onClose={onClose}
       title="Void this order?"
-      subtitle={order ? `Order #${order.number} · ${money(order.total)}` : ''}
+      subtitle={order ? `Order #${orderNumberLabel(order)} · ${money(order.total)}` : ''}
       size="sm"
       footer={
         <div className="flex justify-end gap-2">

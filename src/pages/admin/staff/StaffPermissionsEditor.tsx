@@ -21,6 +21,7 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'manageCashDifferences', label: 'Manage cash differences', description: 'Settle, void, and archive shift cash differences.' },
   { key: 'viewStaffAnalytics', label: 'View staff analytics', description: 'View staff performance and cash accuracy metrics.' },
   { key: 'manage86', label: 'Manage 86 availability', description: '86 and return menu items from POS.' },
+  { key: 'overrideStock', label: 'Override stock warnings', description: 'Confirm warned over-stock sales when allowed by Order rules settings.' },
 ]
 
 export default function StaffPermissionsEditor({
@@ -75,6 +76,14 @@ export default function StaffPermissionsEditor({
         )}
         {role === 'staff' && (
           <Toggle checked={permissions.manage86 === true} onChange={(value) => toggle('manage86', value)} label="Manage 86 availability" description="86 and return menu items from POS." />
+        )}
+        {role === 'staff' && (
+          <Toggle
+            checked={permissions.overrideStock === true}
+            onChange={(value) => toggle('overrideStock', value)}
+            label="Override stock warnings"
+            description="Confirm over-stock sales when allowed by Order rules settings."
+          />
         )}
         {role === 'manager' && managerCapabilities.map(({ key, label, description }) => (
           <Toggle

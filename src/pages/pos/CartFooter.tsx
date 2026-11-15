@@ -19,6 +19,8 @@ export function CartFooter({
   isOpenOrder,
   onOpenFloor,
   hasUnavailableDraft = false,
+  issueCount = 0,
+  onReview,
 }: {
   totals: { subtotal: number; tax: number; service: number; total: number }
   discount: number
@@ -36,8 +38,11 @@ export function CartFooter({
   isOpenOrder?: boolean
   onOpenFloor?: () => void
   hasUnavailableDraft?: boolean
+  issueCount?: number
+  onReview?: () => void
 }) {
   const showTabButton = allowCredit && !!customerId && !isOpenOrder
+  const reviewLabel = issueCount && issueCount > 0 ? `Review (${issueCount} issue${issueCount === 1 ? '' : 's'})` : null
 
   return (
     <div className={cn(
@@ -102,9 +107,11 @@ export function CartFooter({
             )}
             style={{ background: 'var(--semantic-green-gradient)', color: 'white' }}
             disabled={hasUnavailableDraft || (!count && !isOpenOrder)}
-            onClick={isOpenOrder ? onDone : onCheckout}
+            onClick={reviewLabel && onReview ? onReview : isOpenOrder ? onDone : onCheckout}
           >
-            {isOpenOrder
+            {reviewLabel
+              ? <><CheckCircle2 className="h-4 w-4" /> {reviewLabel}</>
+              : isOpenOrder
               ? <><CheckCircle2 className="h-4 w-4" /> Done</>
               : quick
               ? <><CheckCircle2 className="h-4 w-4" /> Complete order · {money(totals.total)}</>
@@ -112,8 +119,14 @@ export function CartFooter({
           </Button>
 
           {isOpenOrder && !quick && (
-            <Button variant="secondary" size="md" className="w-full" disabled={hasUnavailableDraft || !count} onClick={onCheckout}>
-              <Wallet className="h-4 w-4" /> Pay table · {money(totals.total)}
+            <Button
+              variant="secondary"
+              size="md"
+              className="w-full"
+              disabled={hasUnavailableDraft || !count}
+              onClick={reviewLabel && onReview ? onReview : onCheckout}
+            >
+              <Wallet className="h-4 w-4" /> {reviewLabel ?? <>Pay table · {money(totals.total)}</>}
             </Button>
           )}
           {showTabButton && (

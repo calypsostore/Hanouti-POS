@@ -4,6 +4,7 @@ import { buildReceiptLines, linesToEscpos } from '../lib/escpos'
 import { useApp } from '../store/AppStore'
 import { PrintModal, type PrintJob } from './PrintPreview'
 import { useToast } from './toast'
+import { orderNumberLabel } from '../lib/orderNumber'
 
 export function ReprintLastReceipt({ compact = false }: { compact?: boolean }) {
   const { db, store } = useApp()
@@ -26,7 +27,7 @@ export function ReprintLastReceipt({ compact = false }: { compact?: boolean }) {
     const lines = buildReceiptLines(lastOrder, store, { customerName })
     setJob({
       title: 'Reprint last receipt',
-      subtitle: `Order #${lastOrder.number}`,
+      subtitle: `Order #${orderNumberLabel(lastOrder, store.settings)}`,
       lines,
       bytes: linesToEscpos(lines, store.settings.printer.width),
       kind: 'receipt',

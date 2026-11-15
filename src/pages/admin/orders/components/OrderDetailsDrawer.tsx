@@ -4,6 +4,7 @@ import { Badge, Button, Drawer } from '../../../../components/ui'
 import { ReceiptView } from '../../../../components/ReceiptView'
 import { fmtDate, fmtTime, fmtDateTime, money } from '../../../../lib/utils'
 import { round } from '../../../../lib/pricing-utils'
+import { orderNumberLabel } from '../../../../lib/orderNumber'
 import { PaymentBadge } from './OrderPrimitives'
 
 type Props = {
@@ -31,7 +32,7 @@ export default function OrderDetailsDrawer({
     <Drawer
       open={!!order}
       onClose={onClose}
-      title={order ? `Order #${order.number}` : ''}
+      title={order ? `Order #${orderNumberLabel(order, store.settings)}` : ''}
       subtitle={order ? `${fmtDate(order.createdAt)} · ${fmtTime(order.createdAt)}` : ''}
       footer={
         order ? (

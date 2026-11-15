@@ -30,11 +30,13 @@ export function PaymentModal({
 }) {
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [received, setReceived] = useState('')
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (open) {
       setMethod('cash')
       setReceived('')
+      setBusy(false)
     }
   }, [open])
 
@@ -76,10 +78,15 @@ export function PaymentModal({
             </Button>
             <Button
               size="md"
-              disabled={(method === 'cash' && !cashOk) || creditBlocked}
-              onClick={() => onConfirm(method)}
+              disabled={busy || (method === 'cash' && !cashOk) || creditBlocked}
+              onClick={() => {
+                if (busy) return
+                setBusy(true)
+                onConfirm(method)
+                window.setTimeout(() => setBusy(false), 1200)
+              }}
             >
-              <CheckCircle2 className="h-4 w-4" /> Complete · {money(total)}
+              <CheckCircle2 className="h-4 w-4" /> {busy ? 'Completing…' : `Complete · ${money(total)}`}
             </Button>
           </div>
         </div>

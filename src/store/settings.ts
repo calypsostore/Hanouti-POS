@@ -4,7 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
@@ -68,6 +68,10 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   availability: {
     ...settings.availability,
     reasons: [...settings.availability.reasons],
+  },
+  orderRules: {
+    ...settings.orderRules,
+    stockOverrideRoles: { ...settings.orderRules.stockOverrideRoles },
   },
 })
 
@@ -216,6 +220,22 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         !Array.isArray(availability.reasons) || availability.reasons.length > 20 ||
         availability.reasons.some((reason) => !reason.trim() || reason.length > 120)) {
         return { ok: false, error: 'Check the availability settings and allowed values.' }
+      }
+    }
+    if (patch.orderRules) {
+      const rules = patch.orderRules
+      if (!['block', 'warn', 'allow'].includes(rules.stockOverflowMode) ||
+        typeof rules.deductIngredientsOnSale !== 'boolean' ||
+        !['keep', 'current', 'ask'].includes(rules.openOrderPricePolicy) ||
+        !['plain', 'daily', 'prefix'].includes(rules.orderNumberFormat) ||
+        typeof rules.orderNumberPrefix !== 'string' || rules.orderNumberPrefix.trim().length > 8 ||
+        typeof rules.showLowStockHints !== 'boolean' ||
+        typeof rules.revalidationBanner !== 'boolean' ||
+        !rules.stockOverrideRoles ||
+        typeof rules.stockOverrideRoles.admin !== 'boolean' ||
+        typeof rules.stockOverrideRoles.manager !== 'boolean' ||
+        typeof rules.stockOverrideRoles.staff !== 'boolean') {
+        return { ok: false, error: 'Check the order rule settings and allowed values.' }
       }
     }
     if (patch.ticketSendPolicy !== undefined &&
@@ -454,6 +474,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         reportPrintPolicy: 'manual',
         automation: { ...DEFAULT_AUTOMATION_SETTINGS },
         availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
+        orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
       },
     }
     const stations = defaultStationsForStore(storeId)

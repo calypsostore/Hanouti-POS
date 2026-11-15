@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useApp } from '../../../store/AppStore'
 import { getStaffDashboardData, getTableOccupancy, canViewFinancials } from '../../../lib/dashboard'
 import { money, relative } from '../../../lib/utils'
+import { orderNumberLabel } from '../../../lib/orderNumber'
 import { Badge, Button, Select, Toggle } from '../../../components/ui'
 import { GradientKpiCard } from '../../../components/dashboard/GradientKpiCard'
 import { QuickActionTile } from '../../../components/dashboard/QuickActionTile'
@@ -100,7 +101,7 @@ export default function StaffDashboard() {
               <div key={order.id} className="flex items-center gap-3 py-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-bold text-accent-foreground">#{order.number.toString().slice(-2)}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2"><span className="text-xs font-bold">Order #{order.number}</span><Badge tone={order.status === 'void' ? 'danger' : 'success'}>{order.status === 'void' ? 'Void' : 'Completed'}</Badge></div>
+                  <div className="flex items-center gap-2"><span className="text-xs font-bold">Order #{orderNumberLabel(order)}</span><Badge tone={order.status === 'void' ? 'danger' : 'success'}>{order.status === 'void' ? 'Void' : 'Completed'}</Badge></div>
                   <div className="mt-1 text-[10px] text-muted">{relative(order.createdAt)} · {order.items.length} products</div>
                 </div>
                 {canSeeMoney && <span className="text-xs font-bold tabular">{money(order.total)}</span>}

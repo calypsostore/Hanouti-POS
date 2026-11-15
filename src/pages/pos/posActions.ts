@@ -1,6 +1,12 @@
 import type { OpenOrder, Order, OrderChannel, OrderItem, PaymentMethod, Store } from '../../types'
 import type { AppContextValue } from '../../store/types'
-import { money } from '../../lib/utils'
+import { money, uid } from '../../lib/utils'
+import { orderNumberLabel } from '../../lib/orderNumber'
+
+/** Guard against double taps while a checkout is being applied. */
+let checkoutInFlight = false
+/** Stable idempotency key for the current checkout attempt. */
+let checkoutKey: string | null = null
 
 type Props = {
   store: Store
@@ -75,17 +81,47 @@ export const createPOSActions = (props: Props) => {
   }
 
   const completeSale = (method: PaymentMethod) => {
-    if (!props.openOrder && props.channel === 'dine-in' &&
-      props.store.settings.features.tables &&
-      (props.store.settings.tableMode === 'manual'
-        ? !props.tableName?.trim()
-        : !props.tableId)) {
-      props.push(props.store.settings.tableMode === 'manual' ? 'Enter a table name.' : 'Choose a table before checking out.', 'error')
-      props.focusTablePicker()
-      return
-    }
-    if (props.openOrder) {
-      if (props.quick) {
+    if (checkoutInFlight) return
+    checkoutInFlight = true
+    try {
+      if (!props.openOrder && props.channel === 'dine-in' &&
+        props.store.settings.features.tables &&
+        (props.store.settings.tableMode === 'manual'
+          ? !props.tableName?.trim()
+          : !props.tableId)) {
+        props.push(props.store.settings.tableMode === 'manual' ? 'Enter a table name.' : 'Choose a table before checking out.', 'error')
+        props.focusTablePicker()
+        return
+      }
+      if (props.openOrder) {
+        if (props.quick) {
+          if (props.canSaveOpenOrder) {
+            const saved = props.addItemsToOpenOrder(
+              props.openOrder.id,
+              props.cart,
+              props.activeDiscount,
+              props.activeNote,
+            )
+            if (!saved.ok) {
+              props.push(saved.error, 'error')
+              return
+            }
+            props.setCart([])
+            props.setOpenDiscount(undefined)
+            props.setOpenNote(undefined)
+          }
+          const recorded = props.recordOpenOrder(props.openOrder.id)
+          if (!recorded.ok) {
+            props.push(recorded.error, 'error')
+            return
+          }
+          props.push(`Table order #${orderNumberLabel(recorded.order, props.store.settings)} recorded · no payment taken`, 'success')
+          props.setPaymentOpen(false)
+          props.setMobileCartOpen(false)
+          resetSale()
+          props.navigateToFloor()
+          return
+        }
         if (props.canSaveOpenOrder) {
           const saved = props.addItemsToOpenOrder(
             props.openOrder.id,
@@ -101,69 +137,53 @@ export const createPOSActions = (props: Props) => {
           props.setOpenDiscount(undefined)
           props.setOpenNote(undefined)
         }
-        const recorded = props.recordOpenOrder(props.openOrder.id)
-        if (!recorded.ok) {
-          props.push(recorded.error, 'error')
+        const hadPreviouslySentItems = props.openOrder.items.some((item) =>
+          item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
+        )
+        if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
+        const paid = props.payOpenOrder(props.openOrder.id, method, props.customerId)
+        if (!paid.ok) {
+          props.push(paid.error, 'error')
           return
         }
-        props.push(`Table order #${recorded.order.number} recorded · no payment taken`, 'success')
+        props.push(
+          paid.alreadyPaid
+            ? `Already paid by ${paid.order.paidByName ?? paid.order.staffName} · ${money(paid.order.total)}`
+            : `Table order · ${money(paid.order.total)} paid`,
+          'success',
+        )
         props.setPaymentOpen(false)
         props.setMobileCartOpen(false)
         resetSale()
-        props.navigateToFloor()
+        props.setReceipt(paid.order)
         return
       }
-      if (props.canSaveOpenOrder) {
-        const saved = props.addItemsToOpenOrder(
-          props.openOrder.id,
-          props.cart,
-          props.activeDiscount,
-          props.activeNote,
-        )
-        if (!saved.ok) {
-          props.push(saved.error, 'error')
-          return
-        }
-        props.setCart([])
-        props.setOpenDiscount(undefined)
-        props.setOpenNote(undefined)
-      }
-      const hadPreviouslySentItems = props.openOrder.items.some((item) =>
-        item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
-      )
-      if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
-      const paid = props.payOpenOrder(props.openOrder.id, method, props.customerId)
-      if (!paid.ok) {
-        props.push(paid.error, 'error')
+      checkoutKey ??= uid('checkout')
+      const result = props.createOrder({
+        items: props.cart,
+        channel: props.channel,
+        tableId: props.tableId,
+        tableName: props.tableName,
+        guests: props.guests,
+        paymentMethod: method,
+        customerId: props.customerId,
+        discount: props.discount,
+        note: props.note,
+        clientOrderId: checkoutKey,
+      })
+      if (!result.ok) {
+        props.push(result.error, 'error')
         return
       }
-      props.push(`Table order · ${money(paid.order.total)} paid`, 'success')
+      checkoutKey = null
+      props.push(`Order #${orderNumberLabel(result.order, props.store.settings)} · ${money(result.order.total)} completed`, 'success')
       props.setPaymentOpen(false)
       props.setMobileCartOpen(false)
       resetSale()
-      props.setReceipt(paid.order)
-      return
+      props.setReceipt(result.order)
+    } finally {
+      checkoutInFlight = false
     }
-    const result = props.createOrder({
-      items: props.cart,
-      channel: props.channel,
-      tableId: props.tableId,
-      tableName: props.tableName,
-      guests: props.guests,
-      paymentMethod: method,
-      customerId: props.customerId,
-      discount: props.discount,
-      note: props.note,
-    })
-    if (!result.ok) {
-      props.push(result.error, 'error')
-      return
-    }
-    props.push(`Order #${result.order.number} · ${money(result.order.total)} completed`, 'success')
-    props.setPaymentOpen(false)
-    props.setMobileCartOpen(false)
-    resetSale()
-    props.setReceipt(result.order)
   }
 
   const checkout = () => {
@@ -199,42 +219,48 @@ export const createPOSActions = (props: Props) => {
 
   const doneOpenOrder = () => {
     if (!props.openOrder) return
-    if (!props.count) {
+    if (checkoutInFlight) return
+    checkoutInFlight = true
+    try {
+      if (!props.count) {
+        resetSale()
+        props.navigateToFloor()
+        return
+      }
+      if (props.canSaveOpenOrder) {
+        const saved = props.addItemsToOpenOrder(
+          props.openOrder.id,
+          props.cart,
+          props.activeDiscount,
+          props.activeNote,
+        )
+        if (!saved.ok) {
+          props.push(saved.error, 'error')
+          return
+        }
+        props.setCart([])
+        props.setOpenDiscount(undefined)
+        props.setOpenNote(undefined)
+      }
+      const hadPreviouslySentItems = props.openOrder.items.some((item) =>
+        item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
+      )
+      if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
+      if (props.quick) {
+        const recorded = props.recordOpenOrder(props.openOrder.id)
+        if (!recorded.ok) {
+          props.push(recorded.error, 'error')
+          return
+        }
+        props.push(`Table order #${orderNumberLabel(recorded.order, props.store.settings)} recorded · no payment taken`, 'success')
+      } else {
+        props.push('Table order saved and sent to stations.', 'success')
+      }
       resetSale()
       props.navigateToFloor()
-      return
+    } finally {
+      checkoutInFlight = false
     }
-    if (props.canSaveOpenOrder) {
-      const saved = props.addItemsToOpenOrder(
-        props.openOrder.id,
-        props.cart,
-        props.activeDiscount,
-        props.activeNote,
-      )
-      if (!saved.ok) {
-        props.push(saved.error, 'error')
-        return
-      }
-      props.setCart([])
-      props.setOpenDiscount(undefined)
-      props.setOpenNote(undefined)
-    }
-    const hadPreviouslySentItems = props.openOrder.items.some((item) =>
-      item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
-    )
-    if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
-    if (props.quick) {
-      const recorded = props.recordOpenOrder(props.openOrder.id)
-      if (!recorded.ok) {
-        props.push(recorded.error, 'error')
-        return
-      }
-      props.push(`Table order #${recorded.order.number} recorded · no payment taken`, 'success')
-    } else {
-      props.push('Table order saved and sent to stations.', 'success')
-    }
-    resetSale()
-    props.navigateToFloor()
   }
 
   return { clearCart, completeSale, checkout, addToTab, doneOpenOrder }

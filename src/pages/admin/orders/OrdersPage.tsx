@@ -16,6 +16,7 @@ import { can } from '../../../lib/permissions'
 import { buildReceiptLines, linesToEscpos } from '../../../lib/escpos'
 import { balanceFor } from '../../../lib/selectors'
 import { csvDownload, dateKey, fmtDate, fmtTime, money, sum } from '../../../lib/utils'
+import { orderNumberLabel } from '../../../lib/orderNumber'
 import { MiniStat } from './components/OrderPrimitives'
 import OrdersList from './components/OrdersList'
 import OrderDetailsDrawer from './components/OrderDetailsDrawer'
@@ -118,7 +119,7 @@ export default function OrdersPage() {
       customerName: customerName(order.customerId),
     })
     setPrintJob({
-      title: `Reprint · Order #${order.number}`,
+      title: `Reprint · Order #${orderNumberLabel(order, store.settings)}`,
       subtitle: store.name,
       lines,
       bytes: linesToEscpos(lines, store.settings.printer.width),
@@ -134,7 +135,7 @@ export default function OrdersPage() {
       push(result.error, 'error')
       return
     }
-    push(`Order #${voidTarget.number} voided`, 'info')
+    push(`Order #${orderNumberLabel(voidTarget, store.settings)} voided`, 'info')
     setVoidTarget(null)
     setVoidPin('')
     setVoidReason('')

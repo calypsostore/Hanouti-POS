@@ -1,23 +1,26 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { Button, Field, Input, Select, Toggle } from '../../../components/ui'
 import { uid } from '../../../lib/utils'
-import type { ProductModifierGroup, ProductVariant } from '../../../types'
+import type { InventoryItem, ProductModifierGroup, ProductModifierOption, ProductVariant } from '../../../types'
+import { RecipeEditor } from './RecipeEditor'
 
 export function ProductOptionsEditor({
   modifiers,
   variants,
+  inventoryItems,
   onModifiersChange,
   onVariantsChange,
 }: {
   modifiers: ProductModifierGroup[]
   variants: ProductVariant[]
+  inventoryItems: InventoryItem[]
   onModifiersChange: (groups: ProductModifierGroup[]) => void
   onVariantsChange: (items: ProductVariant[]) => void
 }) {
   const patchGroup = (id: string, patch: Partial<ProductModifierGroup>) =>
     onModifiersChange(modifiers.map((group) => group.id === id ? { ...group, ...patch } : group))
 
-  const patchOption = (groupId: string, optionId: string, patch: { name?: string; priceDelta?: number }) =>
+  const patchOption = (groupId: string, optionId: string, patch: Partial<ProductModifierOption>) =>
     onModifiersChange(modifiers.map((group) => group.id === groupId
       ? { ...group, options: group.options.map((option) => option.id === optionId ? { ...option, ...patch } : option) }
       : group))
@@ -69,25 +72,32 @@ export function ProductOptionsEditor({
             <Toggle checked={group.required} onChange={(required) => patchGroup(group.id, { required })} label="Require a selection" />
             <div className="space-y-2">
               {group.options.map((option) => (
-                <div key={option.id} className="grid gap-2 sm:grid-cols-[1fr_130px_auto]">
-                  <Input value={option.name} onChange={(event) => patchOption(group.id, option.id, { name: event.target.value })} placeholder="Option name" />
-                  <Field label="Price change (DT)">
-                    <Input
-                      type="number"
-                      step="0.001"
-                      value={option.priceDelta}
-                      onChange={(event) => patchOption(group.id, option.id, { priceDelta: Number(event.target.value) || 0 })}
-                    />
-                  </Field>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => patchGroup(group.id, { options: group.options.filter((item) => item.id !== option.id) })}
-                    aria-label="Remove modifier option"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div key={option.id} className="space-y-2 rounded-lg border border-line p-2">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_130px_auto]">
+                    <Input value={option.name} onChange={(event) => patchOption(group.id, option.id, { name: event.target.value })} placeholder="Option name" />
+                    <Field label="Price change (DT)">
+                      <Input
+                        type="number"
+                        step="0.001"
+                        value={option.priceDelta}
+                        onChange={(event) => patchOption(group.id, option.id, { priceDelta: Number(event.target.value) || 0 })}
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => patchGroup(group.id, { options: group.options.filter((item) => item.id !== option.id) })}
+                      aria-label="Remove modifier option"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <RecipeEditor
+                    recipe={option.recipe ?? []}
+                    inventoryItems={inventoryItems}
+                    onChange={(recipe) => patchOption(group.id, option.id, { recipe: recipe.length ? recipe : undefined })}
+                  />
                 </div>
               ))}
               <Button
@@ -158,6 +168,11 @@ export function ProductOptionsEditor({
                 <Input type="number" min={0} step="0.001" value={variant.stock} onChange={(event) => patchVariant(variant.id, { stock: Number(event.target.value) || 0 })} />
               </Field>
             )}
+            <RecipeEditor
+              recipe={variant.recipe ?? []}
+              inventoryItems={inventoryItems}
+              onChange={(recipe) => patchVariant(variant.id, { recipe: recipe.length ? recipe : undefined })}
+            />
             <Button
               type="button"
               size="sm"

@@ -10,8 +10,10 @@ import { guestCountError } from '../lib/tableService'
 import { openShiftForStaff } from '../lib/registerShifts'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import { resolveOpenOrderItems } from '../lib/openOrderItems'
+import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
 import { canTransitionStationItem } from '../lib/orderItemLifecycle'
 import { handoverOpenOrder } from '../lib/shiftCash'
+import { resolveOrderLines, stockOverrideAccepted } from '../shared/orderRules'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -24,6 +26,7 @@ const recordedOrderFromOpenOrder = (
   id: previous?.id ?? uid('ord'),
   storeId: openOrder.storeId,
   number,
+  provisionalNumber: openOrder.provisionalNumber,
   items: openOrder.items,
   subtotal: openOrder.subtotal,
   tax: openOrder.tax,
@@ -52,7 +55,7 @@ export function useOpenOrdersSlice(
   dependencies: StoreSliceDependencies,
   createOrder: AppContextValue['createOrder'],
 ) {
-  const { dbRef, commitDb, requireActor, requireCapability } = dependencies
+  const { dbRef, commitDb, provider, requireActor, requireCapability } = dependencies
 
   const openTableOrder = useCallback<AppContextValue['openTableOrder']>((storeId, tableId, guests, requestedTableName) => {
     const actorResult = requireActor(storeId)
@@ -85,13 +88,29 @@ export function useOpenOrdersSlice(
     if (guestsError) return { ok: false, error: guestsError }
     const actor = actorResult.actor
     const now = new Date().toISOString()
-    const number = [...current.orders, ...current.openOrders]
-      .filter((item) => item.storeId === storeId)
-      .reduce((max, item) => Math.max(max, item.number), 1000) + 1
+    const numbering = provider.mode === 'hub'
+      ? {
+          number: 0,
+          provisionalNumber: provisionalOrderNumber(
+            provider.deviceIdentifier(),
+            [...current.orders, ...current.openOrders]
+              .filter((item) => item.storeId === storeId).length + 1,
+          ),
+        }
+      : {
+          number: nextOrderNumber(
+            [...current.orders, ...current.openOrders]
+              .filter((item) => item.storeId === storeId)
+              .map((item) => item.number),
+            store.settings.orderRules.orderNumberFormat,
+          ),
+          provisionalNumber: undefined,
+        }
     const order: OpenOrder = {
       id: uid('open'),
       storeId,
-      number,
+      number: numbering.number,
+      provisionalNumber: numbering.provisionalNumber,
       shiftId: shift?.id,
       tableHistory: [{
         id: uid('evt'),
@@ -259,9 +278,14 @@ export function useOpenOrdersSlice(
     if (!actorResult.ok) return actorResult
     const item = order.items.find((candidate) => candidate.lineId === lineId)
     if (!item) return { ok: false, error: 'Table item not found.' }
-    if (item.status !== 'draft') return { ok: false, error: 'Only draft items can be edited.' }
+    if (item.status !== 'draft' && patch.useCurrentPrice !== true) {
+      return { ok: false, error: 'Only draft items can be edited.' }
+    }
     if (patch.note !== undefined && (typeof patch.note !== 'string' || patch.note.trim().length > 240)) {
       return { ok: false, error: 'Item notes must be 240 characters or fewer.' }
+    }
+    if (patch.useCurrentPrice !== undefined && typeof patch.useCurrentPrice !== 'boolean') {
+      return { ok: false, error: 'Choose a valid price resolution.' }
     }
     if (patch.qty !== undefined && (!Number.isFinite(patch.qty) || patch.qty < 0)) {
       return { ok: false, error: 'Enter a valid item quantity.' }
@@ -272,18 +296,27 @@ export function useOpenOrdersSlice(
     let updatedItem: OrderItem | undefined = item
     if (patch.qty === 0) {
       updatedItem = undefined
-    } else if (patch.qty !== undefined || patch.note !== undefined) {
+    } else if (patch.qty !== undefined || patch.note !== undefined || patch.useCurrentPrice) {
       const resolved = resolveOpenOrderItems(current.products, store, [{
         ...item,
         qty: patch.qty ?? item.qty,
         note: patch.note ?? item.note,
-      }], current.inventoryItems)
+      }], current.inventoryItems, {
+        openOrders: current.openOrders,
+        excludeOpenOrderId: order.id,
+        actor: actorResult.actor,
+        users: current.users,
+      })
       if (!resolved.ok) return resolved
+      const currentPrice = patch.useCurrentPrice || store.settings.orderRules.openOrderPricePolicy === 'current'
+        ? resolved.items[0].price
+        : item.price
       updatedItem = {
         ...resolved.items[0],
+        price: currentPrice,
         lineId,
         stationId: item.stationId,
-        status: 'draft',
+        status: item.status ?? 'draft',
         addedAt: item.addedAt,
         updatedAt: editedAt,
         addedById: item.addedById,
@@ -394,10 +427,20 @@ export function useOpenOrdersSlice(
 
   const payOpenOrder = useCallback<AppContextValue['payOpenOrder']>(
     (orderId, paymentMethod, customerId) => {
-      const order = dbRef.current.openOrders.find((item) => item.id === orderId)
-      if (!order) return { ok: false, error: 'Open table order not found.' }
-      const actorResult = requireActor(order.storeId)
+      const current = dbRef.current
+      const actorResult = requireActor()
       if (!actorResult.ok) return actorResult
+      const actor = actorResult.actor
+      if (!actor.storeId) return { ok: false, error: 'No active store session.' }
+      const existing = current.orders.find((item) =>
+        item.storeId === actor.storeId && item.clientOrderId === `pay:${orderId}`,
+      )
+      if (existing) return { ok: true, order: existing, alreadyPaid: true }
+      const order = current.openOrders.find((item) => item.id === orderId)
+      if (!order) return { ok: false, error: 'Open table order not found.' }
+      if (!order.items.some((item) => item.status !== 'void')) {
+        return { ok: false, error: 'Add items before paying this table order.' }
+      }
       const paid = createOrder({
         items: order.items.filter((item) => item.status !== 'void'),
         channel: 'dine-in',
@@ -408,26 +451,33 @@ export function useOpenOrdersSlice(
         customerId,
         discount: order.discount,
         note: order.note,
+        clientOrderId: `pay:${order.id}`,
+        excludeOpenOrderId: order.id,
       })
       if (!paid.ok) return paid
-      const actor = requireActor(order.storeId)
-      if (!actor.ok) return actor
+      if (paid.order.clientOrderId === `pay:${order.id}` &&
+        paid.order.id !== order.recordedOrderId &&
+        current.orders.some((item) => item.id === paid.order.id)) {
+        return { ok: true, order: paid.order, alreadyPaid: true }
+      }
+      const actorAfter = requireActor(order.storeId)
+      if (!actorAfter.ok) return actorAfter
       const paidAt = new Date().toISOString()
       const paymentHistory = [
         ...(order.tableHistory ?? []),
         {
           id: uid('evt'),
           type: 'payment' as const,
-          actorId: actor.actor.id,
-          actorName: actor.actor.name,
+          actorId: actorAfter.actor.id,
+          actorName: actorAfter.actor.name,
           at: paidAt,
           details: `${paymentMethod} · ${paid.order.total.toFixed(3)} DT`,
         },
         {
           id: uid('evt'),
           type: 'closed' as const,
-          actorId: actor.actor.id,
-          actorName: actor.actor.name,
+          actorId: actorAfter.actor.id,
+          actorName: actorAfter.actor.name,
           at: paidAt,
         },
       ]
@@ -445,12 +495,12 @@ export function useOpenOrdersSlice(
             tableHistory: paymentHistory,
           },
         ],
-      }, actor.actor, {
+      }, actorAfter.actor, {
         storeId: order.storeId,
         action: 'edited',
         entity: 'order',
         entityId: order.id,
-        summary: `Paid ${order.tableName} order #${paid.order.number}`,
+        summary: `Paid ${order.tableName} order #${paid.order.provisionalNumber ?? paid.order.number}`,
         before: openOrderSnapshot(order),
         after: { paidOrderId: paid.order.id, orderNumber: paid.order.number, total: paid.order.total },
       }))
@@ -581,6 +631,26 @@ export function useOpenOrdersSlice(
     if (store.settings.requireShiftForOrders && !shift) {
       return { ok: false, error: 'Open your shift before recording table orders.' }
     }
+    const rulesContext = {
+      store,
+      products: current.products,
+      inventoryItems: current.inventoryItems,
+      openOrders: current.openOrders,
+      excludeOpenOrderId: order.id,
+      actor: actorResult.actor,
+      users: current.users,
+    }
+    const validation = resolveOrderLines(order.items, rulesContext)
+    if (!validation.ok) return { ok: false, error: validation.error }
+    const unconfirmed = validation.issues.find((issue) =>
+      (issue.code === 'OVER_STOCK' || issue.code === 'INGREDIENT_SHORT') &&
+      !stockOverrideAccepted(
+        validation.items.find((item) => item.lineId === issue.lineId)?.stockOverride,
+        validation.items.find((item) => item.lineId === issue.lineId)?.qty ?? 0,
+        rulesContext,
+      ),
+    )
+    if (unconfirmed) return { ok: false, error: unconfirmed.message }
     const previous = order.recordedOrderId
       ? current.orders.find((item) => item.id === order.recordedOrderId)
       : undefined

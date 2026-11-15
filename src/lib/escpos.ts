@@ -12,6 +12,7 @@ import type {
 import { fmtDate, fmtDateTime, fmtTime } from './utils.ts'
 import { round } from './pricing-utils.ts'
 import { BRAND_NAME } from './brand.ts'
+import { orderNumberLabel } from './orderNumber.ts'
 import {
   formatRegisterItemQuantity,
   groupRegisterItemRows,
@@ -111,7 +112,7 @@ export const buildReceiptLines = (
   lines.push({ text: '' })
   if (opts.reprint) lines.push({ text: '*** REPRINT ***', align: 'center', bold: true })
   lines.push({ text: divider(cols) })
-  lines.push({ text: twoCol(`Order #${order.number}`, fmtDateTime(order.createdAt), cols) })
+  lines.push({ text: twoCol(`Order #${orderNumberLabel(order, store.settings)}`, fmtDateTime(order.createdAt), cols) })
   lines.push({ text: twoCol(order.channel.replace('-', ' '), order.staffName, cols) })
   if (order.tableName) {
     lines.push({ text: `${order.tableName.toUpperCase()}${order.guests ? ` · ${order.guests} GUESTS` : ''}`, align: 'center', bold: true })

@@ -117,6 +117,9 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
         { kind: 'put', collection: 'tables', id: 'table-1', document: {
           id: 'table-1', storeId: owner.actor.storeId, name: 'T1', active: true,
         } },
+        { kind: 'put', collection: 'tables', id: 'table-2', document: {
+          id: 'table-2', storeId: owner.actor.storeId, name: 'T2', active: true,
+        } },
         { kind: 'put', collection: 'shifts', id: 'shift-one', document: {
           id: 'shift-one', storeId: owner.actor.storeId, userId: staffUser.id,
           date: '2026-11-15', startTime: '09:00', endTime: '17:00',
@@ -148,6 +151,50 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const orderSynced = await fetch(`${base}/api/sync`, { method: 'POST', headers: auth, body: JSON.stringify(orderUpdate) })
     assert.equal(orderSynced.status, 200)
+    const numberedOrder = (await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json())
+      .collections.openOrders.find((order) => order.id === 'order-one')
+    assert.ok(numberedOrder.number > 0)
+    assert.notEqual(numberedOrder.number, 12, 'the hub replaces a client-supplied number')
+    const checkoutSync = async (id, opId) => fetch(`${base}/api/sync`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        opId,
+        deviceId: 'phone-one',
+        storeId: owner.actor.storeId,
+        baseSeq: 3,
+        ops: [{ kind: 'put', collection: 'orders', id, document: {
+          id, storeId: owner.actor.storeId, number: 0, status: 'completed',
+          channel: 'takeaway', paymentMethod: 'cash', discount: 0,
+          clientOrderId: 'checkout-idempotency-test',
+          items: [{ lineId: `${id}-line`, productId: 'tea', qty: 1 }],
+        } }],
+      }),
+    })
+    const firstCheckout = await checkoutSync('checkout-first', 'checkout-first-op')
+    assert.equal(firstCheckout.status, 200, await firstCheckout.text())
+    const retriedCheckout = await checkoutSync('checkout-retry', 'checkout-retry-op')
+    assert.equal(retriedCheckout.status, 200, await retriedCheckout.text())
+    const checkoutSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
+    assert.equal(checkoutSnapshot.collections.orders.length, 1)
+    assert.equal(checkoutSnapshot.collections.orders[0].id, 'checkout-first')
+    const duplicateNumber = await fetch(`${base}/api/sync`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        opId: 'duplicate-order-number',
+        deviceId: 'phone-two',
+        storeId: owner.actor.storeId,
+        baseSeq: 4,
+        ops: [{ kind: 'put', collection: 'openOrders', id: 'number-collision', document: {
+          id: 'number-collision', storeId: owner.actor.storeId, number: numberedOrder.number,
+          tableId: 'table-2', tableName: 'T2', status: 'open', discount: 0,
+          items: [{ lineId: 'number-collision-line', productId: 'tea', qty: 1 }],
+        } }],
+      }),
+    })
+    assert.equal(duplicateNumber.status, 400)
+    assert.match((await duplicateNumber.json()).error, /number is already in use/i)
     const duplicate = await fetch(`${base}/api/sync`, { method: 'POST', headers: auth, body: JSON.stringify(orderUpdate) })
     assert.equal((await duplicate.json()).duplicate, true)
     const simultaneousTableOrder = await fetch(`${base}/api/sync`, {
@@ -338,7 +385,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       }),
     })
     assert.equal(excessTrackedStock.status, 400)
-    assert.match((await excessTrackedStock.json()).error, /Not enough stock for Tea/)
+    assert.match((await excessTrackedStock.json()).error, /Tea.*left in stock/i)
     const teaZeroAgain = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
         opId: 'tea-zero-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,

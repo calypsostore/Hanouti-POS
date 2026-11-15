@@ -106,8 +106,10 @@ export function maintainAvailabilityAfterStockChange(
       const currentInventory = inventoryItems.find((item) =>
         item.id === after.product.inventoryItemId && item.storeId === store.id,
       )
-      const was = isUnavailable(beforeProduct, beforeVariant, store.settings.availability, oldInventory, now)
-      const is = isUnavailable(after.product, after.variant, store.settings.availability, currentInventory, now)
+      const was = isUnavailable(beforeProduct, beforeVariant, store.settings.availability, oldInventory, now,
+        store.settings.orderRules.deductIngredientsOnSale)
+      const is = isUnavailable(after.product, after.variant, store.settings.availability, currentInventory, now,
+        store.settings.orderRules.deductIngredientsOnSale)
       if (was.unavailable === is.unavailable) continue
       const automatic = was.source === 'stock' || was.source === 'inventory' ||
         is.source === 'stock' || is.source === 'inventory'

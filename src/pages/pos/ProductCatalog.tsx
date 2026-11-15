@@ -29,6 +29,7 @@ type ProductCatalogProps = {
   lockedChannel?: boolean
   tableName?: string
   inventoryItems: InventoryItem[]
+  availableStockFor?: (product: Product) => number
   onUnavailable: (message: string) => void
   canManage86: boolean
   onRequest86: (product: Product) => void
@@ -36,7 +37,7 @@ type ProductCatalogProps = {
 
 export function ProductCatalog({
   categories, products, categoryId, setCategoryId, search, setSearch, channel, setChannel, store, qtyInCart, addItem, onBarcodeScan,
-  count, total, hasCartItems, onOpenCart, lockedChannel, tableName, inventoryItems, onUnavailable, canManage86, onRequest86,
+  count, total, hasCartItems, onOpenCart, lockedChannel, tableName, inventoryItems, availableStockFor, onUnavailable, canManage86, onRequest86,
 }: ProductCatalogProps) {
   const [scanCode, setScanCode] = useState('')
   const pressTimer = useRef<number | null>(null)
@@ -114,15 +115,16 @@ export function ProductCatalog({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {products.map((p) => {
                   const qty = qtyInCart(p.id)
-                  const linkedInventory = inventoryItems.find((item) => item.id === p.inventoryItemId)
                   const unavailableStates = (p.variants ?? []).map((variant) =>
-                    isUnavailable(p, variant, store.settings.availability, linkedInventory),
+                    isUnavailable(p, variant, store.settings.availability, inventoryItems, new Date(), store.settings.orderRules.deductIngredientsOnSale),
                   )
-                  const availability = isUnavailable(p, undefined, store.settings.availability, linkedInventory)
+                  const availability = isUnavailable(p, undefined, store.settings.availability, inventoryItems, new Date(), store.settings.orderRules.deductIngredientsOnSale)
                   const out = p.variants?.length
                     ? unavailableStates.every((state) => state.unavailable)
                     : availability.unavailable
-                  const low = p.trackStock && p.stock > 0 && p.stock <= store.settings.lowStockThreshold
+                  const remaining = availableStockFor?.(p) ?? p.stock
+                  const low = store.settings.orderRules.showLowStockHints &&
+                    Number.isFinite(remaining) && remaining > 0 && remaining <= store.settings.lowStockThreshold
                   const image = getProductImage(p)
                   return (
                     <button
@@ -185,7 +187,7 @@ export function ProductCatalog({
                         )}
                         {low && !out && (
                           <span className="rounded-md bg-[var(--semantic-amber-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--semantic-amber-text)]">
-                            {p.stock} left
+                            Only {remaining} left
                           </span>
                         )}
                         {out && store.settings.availability.displayStyle === 'big_red_x' && (

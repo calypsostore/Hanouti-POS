@@ -39,8 +39,9 @@ export function isUnavailable(
   product: Product,
   variant: ProductVariant | undefined,
   settings?: AvailabilitySettings,
-  inventoryItem?: InventoryItem,
+  inventory?: InventoryItem | InventoryItem[],
   now: Date = new Date(),
+  deductIngredients = false,
 ): AvailabilityResult {
   const config = settings ?? FALLBACK_SETTINGS
   if (config.enabled === false) return { unavailable: false, reason: '', source: null }
@@ -48,8 +49,15 @@ export function isUnavailable(
   const flag = variant?.eightySix?.active ? variant.eightySix : product.eightySix
   const stockTracked = variant ? variant.trackStock : product.trackStock
   const stock = variant ? variant.stock : product.stock
-  const inventoryTracked = Boolean(product.inventoryItemId)
-  const hasStock = (!stockTracked || stock > 0) && (!inventoryTracked || (inventoryItem?.onHand ?? 0) > 0)
+  const items = inventory ? (Array.isArray(inventory) ? inventory : [inventory]) : []
+  const linked = items.find((item) => item.id === product.inventoryItemId)
+  const recipe = [...(product.recipe ?? []), ...(variant?.recipe ?? [])]
+  const recipeShort = deductIngredients && recipe.some((line) =>
+    (items.find((item) => item.id === line.inventoryItemId)?.onHand ?? 0) < line.qtyPerUnit,
+  )
+  const inventoryTracked = Boolean(product.inventoryItemId) && recipe.length === 0
+  const hasStock = (!stockTracked || stock > 0) &&
+    (!inventoryTracked || (linked?.onHand ?? 0) > 0) && !recipeShort
   const timedReturn = flag?.returnMode === 'at_time' && flag.backAt &&
     Number.isFinite(Date.parse(flag.backAt)) && Date.parse(flag.backAt) <= now.getTime()
   const restockReturn = flag?.returnMode === 'on_restock' && config.autoReturnOnRestock !== false && hasStock
@@ -66,8 +74,11 @@ export function isUnavailable(
   if (config.autoEightySixAtZero !== false && stockTracked && stock <= 0) {
     return { unavailable: true, reason: 'Out of stock', source: 'stock' }
   }
-  if (inventoryTracked && (inventoryItem?.onHand ?? 0) <= 0) {
+  if (inventoryTracked && (linked?.onHand ?? 0) < 1) {
     return { unavailable: true, reason: 'Out of stock', source: 'inventory' }
+  }
+  if (recipeShort) {
+    return { unavailable: true, reason: 'Ingredient out of stock', source: 'inventory' }
   }
   return { unavailable: false, reason: '', source: null }
 }
@@ -125,7 +136,12 @@ export function clearReturnedFlags(
     )
     const trackStock = variant ? variant.trackStock : product.trackStock
     const stock = variant ? variant.stock : product.stock
-    const hasStock = (!trackStock || stock > 0) && (!product.inventoryItemId || (inventory?.onHand ?? 0) > 0)
+    const recipe = [...(product.recipe ?? []), ...(variant?.recipe ?? [])]
+    const recipeOk = recipe.every((line) =>
+      (inventoryItems.find((item) => item.id === line.inventoryItemId)?.onHand ?? 0) >= line.qtyPerUnit,
+    )
+    const hasStock = (!trackStock || stock > 0) &&
+      (!product.inventoryItemId || (inventory?.onHand ?? 0) > 0) && recipeOk
     const timedReturn = flag.returnMode === 'at_time' && Boolean(flag.backAt) &&
       Number.isFinite(Date.parse(flag.backAt ?? '')) && Date.parse(flag.backAt ?? '') <= now.getTime()
     const restockReturn = flag.returnMode === 'on_restock' &&

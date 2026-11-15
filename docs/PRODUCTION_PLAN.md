@@ -15,6 +15,23 @@ staff analytics and cash-difference flows are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
+### Unified order rules and stock — implemented; browser verification pending
+
+- Implemented: shared app/hub order-line validation, open-table reservations,
+  stock overflow modes and confirmer records, recipe fields/editors and
+  optional ingredient deduction, payment-time revalidation, open-order price
+  policy, checkout idempotency keys, and hub-assigned sequential numbers with
+  offline provisional labels.
+- Store and hub validate order lines and stock overrides. Ingredient and linked
+  inventory deductions clamp at zero and create stock-movement/audit records;
+  void restores the corresponding tracked quantities.
+- Settings are grouped under Settings → Service → Order rules. Defaults and
+  migration/hub normalization preserve existing stores.
+- Remaining/unverified: concurrent-phone payment races, PIN override through a
+  live hub, recipe/restock behavior in the browser, and 360/768 px layouts.
+  Purchases and stock-ledger changes are not yet one atomic hub transaction
+  with payment; see `docs/AUDIT.md` and `docs/DECISIONS.md`.
+
 ### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
 
 ### Availability (86) — partially implemented

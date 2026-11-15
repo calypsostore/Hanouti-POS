@@ -1,7 +1,7 @@
 import type { Capability, PayrollSettings, PrinterSettings, Role, StoreSettings, User } from '../types'
-import { MANAGER_DEFAULT_PERMISSIONS } from './permissions'
-import { round } from './pricing-utils'
-import { isValidUsername, normalizeUsername } from './staff'
+import { MANAGER_DEFAULT_PERMISSIONS } from './permissions.ts'
+import { round } from './pricing-utils.ts'
+import { isValidUsername, normalizeUsername } from './staff.ts'
 
 export const DEFAULT_PRINTER: PrinterSettings = {
   enabled: true,
@@ -63,6 +63,41 @@ export const DEFAULT_AVAILABILITY_SETTINGS: StoreSettings['availability'] = {
   showCountOnStationScreens: true,
 }
 
+export const DEFAULT_ORDER_RULES: StoreSettings['orderRules'] = {
+  stockOverflowMode: 'warn',
+  deductIngredientsOnSale: false,
+  openOrderPricePolicy: 'keep',
+  orderNumberFormat: 'plain',
+  orderNumberPrefix: '',
+  showLowStockHints: true,
+  revalidationBanner: true,
+  stockOverrideRoles: { admin: true, manager: true, staff: false },
+}
+
+const oneOf = <T extends string>(value: unknown, options: readonly T[], fallback: T): T =>
+  options.includes(value as T) ? value as T : fallback
+
+/** Normalize persisted/remote order rules. Used by the app database and documented for the hub. */
+export const normalizeOrderRules = (value?: Partial<StoreSettings['orderRules']>): StoreSettings['orderRules'] => {
+  const roles = value?.stockOverrideRoles
+  const prefix = typeof value?.orderNumberPrefix === 'string'
+    ? value.orderNumberPrefix.trim().slice(0, 8)
+    : DEFAULT_ORDER_RULES.orderNumberPrefix
+  return {
+    stockOverflowMode: oneOf(value?.stockOverflowMode, ['block', 'warn', 'allow'], DEFAULT_ORDER_RULES.stockOverflowMode),
+    deductIngredientsOnSale: value?.deductIngredientsOnSale === true,
+    openOrderPricePolicy: oneOf(value?.openOrderPricePolicy, ['keep', 'current', 'ask'], DEFAULT_ORDER_RULES.openOrderPricePolicy),
+    orderNumberFormat: oneOf(value?.orderNumberFormat, ['plain', 'daily', 'prefix'], DEFAULT_ORDER_RULES.orderNumberFormat),
+    orderNumberPrefix: prefix,
+    showLowStockHints: value?.showLowStockHints !== false,
+    revalidationBanner: value?.revalidationBanner !== false,
+    stockOverrideRoles: {
+      admin: roles?.admin !== false,
+      manager: roles?.manager !== false,
+      staff: roles?.staff === true,
+    },
+  }
+}
 export const normalizePayrollSettings = (value?: Partial<PayrollSettings>): PayrollSettings => {
   const workingDaysPerMonth = value?.workingDaysPerMonth
   const fullDayHours = value?.fullDayHours
@@ -99,6 +134,7 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   closeShift: role !== 'super',
   takeOverTables: role !== 'super',
   viewStation: role === 'manager',
+  overrideStock: role === 'admin' || role === 'manager',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
 
@@ -167,6 +203,9 @@ export const normalizeUser = (u: User): User => {
       manageCashDifferences: capability('manageCashDifferences'),
       viewStaffAnalytics: capability('viewStaffAnalytics'),
       manage86: capability('manage86'),
+      overrideStock: !u.stationOnly && (typeof p.overrideStock === 'boolean'
+        ? p.overrideStock
+        : u.role === 'admin' || u.role === 'manager'),
     },
   }
 }

@@ -12,6 +12,7 @@ import { preparationTicketsEnabled } from '../../lib/defaults'
 import { resolvePrintPrinter } from '../../lib/printRouting'
 import { shouldAutoPrintReceipt } from '../../lib/automation'
 import { readDeviceReceiptPolicy } from '../../lib/printPreferences'
+import { orderNumberLabel } from '../../lib/orderNumber'
 
 export function ReceiptModal({
   order,
@@ -38,7 +39,7 @@ export function ReceiptModal({
     if (!targetPrinter) {
       setPrintJob({
         title: 'Receipt',
-        subtitle: `Order #${order.number}`,
+        subtitle: `Order #${orderNumberLabel(order, store.settings)}`,
         lines,
         bytes: linesToEscpos(lines, store.settings.printer.width),
         kind: 'receipt',
@@ -68,7 +69,7 @@ export function ReceiptModal({
     const targetPrinter = resolvePrintPrinter(db, store.id, kind)
     setPrintJob({
       title: kind === 'kitchen' ? 'Kitchen ticket' : 'Receipt',
-      subtitle: `Order #${order.number}`,
+      subtitle: `Order #${orderNumberLabel(order, store.settings)}`,
       lines,
       bytes: linesToEscpos(lines, cfg.width),
       kind,
@@ -83,7 +84,7 @@ export function ReceiptModal({
         open={!!order}
         onClose={onClose}
         title="Sale completed"
-        subtitle={`Order #${order.number} · ${fmtTime(order.createdAt)}`}
+        subtitle={`Order #${orderNumberLabel(order, store.settings)} · ${fmtTime(order.createdAt)}`}
         size="sm"
         footer={
           <div className="flex flex-wrap gap-2">

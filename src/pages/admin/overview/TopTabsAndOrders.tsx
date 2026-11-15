@@ -3,6 +3,7 @@ import { ArrowRight, CreditCard, ReceiptText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { AdminDashboardData } from '../../../lib/dashboard'
 import { fmtTime, money, nextDueLabel, relative } from '../../../lib/utils'
+import { orderNumberLabel } from '../../../lib/orderNumber'
 import { useApp } from '../../../store/AppStore'
 import { useToast } from '../../../components/toast'
 import { Badge } from '../../../components/ui'
@@ -68,7 +69,7 @@ export function TopTabsAndOrders({ data }: { data: AdminDashboardData }) {
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-extrabold text-accent-foreground">#{order.number.toString().slice(-2)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-[11.5px] font-bold">Order #{order.number}</span>
+                    <span className="truncate text-[11.5px] font-bold">Order #{orderNumberLabel(order)}</span>
                     <Badge tone={order.status === 'void' ? 'danger' : order.paymentMethod === 'credit' ? 'accent' : 'success'}>
                       {order.status === 'void' ? 'Void' : order.paymentMethod === 'credit' ? 'Tab' : 'Paid'}
                     </Badge>

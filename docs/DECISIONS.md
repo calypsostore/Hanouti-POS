@@ -127,6 +127,27 @@
 - Register shifts exist, but there is no table-ownership handover workflow.
   Closing a shift warns about open table orders and leaves ownership unchanged;
   operators must hand them over before closing.
+
+## Unified order rules
+
+- The shared `src/shared/orderRules.ts` engine is the single source for app and
+  hub line validation. A configured linked inventory item represents one base
+  unit per sold unit; explicit product/variant/modifier recipes take precedence
+  when ingredient deduction is enabled.
+- Warn mode requires an authorized stock override; block mode never prompts,
+  and allow mode stays silent. The app records the confirmer and requested/
+  available amounts; hub sync rejects missing or invalid confirmations.
+- Open-order prices default to the saved snapshot. Current-price is an explicit
+  resolution in review; Ask keeps the saved amount until the operator changes
+  it. Sent lines are not changed automatically.
+- The hub assigns sequential store numbers when it applies a new order. Offline
+  clients retain a device-prefixed provisional display label until the next
+  authoritative snapshot.
+- Recipe quantities are inventory base units per sold unit. Ingredient
+  availability is the minimum producible quantity across the selected recipe;
+  this project does not convert between inventory units automatically.
+- Order-rule browser flows and concurrent-phone payment races remain
+  unverified; see `docs/AUDIT.md` and `docs/PRODUCTION_PLAN.md`.
 - A hub PIN-verification endpoint was added because sync snapshots intentionally
   omit password and PIN hashes. It is scoped to the authenticated user and uses
   a persistent five-failure/15-minute lockout; hashes remain server-side.

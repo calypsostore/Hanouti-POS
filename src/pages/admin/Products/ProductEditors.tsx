@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import type { Category, InventoryItem, Product, ProductModifierGroup, ProductVariant, SaleUnit } from '../../../types'
+import type { Category, InventoryItem, Product, ProductModifierGroup, ProductVariant, RecipeLine, SaleUnit } from '../../../types'
 import { Button, Field, Input, Modal, Select, Toggle } from '../../../components/ui'
 import { AppIcon } from '../../../components/AppIcon'
 import { IconPicker } from '../../../components/IconPicker'
 import { ImageUpload } from '../../../components/ImageUpload'
 import { ProductOptionsEditor } from './ProductOptionsEditor'
+import { RecipeEditor } from './RecipeEditor'
 
 export function ProductEditor({
   product,
@@ -40,6 +41,7 @@ export function ProductEditor({
   const [soldByWeight, setSoldByWeight] = useState(product?.soldByWeight ?? false)
   const [saleUnit, setSaleUnit] = useState<SaleUnit>(product?.saleUnit ?? 'kg')
   const [inventoryItemId, setInventoryItemId] = useState(product?.inventoryItemId ?? '')
+  const [recipe, setRecipe] = useState<RecipeLine[]>(product?.recipe ?? [])
 
   const priceNum = Number(price) || 0
   const costNum = Number(cost) || 0
@@ -84,6 +86,7 @@ export function ProductEditor({
                   soldByWeight,
                   saleUnit,
                   inventoryItemId: inventoryItemId || undefined,
+                  recipe: recipe.length ? recipe : undefined,
                 })
               }
             >
@@ -181,9 +184,11 @@ export function ProductEditor({
             </Field>
           )}
         </div>
+        <RecipeEditor recipe={recipe} inventoryItems={inventoryItems} onChange={setRecipe} />
         <ProductOptionsEditor
           modifiers={modifiers}
           variants={variants}
+          inventoryItems={inventoryItems}
           onModifiersChange={setModifiers}
           onVariantsChange={setVariants}
         />

@@ -1,5 +1,6 @@
-import type { OpenOrder, OrderItem, Station } from '../types'
-import type { ReceiptLine } from './escpos'
+import type { OpenOrder, OrderItem, Station } from '../types.ts'
+import type { ReceiptLine } from './escpos.ts'
+import { orderNumberLabel } from './orderNumber.ts'
 
 export type TicketKind = 'NEW' | 'ADDITION' | 'CANCELLED' | 'REPRINT'
 
@@ -9,6 +10,7 @@ export interface StationTicket {
   kind: TicketKind
   rush: boolean
   orderNumber: number
+  orderLabel: string
   tableName: string
   sectionName?: string
   guests?: number
@@ -19,7 +21,7 @@ export interface StationTicket {
 
 type TicketOrder = Pick<
   OpenOrder,
-  'number' | 'tableName' | 'sectionName' | 'guests' | 'staffName' | 'createdAt'
+  'number' | 'provisionalNumber' | 'tableName' | 'sectionName' | 'guests' | 'staffName' | 'createdAt'
 >
 
 export function buildStationTickets(
@@ -46,6 +48,7 @@ export function buildStationTickets(
       kind,
       rush,
       orderNumber: order.number,
+      orderLabel: orderNumberLabel(order),
       tableName: order.tableName,
       sectionName: order.sectionName,
       guests: order.guests,
@@ -67,7 +70,7 @@ export function buildStationTicketLines(ticket: StationTicket): ReceiptLine[] {
   ]
   if (ticket.sectionName) lines.push({ text: `SECTION: ${ticket.sectionName}`, align: 'center' })
   if (ticket.guests !== undefined) lines.push({ text: `GUESTS: ${ticket.guests}`, align: 'center' })
-  lines.push({ text: `ORDER #${ticket.orderNumber} · ${new Date(ticket.time).toISOString().slice(11, 16)}`, bold: true })
+  lines.push({ text: `ORDER #${ticket.orderLabel} · ${new Date(ticket.time).toISOString().slice(11, 16)}`, bold: true })
   lines.push({ text: `STAFF: ${ticket.staffName}` })
   if (ticket.rush) lines.push({ text: '*** RUSH ***', align: 'center', bold: true })
   for (const item of ticket.items) {

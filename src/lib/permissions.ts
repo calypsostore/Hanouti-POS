@@ -1,4 +1,4 @@
-import type { Capability, User } from '../types'
+import type { Capability, User } from '../types.ts'
 
 export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> = {
   manageInventory: true,
@@ -22,6 +22,18 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   manageCashDifferences: true,
   viewStaffAnalytics: true,
   manage86: true,
+  overrideStock: true,
+}
+
+export function canOverrideStock(user: User, rules: { stockOverrideRoles: { admin: boolean; manager: boolean; staff: boolean } }): boolean {
+  if (user.stationOnly) return false
+  const roleAllowed = user.role === 'admin'
+    ? rules.stockOverrideRoles.admin
+    : user.role === 'manager'
+      ? rules.stockOverrideRoles.manager
+      : rules.stockOverrideRoles.staff
+  if (!roleAllowed) return false
+  return user.role === 'admin' || user.permissions.overrideStock === true
 }
 
 export function can(user: User, capability: Capability): boolean {

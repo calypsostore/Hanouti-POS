@@ -2,6 +2,7 @@ import type { Order, Store } from '../types'
 import { fmtDateTime } from '../lib/utils'
 import { round } from '../lib/pricing-utils'
 import { BRAND_NAME } from '../lib/brand'
+import { orderNumberLabel } from '../lib/orderNumber'
 
 export function ReceiptView({ order, store }: { order: Order; store: Store }) {
   const settings = store.settings
@@ -17,7 +18,7 @@ export function ReceiptView({ order, store }: { order: Order; store: Store }) {
       </div>
       <hr />
       <div className="flex justify-between text-[10.5px] text-neutral-600">
-        <span>Order #{order.number}</span>
+        <span>Order #{orderNumberLabel(order, settings)}</span>
         <span>{fmtDateTime(order.createdAt)}</span>
       </div>
       <div className="mt-0.5 flex justify-between text-[10.5px] text-neutral-600">

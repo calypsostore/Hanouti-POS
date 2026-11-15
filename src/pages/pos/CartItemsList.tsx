@@ -13,6 +13,7 @@ export function CartItemsList({
   canVoidSentItems = false,
   onVoidSentItem,
   unavailableLineIds = [],
+  issueByLine = {},
 }: {
   items: OrderItem[]
   persistedLineIds?: string[]
@@ -21,6 +22,7 @@ export function CartItemsList({
   canVoidSentItems?: boolean
   onVoidSentItem?: (lineId: string) => void
   unavailableLineIds?: string[]
+  issueByLine?: Record<string, string>
 }) {
   return (
     <ul className="space-y-1">
@@ -28,6 +30,7 @@ export function CartItemsList({
         const persisted = !!item.lineId && persistedLineIds?.includes(item.lineId)
         const unavailable = !!item.lineId && unavailableLineIds.includes(item.lineId) &&
           (!persisted || item.status === 'draft')
+        const issue = item.lineId ? issueByLine[item.lineId] : undefined
         return (
           <li
             key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
@@ -40,6 +43,11 @@ export function CartItemsList({
               <div className="truncate text-[12.5px] font-semibold text-ink">{item.name}</div>
               {item.variantName && <div className="truncate text-[10px] text-muted">{item.variantName}</div>}
               {unavailable && <div className="text-[10px] font-bold text-red-600">86 - remove</div>}
+              {!unavailable && issue && (
+                <div className="inline-flex rounded-full bg-red-100 px-1.5 py-0.5 text-[9.5px] font-bold text-red-700">
+                  {issue}
+                </div>
+              )}
               {!!item.modifiers?.length && (
                 <div className="truncate text-[10px] text-muted">
                   {item.modifiers.map((modifier) => modifier.optionName).join(', ')}

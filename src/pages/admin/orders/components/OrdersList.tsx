@@ -2,6 +2,7 @@ import { Eye, ReceiptText, Search } from 'lucide-react'
 import type { Order } from '../../../../types'
 import { Badge, Button, Card, EmptyState, Input, Segmented, Select } from '../../../../components/ui'
 import { cn, fmtDate, fmtTime, money } from '../../../../lib/utils'
+import { orderNumberLabel } from '../../../../lib/orderNumber'
 import { PaymentBadge } from './OrderPrimitives'
 import type { OrderMethod, OrderRange, OrderStatus } from '../types'
 
@@ -127,7 +128,7 @@ export default function OrdersList({
                     onClick={() => onSelect(order)}
                   >
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-ink">#{order.number}</div>
+                      <div className="font-semibold text-ink">#{orderNumberLabel(order)}</div>
                       <div className="text-[10.5px] text-muted">
                         {fmtDate(order.createdAt)} · {fmtTime(order.createdAt)}
                       </div>
@@ -184,7 +185,7 @@ export default function OrdersList({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[12.5px] font-semibold">
-                    #{order.number} · {customerName(order.customerId) ?? 'Guest'}
+                    #{orderNumberLabel(order)} · {customerName(order.customerId) ?? 'Guest'}
                     {order.status === 'recorded' && <Badge tone="warning" className="ml-1.5">Recorded</Badge>}
                   </div>
                   {order.tableName && <div className="text-[10px] font-semibold text-accent-foreground">{order.tableName}</div>}

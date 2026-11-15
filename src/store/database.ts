@@ -7,7 +7,7 @@ import type {
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, normalizeOrderRules, normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v33'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v34'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -272,13 +272,23 @@ const isSaleUnit = (value: unknown): value is SaleUnit =>
   value === 'kg' || value === 'g' || value === 'piece'
 const isInventoryUnit = (value: unknown): value is InventoryUnit =>
   value === 'g' || value === 'ml' || value === 'piece'
+const normalizeRecipe = (value: unknown): Array<{ inventoryItemId: string; qtyPerUnit: number }> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const lines = value.flatMap((line) =>
+    isRecord(line) && typeof line.inventoryItemId === 'string' &&
+    isFiniteNumber(line.qtyPerUnit) && line.qtyPerUnit > 0
+      ? [{ inventoryItemId: line.inventoryItemId, qtyPerUnit: round(line.qtyPerUnit) }]
+      : [],
+  )
+  return lines.length ? lines : undefined
+}
 const normalizeModifierGroup = (value: unknown): ProductModifierGroup | null => {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string' ||
       (value.selection !== 'single' && value.selection !== 'multiple') || !Array.isArray(value.options)) return null
   const options = value.options.filter((option): option is ProductModifierGroup['options'][number] =>
     isRecord(option) && typeof option.id === 'string' && typeof option.name === 'string' &&
     isFiniteNumber(option.priceDelta),
-  )
+  ).map((option) => ({ ...option, recipe: normalizeRecipe(option.recipe) }))
   return {
     id: value.id,
     name: value.name,
@@ -301,6 +311,7 @@ const normalizeVariant = (value: unknown): ProductVariant | null => {
     trackStock: value.trackStock === true,
     stock: Math.max(0, value.stock),
     eightySix: normalizeEightySix(value.eightySix),
+    recipe: normalizeRecipe(value.recipe),
   }
 }
 const normalizeEightySix = (value: unknown): Product['eightySix'] => {
@@ -320,6 +331,18 @@ const isOrderModifier = (value: unknown): value is OrderModifier =>
   isRecord(value) && typeof value.groupId === 'string' && typeof value.groupName === 'string' &&
   typeof value.optionId === 'string' && typeof value.optionName === 'string' &&
   isFiniteNumber(value.priceDelta)
+const normalizeStockOverride = (value: unknown): OrderItem['stockOverride'] => {
+  if (!isRecord(value) || typeof value.confirmedById !== 'string' ||
+    !isFiniteNumber(value.requested) || !isFiniteNumber(value.available) ||
+    typeof value.at !== 'string' || !Number.isFinite(Date.parse(value.at))) return undefined
+  return {
+    confirmedById: value.confirmedById,
+    confirmedByName: typeof value.confirmedByName === 'string' ? value.confirmedByName.slice(0, 100) : '',
+    requested: value.requested,
+    available: value.available,
+    at: value.at,
+  }
+}
 
 export const normalizeDb = (value: unknown, seed: Database): Database | null => {
   if (!isRecord(value)) return null
@@ -496,6 +519,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             notifyStaffAboutChanges: typeof availability.notifyStaffAboutChanges === 'boolean' ? availability.notifyStaffAboutChanges : DEFAULT_AVAILABILITY_SETTINGS.notifyStaffAboutChanges,
             showCountOnStationScreens: typeof availability.showCountOnStationScreens === 'boolean' ? availability.showCountOnStationScreens : DEFAULT_AVAILABILITY_SETTINGS.showCountOnStationScreens,
           },
+          orderRules: normalizeOrderRules(
+            isRecord(s.settings.orderRules) ? s.settings.orderRules as Partial<StoreSettings['orderRules']> : undefined,
+          ),
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
@@ -576,6 +602,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     tableHistory: normalizeTableHistory(order.tableHistory),
     ownerStaffId: typeof order.ownerStaffId === 'string' ? order.ownerStaffId : order.staffId,
     ownerStaffName: typeof order.ownerStaffName === 'string' ? order.ownerStaffName.slice(0, 100) : order.staffName,
+    clientOrderId: typeof order.clientOrderId === 'string' ? order.clientOrderId.slice(0, 128) : undefined,
+    provisionalNumber: typeof order.provisionalNumber === 'string' ? order.provisionalNumber.slice(0, 40) : undefined,
     items: order.items.filter((item) =>
       isRecord(item) && typeof item.productId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) &&
@@ -605,6 +633,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       variantName: typeof item.variantName === 'string' ? item.variantName : undefined,
       saleUnit: isSaleUnit(item.saleUnit) ? item.saleUnit : undefined,
       soldByWeight: item.soldByWeight === true,
+      stockOverride: normalizeStockOverride(item.stockOverride),
     })),
   }))
   const rawTables = collection<DiningTable & { zone?: unknown }>('tables', (item): item is DiningTable & { zone?: unknown } =>
@@ -690,6 +719,17 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
   })).filter((item) =>
     stores.some((store) => store.id === item.storeId) && Boolean(item.name),
   )
+  /** Keep only recipe lines that point at an inventory item owned by the same store. */
+  const ownRecipe = (
+    recipe: Array<{ inventoryItemId: string; qtyPerUnit: number }> | undefined,
+    storeId: unknown,
+  ): Array<{ inventoryItemId: string; qtyPerUnit: number }> | undefined => {
+    if (typeof storeId !== 'string' || !recipe?.length) return undefined
+    const own = recipe.filter((line) =>
+      inventoryItems.some((item) => item.id === line.inventoryItemId && item.storeId === storeId),
+    )
+    return own.length ? own : undefined
+  }
   const movementTypes: StockMovement['type'][] = [
     'opening', 'purchase', 'sale_use', 'staff_use', 'waste', 'adjustment',
     'count_correction', 'void_return',
@@ -808,8 +848,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     ...order,
     number: Number.isSafeInteger(order.number) && Number(order.number) > 0
       ? Number(order.number)
-      : orders.find((recorded) => recorded.id === order.recordedOrderId)?.number ??
-        orders.filter((recorded) => recorded.storeId === order.storeId).reduce((max, recorded) => Math.max(max, recorded.number), 1000) + index + 1,
+      : typeof order.provisionalNumber === 'string'
+        ? 0
+        : orders.find((recorded) => recorded.id === order.recordedOrderId)?.number ??
+          orders.filter((recorded) => recorded.storeId === order.storeId).reduce((max, recorded) => Math.max(max, recorded.number), 1000) + index + 1,
+    provisionalNumber: typeof order.provisionalNumber === 'string'
+      ? order.provisionalNumber.slice(0, 40)
+      : undefined,
     tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
     shiftId: typeof order.shiftId === 'string' ? order.shiftId : undefined,
     sectionId: typeof order.sectionId === 'string' ? order.sectionId : undefined,
@@ -844,6 +889,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       variantName: typeof item.variantName === 'string' ? item.variantName : undefined,
       saleUnit: isSaleUnit(item.saleUnit) ? item.saleUnit : undefined,
       soldByWeight: item.soldByWeight === true,
+      stockOverride: normalizeStockOverride(item.stockOverride),
       sentAt: typeof item.sentAt === 'string' && Number.isFinite(Date.parse(item.sentAt))
         ? item.sentAt
         : undefined,
@@ -1304,16 +1350,30 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       active: product.active !== false,
       barcode: typeof product.barcode === 'string' ? product.barcode : '',
       modifiers: Array.isArray(product.modifiers)
-        ? product.modifiers.map(normalizeModifierGroup).filter((group): group is ProductModifierGroup => group !== null)
+        ? product.modifiers.map(normalizeModifierGroup)
+          .filter((group): group is ProductModifierGroup => group !== null)
+          .map((group) => ({
+            ...group,
+            options: group.options.map((option) => ({
+              ...option,
+              recipe: ownRecipe(option.recipe, product.storeId),
+            })),
+          }))
         : [],
       variants: Array.isArray(product.variants)
-        ? product.variants.map(normalizeVariant).filter((variant): variant is ProductVariant => variant !== null)
+        ? product.variants.map(normalizeVariant)
+          .filter((variant): variant is ProductVariant => variant !== null)
+          .map((variant) => ({
+            ...variant,
+            recipe: ownRecipe(variant.recipe, product.storeId),
+          }))
         : [],
       inventoryItemId: typeof product.inventoryItemId === 'string' &&
         inventoryItems.some((item) => item.id === product.inventoryItemId && item.storeId === product.storeId)
         ? product.inventoryItemId
         : undefined,
       eightySix: normalizeEightySix(product.eightySix),
+      recipe: ownRecipe(normalizeRecipe(product.recipe), product.storeId),
       soldByWeight: product.soldByWeight === true,
       saleUnit: isSaleUnit(product.saleUnit) ? product.saleUnit : 'piece',
     })),

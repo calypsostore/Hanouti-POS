@@ -137,6 +137,12 @@ phone-local WebSerial fallback are **untested on hardware**.
 - Added shared 86 evaluation, migration/defaults, local and hub order rejection, POS indicators/list, product editor inventory links, and audited manual actions.
 - Added availability settings, `manage86` permissions, Products filtering and bulk controls, and focused availability tests.
 - Browser flow and multi-device notification behavior are UNVERIFIED.
+
 - Hub rejects newly added unavailable items and over-quantity tracked stock; existing sent items remain accepted.
 - Local-day/first-shift resets, persisted timed/restock returns, and per-item audit entries are implemented.
 - Availability bell notices and station-board 86 counts are implemented with configurable settings; browser flow remains UNVERIFIED.
+- Implemented shared app/hub order validation, stock reservations, overrides, and recipes.
+- Added Settings → Service → Order rules and product/variant/modifier recipe editors.
+- Added payment revalidation, checkout idempotency handling, and hub-assigned order numbers.
+- Added focused order-rule and hub numbering/idempotency tests.
+- Done; browser and concurrent-phone flows remain unverified.

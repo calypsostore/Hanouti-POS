@@ -123,16 +123,105 @@ function normalizeHubEightySix(value: unknown): Record<string, unknown> | undefi
   }
 }
 
+function normalizeHubRecipe(value: unknown): Array<{ inventoryItemId: string; qtyPerUnit: number }> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const lines = value.flatMap((line) =>
+    record(line) && typeof line.inventoryItemId === 'string' &&
+    typeof line.qtyPerUnit === 'number' && Number.isFinite(line.qtyPerUnit) && line.qtyPerUnit > 0
+      ? [{ inventoryItemId: line.inventoryItemId, qtyPerUnit: line.qtyPerUnit }]
+      : [],
+  )
+  return lines.length ? lines : undefined
+}
+
+function normalizeHubOrderRules(value: unknown): Record<string, unknown> {
+  const source = record(value) ? value : {}
+  const roles = record(source.stockOverrideRoles) ? source.stockOverrideRoles : {}
+  return {
+    stockOverflowMode: ['block', 'warn', 'allow'].includes(String(source.stockOverflowMode))
+      ? source.stockOverflowMode
+      : 'warn',
+    deductIngredientsOnSale: source.deductIngredientsOnSale === true,
+    openOrderPricePolicy: ['keep', 'current', 'ask'].includes(String(source.openOrderPricePolicy))
+      ? source.openOrderPricePolicy
+      : 'keep',
+    orderNumberFormat: ['plain', 'daily', 'prefix'].includes(String(source.orderNumberFormat))
+      ? source.orderNumberFormat
+      : 'plain',
+    orderNumberPrefix: typeof source.orderNumberPrefix === 'string'
+      ? source.orderNumberPrefix.trim().slice(0, 8)
+      : '',
+    showLowStockHints: source.showLowStockHints !== false,
+    revalidationBanner: source.revalidationBanner !== false,
+    stockOverrideRoles: {
+      admin: roles.admin !== false,
+      manager: roles.manager !== false,
+      staff: roles.staff === true,
+    },
+  }
+}
+
 function normalizeHubProduct(value: Record<string, unknown>): Record<string, unknown> {
   return {
     ...value,
     inventoryItemId: typeof value.inventoryItemId === 'string' ? value.inventoryItemId : undefined,
     eightySix: normalizeHubEightySix(value.eightySix),
+    recipe: normalizeHubRecipe(value.recipe),
+    modifiers: Array.isArray(value.modifiers)
+      ? value.modifiers.map((group) => record(group) && Array.isArray(group.options)
+        ? {
+            ...group,
+            options: group.options.map((option) => record(option)
+              ? { ...option, recipe: normalizeHubRecipe(option.recipe) }
+              : option),
+          }
+        : group)
+      : value.modifiers,
     variants: Array.isArray(value.variants)
       ? value.variants.map((variant) => record(variant)
-        ? { ...variant, eightySix: normalizeHubEightySix(variant.eightySix) }
+        ? {
+            ...variant,
+            eightySix: normalizeHubEightySix(variant.eightySix),
+            recipe: normalizeHubRecipe(variant.recipe),
+          }
         : variant)
       : value.variants,
+  }
+}
+
+function validateHubProductRecipes(
+  product: Record<string, unknown>,
+  collections: Record<string, Record<string, SyncDocument> | undefined>,
+  storeId: string,
+): void {
+  const inventory = collections.inventoryItems ?? {}
+  const recipes: unknown[] = [product.recipe]
+  if (Array.isArray(product.variants)) {
+    for (const variant of product.variants) {
+      if (record(variant)) recipes.push(variant.recipe)
+    }
+  }
+  if (Array.isArray(product.modifiers)) {
+    for (const group of product.modifiers) {
+      if (!record(group) || !Array.isArray(group.options)) continue
+      for (const option of group.options) {
+        if (record(option)) recipes.push(option.recipe)
+      }
+    }
+  }
+  for (const recipe of recipes) {
+    if (!Array.isArray(recipe)) continue
+    for (const ingredient of recipe) {
+      if (!record(ingredient) || typeof ingredient.inventoryItemId !== 'string' ||
+        typeof ingredient.qtyPerUnit !== 'number' || !Number.isFinite(ingredient.qtyPerUnit) ||
+        ingredient.qtyPerUnit <= 0) {
+        throw new Error('Product recipe contains an invalid ingredient.')
+      }
+      const item = inventory[ingredient.inventoryItemId]
+      if (!item || item.storeId !== storeId) {
+        throw new Error('Product recipe ingredients must belong to this store.')
+      }
+    }
   }
 }
 
@@ -309,7 +398,7 @@ export async function createHubServer(): Promise<HubRuntime> {
       if (!record(operation) || !['put', 'delete'].includes(String(operation.kind)) ||
         typeof operation.collection !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,40}$/.test(operation.collection) ||
         !validId(operation.id)) throw new Error('Change set contains an invalid operation.')
-      let operationId = operation.id
+      let operationId = operation.id as string
       const required = PRIVATE_COLLECTIONS[operation.collection]
       const previousForPermission = validationState.collections[operation.collection]?.[operation.id]
       const incomingForPermission = operation.kind === 'put' && record(operation.document) ? operation.document : undefined
@@ -425,24 +514,40 @@ export async function createHubServer(): Promise<HubRuntime> {
             settings: {
             ...settings,
             availability: normalizeHubAvailability(settings.availability),
+            orderRules: normalizeHubOrderRules(settings.orderRules),
             },
           }
         } else {
           validateStoreDoc(operation.document, actor.storeId)
           if (!record(operation.document)) throw new Error('Change set document must be an object.')
           document = operation.document
-          if (operation.collection === 'products') document = normalizeHubProduct(document)
+          if (operation.collection === 'products') {
+            document = normalizeHubProduct(document)
+            validateHubProductRecipes(document, validationState.collections, actor.storeId)
+          }
+        }
+        if (operation.collection === 'orders' && typeof document.clientOrderId === 'string' &&
+          document.clientOrderId) {
+          const existingCheckout = Object.values(validationState.collections.orders ?? {}).find((candidate) =>
+            candidate.id !== operation.id &&
+            candidate.storeId === actor.storeId &&
+            candidate.clientOrderId === document.clientOrderId,
+          )
+          if (existingCheckout) {
+            operation.id = existingCheckout.id
+            document = existingCheckout
+          }
         }
         operation.document = document
         if (document.id !== operation.id) throw new Error('Operation ID does not match document ID.')
-        const previousDocument = validationState.collections[operation.collection]?.[operation.id]
+        const previousDocument = validationState.collections[operation.collection]?.[operationId]
         if ((operation.collection === 'products' || operation.collection === 'categories') &&
           previousDocument && changedDocuments.has(`${operation.collection}:${operation.id}`) &&
           !isDeepStrictEqual(previousDocument, document)) {
           const label = typeof document.name === 'string'
             ? document.name
-            : typeof previousDocument.name === 'string' ? previousDocument.name : operation.id
-          conflicts.push({ collection: operation.collection, id: operation.id, label })
+            : typeof previousDocument.name === 'string' ? previousDocument.name : operationId
+          conflicts.push({ collection: operation.collection, id: operationId, label })
         }
         if (operation.collection === 'printers') validatePrinter(document, actor.storeId, validationState)
         if (operation.collection === 'openOrders') {

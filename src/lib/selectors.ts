@@ -1,5 +1,5 @@
-import type { LedgerEntry } from '../types'
-import { round } from './pricing-utils'
+import type { LedgerEntry } from '../types.ts'
+import { round } from './pricing-utils.ts'
 
 export const balanceFor = (ledger: LedgerEntry[], customerId: string) => {
   const entries = ledger.filter((l) => l.customerId === customerId)

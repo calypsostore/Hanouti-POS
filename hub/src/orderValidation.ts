@@ -1,10 +1,15 @@
 import { computeTotals } from '../../src/lib/pricing.ts'
-import { resolveOpenOrderItems } from '../../src/lib/openOrderItems.ts'
-import { isUnavailable } from '../../src/shared/availability.ts'
 import { round } from '../../src/lib/pricing-utils.ts'
-import type { InventoryItem, OrderItem, Product, Store } from '../../src/types.ts'
+import { balanceFor } from '../../src/lib/selectors.ts'
+import { nextOrderNumber } from '../../src/lib/orderNumber.ts'
+import { resolveOrderLines, stockOverrideAccepted, validateOrderLines, type OrderRulesContext } from '../../src/shared/orderRules.ts'
+import type {
+  InventoryItem, LedgerEntry, OpenOrder, OrderItem, Product, Store, User,
+} from '../../src/types.ts'
 import { requireCapability } from './auth.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
+
+const VALID_ITEM_STATUSES = ['draft', 'sent', 'preparing', 'ready', 'served', 'void']
 
 export function validateOrderDocument(
   input: Record<string, unknown>,
@@ -24,43 +29,88 @@ export function validateOrderDocument(
   const products = Object.values(state.collections.products ?? {}) as unknown as Product[]
   const requestedItems = input.items as OrderItem[]
   const inventoryItems = Object.values(state.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
-  const resolved = resolveOpenOrderItems(
-    products,
-    store,
-    requestedItems.map((item) => ({ ...item, status: 'sent' })),
-    inventoryItems,
+  const users = Object.values(state.collections.users ?? {}) as unknown as User[]
+  const openOrders = Object.values(state.collections.openOrders ?? {}) as unknown as OpenOrder[]
+  const rawPermissions = user.permissions && typeof user.permissions === 'object'
+    ? user.permissions as Record<string, unknown>
+    : {}
+  const capabilityPermissions = Object.fromEntries(
+    Object.entries(rawPermissions).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
   )
-  if (!resolved.ok) throw new Error(resolved.error)
+  const ownOpenOrder = collection === 'orders'
+    ? openOrders.find((candidate) =>
+        typeof input.tableId === 'string'
+          ? candidate.tableId === input.tableId
+          : typeof input.tableName === 'string' && candidate.tableName === input.tableName,
+      )
+    : undefined
+  const rulesContext: OrderRulesContext = {
+    store,
+    products: products.filter((product) => product.storeId === actor.storeId),
+    inventoryItems: inventoryItems.filter((item) => item.storeId === actor.storeId),
+    openOrders,
+    excludeOpenOrderId: collection === 'openOrders' ? String(input.id) : ownOpenOrder?.id,
+    actor: {
+      id: String(user.id),
+      name: String(user.name),
+      role: actor.role,
+      permissions: {
+        discount: rawPermissions.discount === true,
+        credit: rawPermissions.credit === true,
+        settle: rawPermissions.settle === true,
+        reports: rawPermissions.reports === true,
+        register: rawPermissions.register === true,
+        supervisor: rawPermissions.supervisor === true,
+        ...capabilityPermissions,
+      },
+      stationOnly: Boolean(user.stationOnly),
+    },
+    users,
+    validateSentItems: collection === 'orders',
+  }
   const previous = state.collections[collection]?.[String(input.id)]
   const previousItems = previous && Array.isArray(previous.items) ? previous.items as Array<Record<string, unknown>> : []
-  const availabilityInventory = inventoryItems.filter((item) => item.storeId === actor.storeId)
+  const requested = requestedItems.map((item, index) => {
+    const source = item as unknown as Record<string, unknown>
+    const old = previousItems.find((candidate) =>
+      (typeof source.lineId === 'string' && candidate.lineId === source.lineId) ||
+      (!source.lineId && candidate.productId === item.productId && previousItems.indexOf(candidate) === index),
+    )
+    return {
+      ...item,
+      lineId: typeof source.lineId === 'string'
+        ? source.lineId
+        : typeof old?.lineId === 'string'
+          ? old.lineId
+          : undefined,
+      status: (source.status ?? old?.status) as OrderItem['status'],
+    }
+  })
+  const resolved = resolveOrderLines(requested, rulesContext)
+  if (!resolved.ok) throw new Error(resolved.error)
+  const unconfirmed = resolved.issues.find((issue) => {
+    if (issue.code !== 'OVER_STOCK' && issue.code !== 'INGREDIENT_SHORT') return false
+    const line = resolved.items.find((item) => item.lineId === issue.lineId)
+    return !line || !stockOverrideAccepted(line.stockOverride, line.qty, rulesContext)
+  })
+  if (unconfirmed) throw new Error(unconfirmed.message)
+
   const seenLineIds = new Set<string>()
-  const addedStock = new Map<string, number>()
+  const categories = Object.values(state.collections.categories ?? {}) as Array<{
+    id: string
+    storeId: string
+    stationId?: string | null
+  }>
   const items = resolved.items.map((item, index) => {
-    const source = requestedItems[index] as unknown as Record<string, unknown>
+    const source = requested[index] as unknown as Record<string, unknown>
     const old = previousItems.find((candidate) =>
       (typeof source.lineId === 'string' && candidate.lineId === source.lineId) ||
       (!source.lineId && candidate.productId === item.productId && previousItems.indexOf(candidate) === index),
     )
     const product = products.find((candidate) => candidate.id === item.productId && candidate.storeId === actor.storeId)
-    if (!old && product) {
-      const variant = product.variants?.find((candidate) => candidate.id === item.variantId)
-      const inventoryItem = availabilityInventory.find((candidate) => candidate.id === product.inventoryItemId)
-      const availability = isUnavailable(product, variant, store.settings.availability, inventoryItem)
-      if (availability.unavailable) {
-        throw new Error(`${product.name}${variant ? ` (${variant.name})` : ''} is unavailable (86: ${availability.reason}).`)
-      }
-      const tracksStock = variant ? variant.trackStock : product.trackStock
-      if (tracksStock) {
-        const key = `${product.id}:${variant?.id ?? 'base'}`
-        const quantity = (addedStock.get(key) ?? 0) + item.qty
-        const available = variant ? variant.stock : product.stock
-        if (quantity > available) {
-          throw new Error(`Not enough stock for ${product.name}${variant ? ` (${variant.name})` : ''}. Available: ${available}.`)
-        }
-        addedStock.set(key, quantity)
-      }
-    }
+    const savedOpenLine = ownOpenOrder?.items.find((candidate) =>
+      candidate.lineId === item.lineId && candidate.productId === item.productId,
+    )
     const lineId = typeof source.lineId === 'string'
       ? source.lineId
       : typeof old?.lineId === 'string'
@@ -74,7 +124,7 @@ export function validateOrderDocument(
       seenLineIds.add(lineId)
     }
     let status: unknown = source.status ?? old?.status
-    if (status !== undefined && !['draft', 'sent', 'preparing', 'ready', 'served', 'void'].includes(String(status))) {
+    if (status !== undefined && !VALID_ITEM_STATUSES.includes(String(status))) {
       throw new Error('Order contains an invalid item status.')
     }
     if (old && status !== old.status && status !== 'void') {
@@ -90,40 +140,38 @@ export function validateOrderDocument(
         throw new Error('A reason is required to void an order item.')
       }
     }
-    const categories = Object.values(state.collections.categories ?? {}) as Array<{
-      id: string
-      storeId: string
-      stationId?: string | null
-    }>
     const category = product
       ? categories.find((candidate) =>
           candidate.id === product.categoryId && candidate.storeId === actor.storeId,
         )
       : undefined
-    const stationId = product?.stationId === null ? undefined : product?.stationId ?? category?.stationId
+    const stationId = (product?.stationId === null ? undefined : product?.stationId ?? category?.stationId) ?? undefined
     if (typeof stationId === 'string' && !state.collections.stations?.[stationId]) {
       throw new Error('Product routing references an unavailable station.')
     }
     return {
       ...item,
+      ...(collection === 'orders' && store.settings.orderRules.openOrderPricePolicy !== 'current' &&
+        savedOpenLine ? { price: savedOpenLine.price } : {}),
       id: lineId,
       lineId,
       stationId,
-      status,
-      sentAt: status === 'sent' ? (old?.sentAt ?? new Date().toISOString()) : old?.sentAt,
-      addedAt: old?.addedAt ?? new Date().toISOString(),
-      addedById: old?.addedById ?? actor.userId,
-      addedByName: old?.addedByName ?? String(user.name),
-      voidReason,
+      status: status as OrderItem['status'],
+      sentAt: status === 'sent'
+        ? (typeof old?.sentAt === 'string' ? old.sentAt : new Date().toISOString())
+        : typeof old?.sentAt === 'string' ? old.sentAt : undefined,
+      addedAt: typeof old?.addedAt === 'string' ? old.addedAt : new Date().toISOString(),
+      addedById: typeof old?.addedById === 'string' ? old.addedById : actor.userId,
+      addedByName: typeof old?.addedByName === 'string' ? old.addedByName : String(user.name),
+      voidReason: typeof voidReason === 'string' ? voidReason : undefined,
     }
   })
-
   const requestedDiscount = input.discount === undefined ? 0 : input.discount
   if (typeof requestedDiscount !== 'number' || !Number.isFinite(requestedDiscount) || requestedDiscount < 0) {
     throw new Error('Order discount must be a non-negative amount.')
   }
   const discount = round(requestedDiscount)
-  if (discount > 0) requireCapability(actor, 'discount')
+  let creditCustomer: { id: string; limit: number; balance: number } | undefined
   if (collection === 'orders') {
     if (!['cash', 'card', 'credit', 'unpaid'].includes(String(input.paymentMethod))) {
       throw new Error('Order payment method is invalid.')
@@ -133,17 +181,74 @@ export function validateOrderDocument(
         throw new Error('Credit sales require credit to be enabled and a customer selected.')
       }
       requireCapability(actor, 'credit')
+      const customer = state.collections.customers?.[input.customerId]
+      if (!customer || customer.storeId !== actor.storeId) {
+        throw new Error('Order customerId must reference an entity in this store.')
+      }
+      const creditLimit = Number(customer.limit)
+      if (!Number.isFinite(creditLimit) || creditLimit < 0) {
+        throw new Error('Customer credit limit is invalid.')
+      }
+      const ledger = Object.values(state.collections.ledger ?? {}) as unknown as LedgerEntry[]
+      creditCustomer = {
+        id: String(customer.id),
+        limit: creditLimit,
+        balance: balanceFor(ledger, String(customer.id)),
+      }
     }
   }
   const payableItems = items.filter((item) => item.status !== 'void')
   const totals = computeTotals(payableItems, store.settings, discount)
   if (discount > round(totals.subtotal + totals.service)) throw new Error('Order discount exceeds the order amount.')
-  const number = input.number
-  if (!Number.isSafeInteger(number) || Number(number) < 1) throw new Error('Order number must be a positive integer.')
-  const duplicateNumber = Object.values(state.collections[collection] ?? {}).some((candidate) =>
-    candidate.id !== input.id && candidate.number === number,
+  const checkoutIssues = validateOrderLines(payableItems, {
+    ...rulesContext,
+    validateSentItems: collection === 'orders',
+    payWithCredit: true,
+    discount,
+    estimatedTotal: totals.total,
+    customer: creditCustomer,
+  })
+  const checkoutBlocker = checkoutIssues.find((issue) => issue.severity === 'block')
+  if (checkoutBlocker) throw new Error(checkoutBlocker.message)
+  const checkoutOverride = checkoutIssues.find((issue) =>
+    (issue.code === 'OVER_STOCK' || issue.code === 'INGREDIENT_SHORT') &&
+    !stockOverrideAccepted(
+      items.find((item) => item.lineId === issue.lineId)?.stockOverride,
+      items.find((item) => item.lineId === issue.lineId)?.qty ?? 0,
+      rulesContext,
+    ),
   )
-  if (duplicateNumber) throw new Error('Order number is already in use in this store.')
+  if (checkoutOverride) throw new Error(checkoutOverride.message)
+
+  const existingDocument = state.collections[collection]?.[String(input.id)]
+  const matchingOpenOrder = collection === 'orders'
+    ? ownOpenOrder
+    : undefined
+  const existingNumber = existingDocument && Number.isSafeInteger(Number(existingDocument.number)) &&
+    Number(existingDocument.number) > 0
+    ? Number(existingDocument.number)
+    : matchingOpenOrder && Number.isSafeInteger(Number(matchingOpenOrder.number)) &&
+      Number(matchingOpenOrder.number) > 0
+      ? Number(matchingOpenOrder.number)
+      : 0
+  const usedNumbers = [
+    ...Object.values(state.collections.orders ?? {}),
+    ...Object.values(state.collections.openOrders ?? {}),
+  ]
+    .filter((candidate) => candidate.id !== input.id && candidate.id !== matchingOpenOrder?.id)
+    .map((candidate) => Number(candidate.number))
+    .filter((value) => Number.isSafeInteger(value) && value > 0)
+  const requestedNumber = Number(input.number)
+  const rules = store.settings.orderRules
+  let number: number
+  if (existingNumber > 0) {
+    number = existingNumber
+  } else {
+    if (Number.isSafeInteger(requestedNumber) && requestedNumber > 0 && usedNumbers.includes(requestedNumber)) {
+      throw new Error('Order number is already in use in this store.')
+    }
+    number = nextOrderNumber(usedNumbers, rules?.orderNumberFormat ?? 'plain')
+  }
   for (const [field, collectionName] of [
     ['tableId', 'tables'], ['sectionId', 'sections'], ['customerId', 'customers'], ['shiftId', 'shifts'],
   ] as const) {
@@ -156,6 +261,7 @@ export function validateOrderDocument(
   return {
     ...input,
     items,
+    number,
     discount: round(discount),
     ...totals,
     taxRate: store.settings.taxRate,

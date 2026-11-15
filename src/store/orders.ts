@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { AuditJsonValue, Database, Order, OrderItem, OrderModifier, User } from '../types'
+import type { AuditJsonValue, Database, Order, OrderItem, User } from '../types'
 import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
@@ -9,12 +9,17 @@ import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
 import { openShiftForStaff } from '../lib/registerShifts'
-import { isUnavailable } from '../lib/availability'
+import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
+import { roundQuantity } from '../lib/inventory'
+import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
+import {
+  planStockDeductions, resolveOrderLines, stockKey, stockOverrideAccepted, validateOrderLines,
+} from '../shared/orderRules'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
 export function useOrdersSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireActor } = dependencies
+  const { dbRef, commitDb, provider, requireActor } = dependencies
   const createOrder = useCallback<AppContextValue['createOrder']>(
     (input) => {
       const actorResult = requireActor()
@@ -61,112 +66,56 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (target.settings.requireShiftForOrders && !shift) {
         return { ok: false, error: 'Open your shift before taking orders.' }
       }
-
-      const checkedItems: OrderItem[] = []
-      const stockDeductions = new Map<string, { productId: string; variantId?: string; qty: number }>()
-      for (const item of input.items) {
-        if (!item || typeof item.productId !== 'string' || !Number.isFinite(item.qty) || item.qty <= 0) {
-          return { ok: false, error: 'Each item quantity must be a positive amount.' }
-        }
-        const product = current.products.find((candidate) => candidate.id === item.productId)
-        if (!product || product.storeId !== target.id || !product.active) {
-          return { ok: false, error: 'An item in the cart is unavailable in this store.' }
-        }
-        const qty = round(item.qty)
-        if (qty <= 0) return { ok: false, error: 'Weight must be greater than zero.' }
-        if (product.soldByWeight) {
-          if (!target.settings.features.weightItems) {
-            return { ok: false, error: 'Weight-based sales are disabled for this store.' }
-          }
-          if (qty !== item.qty) return { ok: false, error: 'Weight must be entered to three decimal places.' }
-        } else if (!Number.isSafeInteger(item.qty)) {
-          return { ok: false, error: 'Each item quantity must be a positive whole number.' }
-        }
-        const variants = product.variants ?? []
-        const variant = item.variantId ? variants.find((candidate) => candidate.id === item.variantId) : undefined
-        if (item.variantId && !variant) {
-          return { ok: false, error: `Choose a valid variant for ${product.name}.` }
-        }
-        if (variants.length && !variant) {
-          return { ok: false, error: `Choose a variant for ${product.name}.` }
-        }
-        const inventoryItem = current.inventoryItems.find((candidate) =>
-          candidate.id === product.inventoryItemId && candidate.storeId === target.id,
+      const clientOrderId = typeof input.clientOrderId === 'string'
+        ? input.clientOrderId.trim().slice(0, 128)
+        : undefined
+      if (clientOrderId) {
+        const existing = current.orders.find((order) =>
+          order.storeId === target.id && order.clientOrderId === clientOrderId,
         )
-        if (!['sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))) {
-          const availability = isUnavailable(product, variant, target.settings.availability, inventoryItem)
-          if (availability.unavailable) {
-            return { ok: false, error: `${product.name}${variant ? ` (${variant.name})` : ''} is 86'd (${availability.reason}).` }
-          }
-        }
-        const selected: OrderModifier[] = []
-        const incomingModifiers = Array.isArray(item.modifiers) ? item.modifiers : []
-        const seenGroups = new Set<string>()
-        const seenOptions = new Set<string>()
-        for (const requested of incomingModifiers) {
-          if (!requested || typeof requested.groupId !== 'string' || typeof requested.optionId !== 'string') {
-            return { ok: false, error: `Choose valid options for ${product.name}.` }
-          }
-          const group = (product.modifiers ?? []).find((candidate) => candidate.id === requested.groupId)
-          const option = group?.options.find((candidate) => candidate.id === requested.optionId)
-          const optionKey = `${requested.groupId}:${requested.optionId}`
-          if (!group || !option || seenOptions.has(optionKey) ||
-            (group.selection === 'single' && seenGroups.has(group.id))) {
-            return { ok: false, error: `Choose valid options for ${product.name}.` }
-          }
-          seenGroups.add(group.id)
-          seenOptions.add(optionKey)
-          selected.push({
-            groupId: group.id,
-            groupName: group.name,
-            optionId: option.id,
-            optionName: option.name,
-            priceDelta: option.priceDelta,
-          })
-        }
-        for (const group of product.modifiers ?? []) {
-          const selectedCount = selected.filter((modifier) => modifier.groupId === group.id).length
-          if (group.required && !selectedCount) {
-            return { ok: false, error: `Select an option for ${group.name} on ${product.name}.` }
-          }
-          if (group.selection === 'single' && selectedCount > 1) {
-            return { ok: false, error: `Choose only one option for ${group.name}.` }
-          }
-        }
-        const price = round((variant?.price ?? product.price) + selected.reduce((sum, option) => sum + option.priceDelta, 0))
-        if (!Number.isFinite(price) || price < 0) {
-          return { ok: false, error: `The configured price for ${product.name} is invalid.` }
-        }
-        const stockKey = `${product.id}:${variant?.id ?? 'base'}`
-        const tracksStock = variant ? variant.trackStock : product.trackStock
-        const stockAvailable = variant ? variant.stock : product.stock
-        if (tracksStock) {
-          const prior = stockDeductions.get(stockKey)?.qty ?? 0
-          const nextQty = round(prior + qty)
-          if (nextQty > stockAvailable) {
-            return { ok: false, error: `Not enough stock for ${product.name}${variant ? ` (${variant.name})` : ''}. Available: ${stockAvailable}.` }
-          }
-          stockDeductions.set(stockKey, { productId: product.id, variantId: variant?.id, qty: nextQty })
-        }
-        checkedItems.push({
-          lineId: uid('line'),
-          productId: product.id,
-          name: product.name,
-          price,
-          qty,
-          variantId: variant?.id,
-          variantName: variant?.name,
-          modifiers: selected,
-          note: typeof item.note === 'string' ? item.note.trim() : '',
+        if (existing) return { ok: true, order: existing }
+      }
+      const payingOpenOrder = input.excludeOpenOrderId
+        ? current.openOrders.find((order) =>
+            order.id === input.excludeOpenOrderId && order.storeId === target.id,
+          )
+        : undefined
+      if (input.excludeOpenOrderId && !payingOpenOrder) {
+        return { ok: false, error: 'The open order being paid could not be found in this store.' }
+      }
+      const customer = input.customerId
+        ? current.customers.find((candidate) =>
+            candidate.id === input.customerId && candidate.storeId === target.id,
+          )
+        : undefined
+      if (input.customerId && !customer) {
+        return { ok: false, error: 'That customer does not belong to this store.' }
+      }
+      const rulesContext = {
+        store: target,
+        products: current.products,
+        inventoryItems: current.inventoryItems,
+        openOrders: current.openOrders,
+        excludeOpenOrderId: payingOpenOrder?.id,
+        actor: seller,
+        users: current.users,
+        validateSentItems: Boolean(payingOpenOrder),
+      }
+      const resolved = resolveOrderLines(
+        input.items.map((item) => ({ ...item, lineId: item.lineId ?? uid('line') })),
+        rulesContext,
+      )
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      const checkedItems: OrderItem[] = resolved.items.map((item) => {
+        const savedLine = payingOpenOrder?.items.find((candidate) => candidate.lineId === item.lineId)
+        const preservePrice = target.settings.orderRules.openOrderPricePolicy !== 'current' && savedLine
+        return {
+          ...item,
+          ...(preservePrice ? { price: savedLine.price } : {}),
           addedById: seller.id,
           addedByName: seller.name,
-          saleUnit: product.soldByWeight ? product.saleUnit ?? 'piece' : undefined,
-          soldByWeight: product.soldByWeight === true,
-        })
-      }
-      if (input.customerId && !current.customers.some((customer) =>
-        customer.id === input.customerId && customer.storeId === target.id,
-      )) return { ok: false, error: 'That customer does not belong to this store.' }
+        }
+      })
 
       if (input.paymentMethod === 'credit') {
         if (!target.settings.allowCredit) return { ok: false, error: 'Credit tabs are disabled for this store.' }
@@ -174,18 +123,11 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           return { ok: false, error: 'You do not have permission to add orders to tabs.' }
         }
         if (!input.customerId) return { ok: false, error: 'Select a customer to add this order to a tab.' }
-        const customer = current.customers.find((c) => c.id === input.customerId)
-        if (!customer || customer.storeId !== target.id) {
-          return { ok: false, error: 'That customer does not belong to this store.' }
-        }
       }
 
       const requestedDiscount = input.discount ?? 0
       if (!Number.isFinite(requestedDiscount) || requestedDiscount < 0) {
         return { ok: false, error: 'Discount must be zero or a positive amount.' }
-      }
-      if (requestedDiscount > 0 && seller.role !== 'admin' && !seller.permissions.discount) {
-        return { ok: false, error: 'You do not have permission to apply discounts.' }
       }
       const undiscounted = computeTotals(checkedItems, target.settings)
       if (requestedDiscount > undiscounted.total) {
@@ -193,14 +135,25 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       }
       const discount = round(requestedDiscount)
       const totals = computeTotals(checkedItems, target.settings, discount)
-      if (input.paymentMethod === 'credit' && input.customerId) {
-        const customer = current.customers.find((candidate) => candidate.id === input.customerId)
-        if (!customer) return { ok: false, error: 'That customer does not belong to this store.' }
-        const balance = balanceFor(current.ledger, customer.id)
-        if (balance + totals.total > customer.limit) {
-          return { ok: false, error: `This order exceeds the customer's credit limit (${customer.limit.toFixed(3)} DT).` }
-        }
-      }
+
+      const checkoutIssues = validateOrderLines(checkedItems, {
+        ...rulesContext,
+        payWithCredit: true,
+        discount,
+        estimatedTotal: totals.total,
+        customer: input.paymentMethod === 'credit' && customer
+          ? { id: customer.id, limit: customer.limit, balance: balanceFor(current.ledger, customer.id) }
+          : undefined,
+      })
+      const blocker = checkoutIssues.find((issue) => issue.severity === 'block')
+      if (blocker) return { ok: false, error: blocker.message }
+      const unconfirmed = checkoutIssues.find((issue) => {
+        if (issue.code !== 'OVER_STOCK' && issue.code !== 'INGREDIENT_SHORT') return false
+        const line = checkedItems.find((item) => item.lineId === issue.lineId)
+        return !line || !stockOverrideAccepted(line.stockOverride, line.qty, rulesContext)
+      })
+      if (unconfirmed) return { ok: false, error: unconfirmed.message }
+
       const createdAt = new Date().toISOString()
       const tableHistory = input.channel === 'dine-in' && target.settings.features.tables
         ? [
@@ -268,52 +221,110 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         note: input.note,
         createdAt,
         tableHistory,
+        clientOrderId,
       }
 
       commitDb((prev) => {
-        const orderNo = prev.orders
-          .filter((existing) => existing.storeId === target.id)
-          .reduce((max, existing) => Math.max(max, existing.number), 1000) + 1
-        order.number = orderNo
-        const next: Database = {
-        ...prev,
-        orders: [order, ...prev.orders],
-        products: prev.products.map((product) => {
+        order.number = provider.mode === 'hub'
+          ? 0
+          : nextOrderNumber(
+              prev.orders.filter((existing) => existing.storeId === target.id).map((existing) => existing.number),
+              target.settings.orderRules.orderNumberFormat,
+            )
+        order.provisionalNumber = provider.mode === 'hub'
+          ? provisionalOrderNumber(
+              provider.deviceIdentifier(),
+              prev.orders.filter((existing) => existing.storeId === target.id).length + 1,
+            )
+          : undefined
+        const plan = planStockDeductions(
+          checkedItems,
+          prev.products,
+          target.settings.orderRules.deductIngredientsOnSale,
+        )
+        const updatedProducts = prev.products.map((product) => {
           if (product.storeId !== target.id) return product
-          const baseDeduction = stockDeductions.get(`${product.id}:base`)
-          if (baseDeduction && product.trackStock) {
-            return { ...product, stock: round(product.stock - baseDeduction.qty) }
-          }
-          const nextVariants = (product.variants ?? []).map((variant) => {
-            const deduction = stockDeductions.get(`${product.id}:${variant.id}`)
+          const baseDeduction = plan.productStock.get(stockKey(product.id))
+          const nextProduct = baseDeduction && product.trackStock
+            ? { ...product, stock: Math.max(0, round(product.stock - baseDeduction.qty)) }
+            : product
+          const nextVariants = (nextProduct.variants ?? []).map((variant) => {
+            const deduction = plan.productStock.get(stockKey(product.id, variant.id))
             return deduction && variant.trackStock
-              ? { ...variant, stock: round(variant.stock - deduction.qty) }
+              ? { ...variant, stock: Math.max(0, round(variant.stock - deduction.qty)) }
               : variant
           })
-          return nextVariants.some((variant, index) => variant !== product.variants?.[index])
-            ? { ...product, variants: nextVariants }
-            : product
-        }),
-        ledger:
-          input.paymentMethod === 'credit' && input.customerId
-            ? [
-                {
-                  id: uid('led'),
-                  storeId: target.id,
-                  customerId: input.customerId,
-                  type: 'charge' as const,
-                  amount: order.total,
-                  orderId: order.id,
-                  staffName: seller.name,
-                  shiftId: shift?.id,
-                  createdAt: order.createdAt,
-                },
-                ...prev.ledger,
-              ]
-            : prev.ledger,
+          return nextVariants.some((variant, index) => variant !== nextProduct.variants?.[index])
+            ? { ...nextProduct, variants: nextVariants }
+            : nextProduct
+        })
+        const updatedInventory = prev.inventoryItems.map((item) => {
+          const line = plan.ingredients.get(item.id)
+          if (!line || item.storeId !== target.id) return item
+          return { ...item, onHand: Math.max(0, roundQuantity(item.onHand - line.qty)) }
+        })
+        const orderLabel = order.provisionalNumber ?? String(order.number)
+        const ingredientMovements = [...plan.ingredients.values()].flatMap((line) => {
+          const item = prev.inventoryItems.find((candidate) =>
+            candidate.id === line.itemId && candidate.storeId === target.id,
+          )
+          if (!item) return []
+          const deducted = Math.min(line.qty, item.onHand)
+          if (deducted <= 0) return []
+          return [{
+            id: uid('mov'),
+            storeId: target.id,
+            itemId: item.id,
+            type: 'sale_use' as const,
+            qtyDelta: -roundQuantity(deducted),
+            unitCostSnapshot: item.avgCostPerBaseUnit,
+            reason: `Sale ${orderLabel}`,
+            userId: seller.id,
+            userName: seller.name,
+            refType: 'order',
+            refId: order.id,
+            createdAt,
+          }]
+        })
+        const baseNext: Database = {
+          ...prev,
+          orders: [order, ...prev.orders],
+          products: updatedProducts,
+          inventoryItems: updatedInventory,
+          stockMovements: [...ingredientMovements, ...prev.stockMovements],
+          ledger:
+            input.paymentMethod === 'credit' && input.customerId
+              ? [
+                  {
+                    id: uid('led'),
+                    storeId: target.id,
+                    customerId: input.customerId,
+                    type: 'charge' as const,
+                    amount: order.total,
+                    orderId: order.id,
+                    staffName: seller.name,
+                    shiftId: shift?.id,
+                    createdAt: order.createdAt,
+                  },
+                  ...prev.ledger,
+                ]
+              : prev.ledger,
+        }
+        const maintained = maintainAvailabilityAfterStockChange(
+          prev,
+          updatedProducts,
+          updatedInventory,
+          seller,
+          new Date(createdAt),
+        )
+        const next: Database = {
+          ...baseNext,
+          products: maintained.products,
+          inventoryItems: maintained.inventoryItems,
+          auditLogs: maintained.auditLogs,
         }
         const stockChanges: AuditJsonValue[] = []
-        for (const deduction of stockDeductions.values()) {
+        for (const deduction of plan.productStock.values()) {
           const product = prev.products.find((candidate) => candidate.id === deduction.productId)
           if (!product) continue
           const variant = deduction.variantId
@@ -324,23 +335,45 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             product: product.name,
             variant: variant?.name ?? '',
             before: stockBefore,
-            after: round(stockBefore - deduction.qty),
+            after: Math.max(0, round(stockBefore - deduction.qty)),
+            shortfall: Math.max(0, round(deduction.qty - stockBefore)),
           })
         }
+        for (const line of plan.ingredients.values()) {
+          const item = prev.inventoryItems.find((candidate) => candidate.id === line.itemId)
+          if (!item) continue
+          stockChanges.push({
+            product: item.name,
+            variant: 'ingredient',
+            before: item.onHand,
+            after: Math.max(0, roundQuantity(item.onHand - line.qty)),
+            shortfall: Math.max(0, roundQuantity(line.qty - item.onHand)),
+          })
+        }
+        const overrides = checkedItems
+          .filter((item) => item.stockOverride)
+          .map((item) => ({
+            line: item.lineId ?? item.productId,
+            requested: item.stockOverride?.requested ?? item.qty,
+            available: item.stockOverride?.available ?? 0,
+            confirmedByName: item.stockOverride?.confirmedByName ?? '',
+          }))
         let logged = addLog(next, seller, {
           storeId: target.id,
           action: 'created',
           entity: 'order',
           entityId: order.id,
-          summary: `Created order #${order.number} for ${order.total.toFixed(3)} DT${table ? ` at ${table.name}` : ''}`,
+          summary: `Created order #${orderLabel} for ${order.total.toFixed(3)} DT${table ? ` at ${table.name}` : ''}`,
           after: {
             number: order.number,
+            provisionalNumber: order.provisionalNumber ?? '',
             total: order.total,
             discount: order.discount,
             paymentMethod: order.paymentMethod,
             tableName: order.tableName ?? '',
             guests: order.guests ?? 0,
             stockChanges,
+            overrides,
           },
         })
         if (discount > 0) {
@@ -349,7 +382,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             action: 'discount_applied',
             entity: 'order',
             entityId: order.id,
-            summary: `Applied ${discount.toFixed(3)} DT discount to order #${order.number}`,
+            summary: `Applied ${discount.toFixed(3)} DT discount to order #${orderLabel}`,
             after: { amount: discount, orderTotal: order.total },
           })
         }
@@ -357,7 +390,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       })
       return { ok: true, order }
     },
-    [commitDb, requireActor],
+    [commitDb, provider, requireActor],
   )
 
   const voidOrder = useCallback<AppContextValue['voidOrder']>(
@@ -448,61 +481,113 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             })
           }
         }
-        const next: Database = {
-        ...prev,
-        orders: prev.orders.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                status: 'void' as const,
-                voidedById,
-                voidedByName,
-                voidedAt: at,
-                voidShiftId: voidShift?.id,
-                tableHistory: o.tableHistory
-                  ? [
-                      ...o.tableHistory,
-                      {
-                        id: uid('evt'),
-                        type: 'voided' as const,
-                        actorId: latestActor.actor.id,
-                        actorName: latestActor.actor.name,
-                        at,
-                        details: reason,
-                      },
-                    ]
-                  : undefined,
-              }
-            : o,
-        ),
-        products: prev.products.map((product) => {
+        const store = prev.stores.find((candidate) => candidate.id === order.storeId)
+        const restorePlan = planStockDeductions(
+          order.items,
+          prev.products,
+          store?.settings.orderRules.deductIngredientsOnSale === true,
+        )
+        const restoredProducts = prev.products.map((product) => {
           if (product.storeId !== order.storeId) return product
-          const itemQty = order.items
-            .filter((item) => item.productId === product.id && !item.variantId)
-            .reduce((total, item) => round(total + item.qty), 0)
-          const variants = (product.variants ?? []).map((variant) => {
-            const qty = order.items
-              .filter((item) => item.productId === product.id && item.variantId === variant.id)
-              .reduce((total, item) => round(total + item.qty), 0)
+          const baseQty = restorePlan.productStock.get(stockKey(product.id))?.qty ?? 0
+          const nextProduct = baseQty && product.trackStock
+            ? { ...product, stock: round(product.stock + baseQty) }
+            : product
+          const variants = (nextProduct.variants ?? []).map((variant) => {
+            const qty = restorePlan.productStock.get(stockKey(product.id, variant.id))?.qty ?? 0
             return variant.trackStock && qty
               ? { ...variant, stock: round(variant.stock + qty) }
               : variant
           })
-          if (itemQty && product.trackStock) return { ...product, stock: round(product.stock + itemQty) }
-          return variants.some((variant, index) => variant !== product.variants?.[index])
-            ? { ...product, variants }
-            : product
-        }),
-        ledger: [...ledgerEntries, ...prev.ledger],
+          return variants.some((variant, index) => variant !== nextProduct.variants?.[index])
+            ? { ...nextProduct, variants }
+            : nextProduct
+        })
+        const restoredInventory = prev.inventoryItems.map((item) => {
+          const line = restorePlan.ingredients.get(item.id)
+          if (!line || item.storeId !== order.storeId) return item
+          return { ...item, onHand: roundQuantity(item.onHand + line.qty) }
+        })
+        const orderLabel = order.provisionalNumber ?? String(order.number)
+        const returnMovements = [...restorePlan.ingredients.values()].flatMap((line) => {
+          const item = prev.inventoryItems.find((candidate) =>
+            candidate.id === line.itemId && candidate.storeId === order.storeId,
+          )
+          if (!item || line.qty <= 0) return []
+          return [{
+            id: uid('mov'),
+            storeId: order.storeId,
+            itemId: item.id,
+            type: 'void_return' as const,
+            qtyDelta: roundQuantity(line.qty),
+            unitCostSnapshot: item.avgCostPerBaseUnit,
+            reason: `Void ${orderLabel}`,
+            userId: voidedById,
+            userName: voidedByName,
+            refType: 'order',
+            refId: order.id,
+            createdAt: at,
+          }]
+        })
+        const baseNext: Database = {
+          ...prev,
+          orders: prev.orders.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: 'void' as const,
+                  voidedById,
+                  voidedByName,
+                  voidedAt: at,
+                  voidShiftId: voidShift?.id,
+                  tableHistory: o.tableHistory
+                    ? [
+                        ...o.tableHistory,
+                        {
+                          id: uid('evt'),
+                          type: 'voided' as const,
+                          actorId: latestActor.actor.id,
+                          actorName: latestActor.actor.name,
+                          at,
+                          details: reason,
+                        },
+                      ]
+                    : undefined,
+                }
+              : o,
+          ),
+          products: restoredProducts,
+          inventoryItems: restoredInventory,
+          stockMovements: [...returnMovements, ...prev.stockMovements],
+          ledger: [...ledgerEntries, ...prev.ledger],
+        }
+        const maintained = maintainAvailabilityAfterStockChange(
+          prev,
+          restoredProducts,
+          restoredInventory,
+          authorizer,
+          new Date(at),
+        )
+        const next: Database = {
+          ...baseNext,
+          products: maintained.products,
+          inventoryItems: maintained.inventoryItems,
+          auditLogs: maintained.auditLogs,
         }
         let logged = addLog(next, authorizer, {
           storeId: order.storeId,
           action: 'voided',
           entity: 'order',
           entityId: order.id,
-          summary: `Voided order #${order.number}${order.tableName ? ` · ${order.tableName}` : ''}: ${reason}`,
+          summary: `Voided order #${orderLabel}${order.tableName ? ` · ${order.tableName}` : ''}: ${reason}`,
           before: { status: order.status, tableName: order.tableName ?? '' },
-          after: { status: 'void', reason, total: order.total, tableName: order.tableName ?? '' },
+          after: {
+            status: 'void',
+            reason,
+            total: order.total,
+            tableName: order.tableName ?? '',
+            restoredIngredients: returnMovements.length,
+          },
         })
         if (order.paymentMethod === 'cash' || creditRefund > 0) {
           const refundAmount = order.paymentMethod === 'cash' ? order.total : creditRefund
@@ -512,7 +597,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             action: 'refund_applied',
             entity: 'order',
             entityId: order.id,
-            summary: `Refunded ${refundAmount.toFixed(3)} DT for order #${order.number}${order.tableName ? ` · ${order.tableName}` : ''} (${refundMethod})`,
+            summary: `Refunded ${refundAmount.toFixed(3)} DT for order #${orderLabel}${order.tableName ? ` · ${order.tableName}` : ''} (${refundMethod})`,
             after: { amount: refundAmount, method: refundMethod },
           })
         }

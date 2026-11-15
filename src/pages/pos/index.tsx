@@ -7,7 +7,7 @@ import { restorePrinter } from '../../lib/printer'
 import { balanceFor } from '../../lib/selectors'
 import type { Order, OrderChannel, OrderItem } from '../../types'
 import { useToast } from '../../components/toast'
-import { can } from '../../lib/permissions'
+import { can, canOverrideStock } from '../../lib/permissions'
 import { CustomerPicker } from './CustomerPicker'
 import { PaymentModal } from './PaymentModal'
 import { POSHeader } from './POSHeader'
@@ -21,8 +21,9 @@ import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 import { linesToEscpos } from '../../lib/escpos'
 import { filterPosProducts, shiftReminderDue as isShiftReminderDue } from '../../lib/automation'
 import { isUnavailable } from '../../lib/availability'
+import { validateOrderLines, computeReservations, availableStock } from '../../shared/orderRules'
 import { Button, Field, Input, Modal, Select, Textarea } from '../../components/ui'
-import type { OpenOrder, Product, Station, Store } from '../../types'
+import type { OpenOrder, Product, ProductVariant, Station, Store } from '../../types'
 import type { TicketKind } from '../../lib/tickets'
 
 const stationTicketJob = (
@@ -71,8 +72,14 @@ export default function POS() {
 
   const [categoryId, setCategoryId] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const productCart = useProductCart(db, store, push, registerOpen)
-  const { cart, setCart, optionsProduct, setOptionsProduct, qtyInCart, addItem, addSelection, scanBarcode, changeQty, setLineQty } = productCart
+  const productCart = useProductCart(db, store, user, push, registerOpen)
+  const {
+    cart, setCart, optionsProduct, setOptionsProduct, qtyInCart, addItem, addSelection, scanBarcode, changeQty, setLineQty,
+    stockPrompt, resolveStockPrompt, cancelStockPrompt,
+  } = productCart
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [overridePin, setOverridePin] = useState('')
+  const [overrideBusy, setOverrideBusy] = useState(false)
   const [channel, setChannel] = useState<OrderChannel>(
     searchParams.get('channel') === 'dine-in'
       ? 'dine-in'
@@ -201,7 +208,7 @@ export default function POS() {
         push(result.error, 'error')
         return
       }
-      if (lineIds.size) setCart((items) => items.filter((item) => !lineIds.has(item.lineId ?? '')))
+      if (lineIds.size) setCart(cart.filter((item) => !lineIds.has(item.lineId ?? '')))
       setOpenDiscount(undefined)
       setOpenNote(undefined)
     }, 250)
@@ -260,18 +267,94 @@ export default function POS() {
   const openTables = db.openOrders.filter((order) => order.storeId === store.id)
   const customer = customers.find((c) => c.id === customerId)
   const displayCart = openOrder ? [...openOrder.items, ...cart] : cart
-  const unavailableLineIds = displayCart.flatMap((item) => {
-    if (['sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))) return []
-    const product = db.products.find((candidate) =>
-      candidate.id === item.productId && candidate.storeId === store.id,
-    )
-    if (!product) return []
-    const variant = product.variants?.find((candidate) => candidate.id === item.variantId)
-    const inventoryItem = db.inventoryItems.find((candidate) => candidate.id === product.inventoryItemId)
-    return isUnavailable(product, variant, store.settings.availability, inventoryItem).unavailable && item.lineId
-      ? [item.lineId]
-      : []
-  })
+  const reservations = store
+    ? computeReservations(
+        db.openOrders,
+        db.products,
+        openOrder?.id,
+        store.settings.orderRules.deductIngredientsOnSale,
+      )
+    : { stock: new Map<string, number>(), ingredients: new Map<string, number>() }
+  const availableStockFor = (product: Product) => {
+    const stockForVariant = (variant?: ProductVariant) => {
+      const available = availableStock(
+        product,
+        variant,
+        reservations,
+        db.inventoryItems,
+        store.settings.orderRules.deductIngredientsOnSale,
+      )
+      const inCurrentOrder = displayCart
+        .filter((line) => line.productId === product.id && line.variantId === variant?.id)
+        .reduce((sum, line) => sum + line.qty, 0)
+      return Math.max(0, available - inCurrentOrder)
+    }
+    if (product.variants?.length) {
+      const tracked = product.variants
+        .map((variant) => stockForVariant(variant))
+        .filter(Number.isFinite)
+      return tracked.length ? Math.min(...tracked) : Number.POSITIVE_INFINITY
+    }
+    return stockForVariant()
+  }
+  const cartIssues = store
+    ? validateOrderLines(displayCart, {
+        store,
+        products: db.products,
+        inventoryItems: db.inventoryItems,
+        openOrders: db.openOrders,
+        excludeOpenOrderId: openOrder?.id,
+        actor: { id: user.id, name: user.name, role: user.role, permissions: user.permissions, stationOnly: user.stationOnly },
+        users: db.users,
+      })
+    : []
+  const actionableIssues = cartIssues.filter((issue) => issue.lineId || issue.code === 'CREDIT_LIMIT' || issue.code === 'DISCOUNT_NOT_ALLOWED')
+  const unavailableLineIds = cartIssues.flatMap((issue) =>
+    issue.code === 'UNAVAILABLE_86' && issue.lineId ? [issue.lineId] : [],
+  )
+  const issueByLine: Record<string, string> = {}
+  for (const issue of cartIssues) {
+    if (!issue.lineId) continue
+    if (issue.code === 'UNAVAILABLE_86') continue
+    issueByLine[issue.lineId] = issue.code === 'PRICE_CHANGED'
+      ? 'Price changed'
+      : issue.code === 'OVER_STOCK' || issue.code === 'INGREDIENT_SHORT'
+        ? `Only ${issue.data?.available ?? 0} left`
+        : 'Check item'
+  }
+  if (store.settings.orderRules.showLowStockHints) {
+    for (const line of displayCart) {
+      if (!line.lineId || issueByLine[line.lineId]) continue
+      const product = db.products.find((candidate) => candidate.id === line.productId)
+      if (!product) continue
+      const variant = product.variants?.find((candidate) => candidate.id === line.variantId)
+      const remaining = availableStock(
+        product,
+        variant,
+        reservations,
+        db.inventoryItems,
+        store.settings.orderRules.deductIngredientsOnSale,
+      ) -
+        displayCart
+          .filter((candidate) => candidate.productId === product.id && candidate.variantId === variant?.id)
+          .reduce((sum, candidate) => sum + candidate.qty, 0)
+      if (remaining > 0 && remaining <= store.settings.lowStockThreshold) {
+        issueByLine[line.lineId] = `Only ${remaining} left`
+      }
+    }
+  }
+  const blockingIssues = cartIssues.filter((issue) => issue.severity === 'block')
+  const updateLineQty = (lineId: string, qty: number) => {
+    const persisted = openOrder?.items.some((item) => item.lineId === lineId && item.status !== 'void')
+    if (persisted && openOrder) {
+      const result = updateOpenOrderItem(openOrder.id, lineId, { qty })
+      if (!result.ok) push(result.error, 'error')
+      return
+    }
+    if (qty <= 0) setCart(cart.filter((item) => item.lineId !== lineId))
+    else setCart(cart.map((item) => item.lineId === lineId ? { ...item, qty } : item))
+  }
+  const removeLine = (lineId: string) => updateLineQty(lineId, 0)
   const activeDiscount = openOrder ? openDiscount ?? openOrder.discount : discount
   const activeNote = openOrder ? openNote ?? openOrder.note ?? '' : note
   const activeTableId = openOrder?.tableId ?? tableId
@@ -414,6 +497,7 @@ export default function POS() {
     lockedChannel: !!openOrder,
     tableName: openOrder?.tableName,
     inventoryItems: db.inventoryItems,
+    availableStockFor,
     onUnavailable: (message: string) => push(message, 'error'),
     canManage86: store.settings.availability.enabled && can(user, 'manage86'),
     onRequest86: (product: Product) => {
@@ -467,6 +551,9 @@ export default function POS() {
     pendingCount,
     unavailableLineIds,
     hasUnavailableDraft: unavailableLineIds.length > 0,
+    issueByLine: store.settings.orderRules.revalidationBanner ? issueByLine : {},
+    issueCount: store.settings.orderRules.revalidationBanner ? actionableIssues.length : 0,
+    onReview: () => setReviewOpen(true),
     persistedLineIds: openOrder?.items.map((item) => item.lineId ?? ''),
     canVoidSentItems: can(user, 'voidOrders'),
     onVoidSentItem: (lineId: string) => {
@@ -642,6 +729,116 @@ export default function POS() {
             </Field>
           )}
         </div>
+      </Modal>
+
+      {/* Review order issues */}
+      <Modal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        title={`Review (${actionableIssues.length} issue${actionableIssues.length === 1 ? '' : 's'})`}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setReviewOpen(false)}>Close</Button>
+            <Button disabled={blockingIssues.length > 0} onClick={() => setReviewOpen(false)}>
+              {blockingIssues.length ? 'Fix issues first' : 'Continue'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-2">
+          {actionableIssues.length === 0 && <p className="text-[12px] text-muted">No outstanding issues.</p>}
+          {actionableIssues.map((issue, index) => (
+            <div key={`${issue.code}-${issue.lineId ?? index}`} className="rounded-xl border border-line px-2.5 py-2">
+              <div className="text-[12px] font-semibold text-ink">{issue.message}</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {issue.lineId && (
+                  <Button size="sm" variant="secondary" onClick={() => removeLine(issue.lineId!)}>Remove</Button>
+                )}
+                {issue.lineId && ['OVER_STOCK', 'INGREDIENT_SHORT'].includes(issue.code) &&
+                  Number(issue.data?.maxQty ?? issue.data?.available ?? 0) > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => updateLineQty(issue.lineId!, Number(issue.data?.maxQty ?? issue.data?.available))}
+                  >
+                    Reduce to {Number(issue.data?.maxQty ?? issue.data?.available)}
+                  </Button>
+                )}
+                {issue.code === 'PRICE_CHANGED' && issue.lineId &&
+                  openOrder?.items.some((item) => item.lineId === issue.lineId && item.status !== 'void') && (
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    const lineId = issue.lineId
+                    if (!lineId || !openOrder) return
+                    const result = updateOpenOrderItem(openOrder.id, lineId, { useCurrentPrice: true })
+                    if (!result.ok) push(result.error, 'error')
+                  }}>
+                    Use current price
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Over-stock confirmation */}
+      <Modal
+        open={!!stockPrompt}
+        onClose={cancelStockPrompt}
+        title="Not enough stock"
+        subtitle={stockPrompt?.productName}
+        size="sm"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={cancelStockPrompt}>Cancel</Button>
+            {stockPrompt && stockPrompt.maxQty > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => void resolveStockPrompt('reduce')}
+              >
+                Add {stockPrompt.ingredient ? stockPrompt.maxQty : stockPrompt.available} only
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              disabled={overrideBusy || (!user || !canOverrideStock(user, store.settings.orderRules)) && !overridePin.trim()}
+              onClick={() => {
+                setOverrideBusy(true)
+                void resolveStockPrompt('override', overridePin).finally(() => {
+                  setOverrideBusy(false)
+                  setOverridePin('')
+                })
+              }}
+            >
+              {overrideBusy ? 'Adding…' : `Add ${stockPrompt?.requested ?? 0} anyway`}
+            </Button>
+          </div>
+        }
+      >
+        {stockPrompt && (
+          <div className="space-y-3">
+            <p className="text-[12.5px] text-ink">
+              Only {stockPrompt.available} {stockPrompt.productName} left. Add {stockPrompt.requested} anyway?{' '}
+              {stockPrompt.productName} will be 86'd.
+            </p>
+            {(!user || !canOverrideStock(user, store.settings.orderRules)) && (
+              <Field label="Manager PIN to confirm">
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={overridePin}
+                  onChange={(event) => setOverridePin(event.target.value)}
+                  placeholder="Manager PIN"
+                />
+              </Field>
+            )}
+            {stockPrompt.ingredient && (
+              <p className="text-[11px] text-muted">The limit comes from an ingredient in this product's recipe.</p>
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* Payment */}

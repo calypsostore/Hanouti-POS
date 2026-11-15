@@ -12,6 +12,7 @@ import {
 import type { Customer, LedgerEntry, Order } from '../../../../types'
 import { Avatar, Button, Drawer, Segmented } from '../../../../components/ui'
 import { cn, cycleLabel, fmtDate, fmtDateTime, money, nextDueLabel } from '../../../../lib/utils'
+import { orderNumberLabel } from '../../../../lib/orderNumber'
 
 type Props = {
   customer: Customer | null
@@ -239,7 +240,7 @@ export default function CustomerDetailsDrawer({
                         #{order.number.toString().slice(-2)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="text-[12.5px] font-semibold">Order #{order.number}</div>
+                        <div className="text-[12.5px] font-semibold">Order #{orderNumberLabel(order)}</div>
                         <div className="truncate text-[10.5px] text-muted">
                           {fmtDateTime(order.createdAt)} ·{' '}
                           {order.items.map((item) => `${item.qty}× ${item.name}`).join(', ')}

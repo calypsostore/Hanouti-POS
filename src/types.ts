@@ -21,6 +21,7 @@ export type Capability =
   | 'manageCashDifferences'
   | 'viewStaffAnalytics'
   | 'manage86'
+  | 'overrideStock'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
 export type StockMovementType =
   | 'opening'
@@ -187,6 +188,35 @@ export interface AutomationSettings {
   backupHealthAlerts: boolean
 }
 
+export type StockOverflowMode = 'block' | 'warn' | 'allow'
+export type OpenOrderPricePolicy = 'keep' | 'current' | 'ask'
+export type OrderNumberFormat = 'plain' | 'daily' | 'prefix'
+
+export interface RecipeLine {
+  inventoryItemId: string
+  qtyPerUnit: number
+}
+
+export interface StockOverride {
+  confirmedById: string
+  confirmedByName: string
+  requested: number
+  available: number
+  at: string
+}
+
+/** Every order/stock rule lives here so the app and the hub read one config. */
+export interface OrderRulesSettings {
+  stockOverflowMode: StockOverflowMode
+  deductIngredientsOnSale: boolean
+  openOrderPricePolicy: OpenOrderPricePolicy
+  orderNumberFormat: OrderNumberFormat
+  orderNumberPrefix: string
+  showLowStockHints: boolean
+  revalidationBanner: boolean
+  stockOverrideRoles: { admin: boolean; manager: boolean; staff: boolean }
+}
+
 export interface AvailabilitySettings {
   enabled: boolean
   autoEightySixAtZero: boolean
@@ -230,6 +260,7 @@ export interface StoreSettings {
   reportPrintPolicy: 'manual'
   automation: AutomationSettings
   availability: AvailabilitySettings
+  orderRules: OrderRulesSettings
 }
 
 export interface Store {
@@ -300,6 +331,8 @@ export interface User {
     manageCashDifferences?: boolean
     viewStaffAnalytics?: boolean
     manage86?: boolean
+    /** May confirm an over-stock sale (admin/manager default, staff off). */
+    overrideStock?: boolean
   }
 }
 
@@ -532,12 +565,14 @@ export interface Product {
   saleUnit?: SaleUnit
   inventoryItemId?: string
   eightySix?: EightySixState
+  recipe?: RecipeLine[]
 }
 
 export interface ProductModifierOption {
   id: string
   name: string
   priceDelta: number
+  recipe?: RecipeLine[]
 }
 
 export interface ProductModifierGroup {
@@ -559,6 +594,7 @@ export interface ProductVariant {
   trackStock: boolean
   stock: number
   eightySix?: EightySixState
+  recipe?: RecipeLine[]
 }
 
 export interface Customer {
@@ -592,6 +628,8 @@ export interface OrderItem {
   note?: string
   saleUnit?: SaleUnit
   soldByWeight?: boolean
+  /** Accepted over-stock confirmation, validated by the store and the hub. */
+  stockOverride?: StockOverride
 }
 
 export interface OrderModifier {
@@ -635,6 +673,7 @@ export interface Order {
   staffId: string
   staffName: string
   paidById?: string
+  paidByName?: string
   ownerStaffId?: string
   ownerStaffName?: string
   note?: string
@@ -644,12 +683,17 @@ export interface Order {
   voidedAt?: string
   voidShiftId?: string
   tableHistory?: TableOrderEvent[]
+  /** Idempotency key for checkout retries. */
+  clientOrderId?: string
+  /** Device-prefixed number shown offline until the hub assigns the real one. */
+  provisionalNumber?: string
 }
 
 export interface OpenOrder {
   id: string
   storeId: string
   number: number
+  provisionalNumber?: string
   shiftId?: string
   tableId?: string
   tableName: string

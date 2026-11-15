@@ -274,7 +274,7 @@ export default function StationBoard({
                             {station?.name}{ticket.order.sectionName ? ` · ${ticket.order.sectionName}` : ''}
                             {ticket.order.guests ? ` · ${ticket.order.guests} guests` : ''}
                           </p>
-                          <p className="text-xs text-muted">{ticket.order.staffName} · Order #{ticket.order.number}</p>
+                          <p className="text-xs text-muted">{ticket.order.staffName} · Order #{ticket.order.provisionalNumber ?? ticket.order.number}{ticket.order.provisionalNumber ? ' (provisional)' : ''}</p>
                         </div>
                         <span className="inline-flex items-center gap-1 text-sm font-bold tabular">
                           <Clock3 className="h-4 w-4" /> {elapsedLabel(elapsed)}
