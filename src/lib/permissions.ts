@@ -17,6 +17,10 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   viewStation: true,
   openShift: true,
   closeShift: true,
+  takeOverTables: true,
+  forceCloseShift: true,
+  manageCashDifferences: true,
+  viewStaffAnalytics: true,
 }
 
 export function can(user: User, capability: Capability): boolean {
@@ -25,6 +29,10 @@ export function can(user: User, capability: Capability): boolean {
   }
   if (user.role === 'admin') return true
   if (capability === 'openShift' || capability === 'closeShift') {
+    return user.permissions[capability] === true
+  }
+  if (capability === 'takeOverTables' || capability === 'forceCloseShift' ||
+      capability === 'manageCashDifferences' || capability === 'viewStaffAnalytics') {
     return user.permissions[capability] === true
   }
   if (capability === 'recordPurchases' && user.role === 'staff') {

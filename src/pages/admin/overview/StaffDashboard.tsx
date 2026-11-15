@@ -61,6 +61,7 @@ export default function StaffDashboard() {
           />
         )}
         <QuickActionTile icon={ReceiptText} tone="blue" label="My orders" href="/admin/orders?mine=true" />
+        <QuickActionTile icon={Users} tone="teal" label="My profile" href={`/admin/staff/${encodeURIComponent(user.id)}`} />
         {can(user, 'openShift') && <QuickActionTile icon={Wallet} tone="green" label={openRegister ? 'My shift' : 'Open shift'} href="/admin/register" />}
         {user.permissions.settle && <QuickActionTile icon={Users} tone="teal" label="Collect tab" href="/admin/customers" />}
       </SectionCard>

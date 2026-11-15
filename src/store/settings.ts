@@ -52,6 +52,8 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
     autoLogoutMinutes: settings.automation.autoLogoutMinutes,
     shiftReminders: settings.automation.shiftReminders,
     shiftReminderHours: settings.automation.shiftReminderHours,
+    maxShiftHours: settings.automation.maxShiftHours,
+    cashDifferenceTolerance: settings.automation.cashDifferenceTolerance,
     warnAboutOpenTablesAtShiftClose: settings.automation.warnAboutOpenTablesAtShiftClose,
     lowStockAlerts: settings.automation.lowStockAlerts,
     hideOutOfStock: settings.automation.hideOutOfStock,

@@ -48,6 +48,9 @@ export function validAutomationSettings(settings: AutomationSettings): boolean {
     validInteger(settings.autoLockMinutes, 0, 120) &&
     validInteger(settings.autoLogoutMinutes, 0, 10080) &&
     validInteger(settings.shiftReminderHours, 1, 24) &&
+    validInteger(settings.maxShiftHours, 1, 168) &&
+    Number.isFinite(settings.cashDifferenceTolerance) &&
+    settings.cashDifferenceTolerance >= 0 &&
     validInteger(settings.printerRetryLimit, 1, 10) &&
     validInteger(settings.printerOfflineAlertMinutes, 1, 1440) &&
     (settings.autoLockMinutes === 0 || settings.autoLogoutMinutes === 0 ||

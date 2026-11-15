@@ -1,5 +1,5 @@
 import type {
-  AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
+  AttendanceStatus, BusinessType, CashDifferenceResolution, Category, Customer, Database, InventoryCategory, InventoryUnit,
   Order, OrderChannel, OrderItem, OrderItemStatus, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
   Station, StationDevice, Store, StoreSettings, StoreStatus, TableSection, User,
   PrintJob, PrintJobType, PrintLine, Printer,
@@ -211,7 +211,13 @@ export interface AppContextValue {
   cancelOpenOrder: (orderId: string, managerPin: string) => Promise<Result>
   voidOrder: (orderId: string, managerPin?: string, reason?: string) => Promise<Result>
   openRegister: (storeId: string, openingCash: number) => Result
-  closeRegister: (sessionId: string, countedCash: number, note?: string) => Result
+  closeRegister: (sessionId: string, countedCash: number, note?: string, forceReason?: string, leaveFloatForNextShift?: boolean) => Result
+  handoverTables: (storeId: string, orderIds: string[], targetStaffId?: string) => Result
+  takeOverTables: (orderIds: string[]) => Result
+  resolveCashDifference: (id: string, resolution: CashDifferenceResolution, note?: string) => Result
+  voidCashDifference: (id: string, reason: string) => Result
+  archiveCashDifference: (id: string) => Result
+  restoreCashDifference: (id: string) => Result
   settleCredit: (customerId: string, amount: number, method: 'cash' | 'card', note?: string) => Result
   addCategory: (storeId: string, data: Pick<Category, 'name' | 'icon' | 'iconColor' | 'stationId'>) => Result
   updateCategory: (id: string, patch: Partial<Category>) => Result

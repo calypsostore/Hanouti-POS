@@ -11,7 +11,8 @@ const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
   'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
   'manageStaff', 'manageSettings', 'managePayroll', 'manageTables', 'manageSections',
-  'viewStation', 'openShift', 'closeShift',
+  'viewStation', 'openShift', 'closeShift', 'takeOverTables', 'forceCloseShift',
+  'manageCashDifferences', 'viewStaffAnalytics',
 ]
 const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'register', 'supervisor'] as const
 
@@ -37,7 +38,9 @@ const permissionsForRole = (
   if (role !== 'manager') {
     for (const capability of CAPABILITIES) {
       if (capability !== 'recordPurchases' && capability !== 'viewStation' &&
-          capability !== 'openShift' && capability !== 'closeShift') {
+          capability !== 'openShift' && capability !== 'closeShift' &&
+          capability !== 'takeOverTables' && capability !== 'forceCloseShift' &&
+          capability !== 'manageCashDifferences' && capability !== 'viewStaffAnalytics') {
         permissions[capability] = false
       }
     }

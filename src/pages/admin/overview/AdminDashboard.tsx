@@ -22,6 +22,7 @@ import { HourlyHeatStrip } from './HourlyHeatStrip'
 import { StockAlertsCard } from './StockAlertsCard'
 import { TopTabsAndOrders } from './TopTabsAndOrders'
 import { TrackedOrdersCard } from './TrackedOrdersCard'
+import ShiftAlertsCard from './ShiftAlertsCard'
 import { backupHealthIsStale, printerOfflineAlertDue } from '../../../lib/automation'
 import { Link } from 'react-router-dom'
 
@@ -110,6 +111,7 @@ export default function AdminDashboard() {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
         <div className="min-w-0 space-y-4">
           <StockAlertsCard data={data} enabled={store.settings.automation.lowStockAlerts} />
+          <ShiftAlertsCard db={db} store={store} now={now} />
           {!isTracking && <DashboardCharts data={data} />}
           {!isTracking && <HourlyHeatStrip data={data.hourly} />}
           {!isTracking && <TopTabsAndOrders data={data} />}

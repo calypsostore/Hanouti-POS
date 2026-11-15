@@ -34,6 +34,8 @@ export const DEFAULT_AUTOMATION_SETTINGS = {
   autoLogoutMinutes: 720,
   shiftReminders: true,
   shiftReminderHours: 8,
+  maxShiftHours: 12,
+  cashDifferenceTolerance: 0,
   warnAboutOpenTablesAtShiftClose: true,
   lowStockAlerts: true,
   hideOutOfStock: false,
@@ -80,6 +82,7 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   supervisor: role !== 'staff',
   openShift: role !== 'super',
   closeShift: role !== 'super',
+  takeOverTables: role !== 'super',
   viewStation: role === 'manager',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
@@ -92,7 +95,7 @@ export const normalizeUser = (u: User): User => {
     ? name === 'viewStation'
     : name === 'recordPurchases'
     ? p[name] === true
-    : name === 'openShift' || name === 'closeShift'
+    : name === 'openShift' || name === 'closeShift' || name === 'takeOverTables'
       ? typeof p[name] === 'boolean' ? p[name] : base[name]
       : name === 'viewStation' && u.role === 'staff'
         ? p[name] === true
@@ -144,6 +147,10 @@ export const normalizeUser = (u: User): User => {
       viewStation: capability('viewStation'),
       openShift: capability('openShift'),
       closeShift: capability('closeShift'),
+      takeOverTables: capability('takeOverTables'),
+      forceCloseShift: capability('forceCloseShift'),
+      manageCashDifferences: capability('manageCashDifferences'),
+      viewStaffAnalytics: capability('viewStaffAnalytics'),
     },
   }
 }

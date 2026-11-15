@@ -85,7 +85,7 @@ export default function SettingsPage() {
         reportPrintPolicy: 'manual',
         automation: {
           drawerKickOnCash: true, autoLockMinutes: 5, autoLogoutMinutes: 720,
-          shiftReminders: true, shiftReminderHours: 8,
+          shiftReminders: true, shiftReminderHours: 8, maxShiftHours: 12, cashDifferenceTolerance: 0,
           warnAboutOpenTablesAtShiftClose: true, lowStockAlerts: true, hideOutOfStock: false,
           retryPrintJobs: true, fallbackPrintJobs: true, printerRetryLimit: 5,
           autoReconnectPrinters: true, printerOfflineAlerts: true,

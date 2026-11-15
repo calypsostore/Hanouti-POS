@@ -9,8 +9,9 @@ import PaymentsTab from './PaymentsTab'
 import ScheduleTab from './ScheduleTab'
 import StaffLogsTab from './StaffLogsTab'
 import { can } from '../../../lib/permissions'
+import CashDifferencesTab from './CashDifferencesTab'
 
-type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity'
+type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity' | 'cash'
 
 const TABS: Array<{ value: DetailTab; label: string }> = [
   { value: 'overview', label: 'Overview' },
@@ -18,19 +19,27 @@ const TABS: Array<{ value: DetailTab; label: string }> = [
   { value: 'attendance', label: 'Attendance' },
   { value: 'schedule', label: 'Schedule' },
   { value: 'activity', label: 'Activity log' },
+  { value: 'cash', label: 'Cash differences' },
 ]
 
 export default function StaffDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { db, store, user } = useApp()
+  const {
+    db, store, user, resolveCashDifference, voidCashDifference,
+    archiveCashDifference, restoreCashDifference,
+  } = useApp()
   const [tab, setTab] = useState<DetailTab>('overview')
+  const isSelf = user?.role === 'staff' && user.id === id
   const canOpen = (user ? can(user, 'manageStaff') : false) ||
-    (user?.role === 'staff' && user.permissions.supervisor)
+    (user?.role === 'staff' && (user.permissions.supervisor || isSelf))
   const showPayroll = user ? can(user, 'managePayroll') : false
-  const tabs = showPayroll
-    ? TABS
-    : TABS.filter((item) => item.value !== 'payments' && item.value !== 'attendance')
+  const showCash = !!user && (can(user, 'manageCashDifferences') || isSelf)
+  const showAnalytics = !!user && can(user, 'viewStaffAnalytics')
+  const tabs = TABS.filter((item) =>
+    (showPayroll || !['payments', 'attendance'].includes(item.value)) &&
+    (showCash || item.value !== 'cash'),
+  )
   const logs = useMemo(
     () => canOpen && id ? getStaffActivityLogs(db, id).filter((log) => log.storeId === store?.id) : [],
     [canOpen, db, id, store?.id],
@@ -78,11 +87,21 @@ export default function StaffDetail() {
           ))}
         </div>
         <div role="tabpanel">
-          {tab === 'overview' && <OverviewTab member={member} db={db} store={store} showPayroll={showPayroll} />}
+          {tab === 'overview' && <OverviewTab member={member} db={db} store={store} showPayroll={showPayroll} showAnalytics={showAnalytics} />}
           {tab === 'payments' && <PaymentsTab member={member} db={db} storeId={store.id} />}
           {tab === 'attendance' && <AttendanceTab member={member} db={db} store={store} />}
           {tab === 'schedule' && <ScheduleTab member={member} db={db} store={store} />}
           {tab === 'activity' && <StaffLogsTab logs={logs} storeSlug={store.slug} staffIds={staffIds} db={db} />}
+          {tab === 'cash' && showCash && user && <CashDifferencesTab
+            member={member}
+            db={db}
+            canManage={can(user, 'manageCashDifferences')}
+            isAdmin={user.role === 'admin'}
+            resolve={resolveCashDifference}
+            voidDifference={voidCashDifference}
+            archive={archiveCashDifference}
+            restore={restoreCashDifference}
+          />}
         </div>
       </div>
     </Drawer>

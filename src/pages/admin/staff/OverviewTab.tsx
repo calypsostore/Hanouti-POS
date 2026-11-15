@@ -5,10 +5,11 @@ import { Avatar, Badge, Card, StatCard } from '../../../components/ui'
 import { getStaffOverviewStats } from '../../../lib/staffDetails'
 import { dateKey, fmtDate, money } from '../../../lib/utils'
 import { summarizeAttendanceDay } from '../../../lib/payroll'
+import StaffPerformanceCard from './StaffPerformanceCard'
 
 export default function OverviewTab({
-  member, db, store, showPayroll = true,
-}: { member: User; db: Database; store: Store; showPayroll?: boolean }) {
+  member, db, store, showPayroll = true, showAnalytics = true,
+}: { member: User; db: Database; store: Store; showPayroll?: boolean; showAnalytics?: boolean }) {
   const stats = getStaffOverviewStats(db, store.id, member.id)
   const [today, setToday] = useState(() => dateKey(new Date()))
   useEffect(() => {
@@ -94,6 +95,7 @@ export default function OverviewTab({
           </div>
         </Card>
       </div>
+      {showAnalytics && <StaffPerformanceCard member={member} db={db} store={store} />}
     </div>
   )
 }

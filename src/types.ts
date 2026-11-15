@@ -16,6 +16,10 @@ export type Capability =
   | 'viewStation'
   | 'openShift'
   | 'closeShift'
+  | 'takeOverTables'
+  | 'forceCloseShift'
+  | 'manageCashDifferences'
+  | 'viewStaffAnalytics'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
 export type StockMovementType =
   | 'opening'
@@ -54,6 +58,7 @@ export type AuditEntity =
   | 'inventory'
   | 'purchase'
   | 'supplier'
+  | 'cash_difference'
 export type AuditAction =
   | 'created'
   | 'edited'
@@ -67,6 +72,10 @@ export type AuditAction =
   | 'pin_reset'
   | 'register_opened'
   | 'register_closed'
+  | 'cash_difference_resolved'
+  | 'cash_difference_voided'
+  | 'cash_difference_archived'
+  | 'cash_difference_restored'
   | 'settings_updated'
   | 'app_updated'
   | 'backup_exported'
@@ -163,6 +172,8 @@ export interface AutomationSettings {
   autoLogoutMinutes: number
   shiftReminders: boolean
   shiftReminderHours: number
+  maxShiftHours: number
+  cashDifferenceTolerance: number
   warnAboutOpenTablesAtShiftClose: boolean
   lowStockAlerts: boolean
   hideOutOfStock: boolean
@@ -267,6 +278,10 @@ export interface User {
     viewStation?: boolean
     openShift?: boolean
     closeShift?: boolean
+    takeOverTables?: boolean
+    forceCloseShift?: boolean
+    manageCashDifferences?: boolean
+    viewStaffAnalytics?: boolean
   }
 }
 
@@ -589,6 +604,7 @@ export interface Order {
   shiftId?: string
   staffId: string
   staffName: string
+  paidById?: string
   ownerStaffId?: string
   ownerStaffName?: string
   note?: string
@@ -720,6 +736,8 @@ export interface RegisterSnapshot {
   cardSettlements: number
   settlementCount: number
   expectedCash: number
+  recordedCount?: number
+  recordedTotal?: number
 }
 
 export interface RegisterItemRow {
@@ -789,6 +807,8 @@ export interface RegisterSession {
   staffId?: string
   shiftNumber?: string
   openingCash: number
+  openingFloat?: number
+  leaveFloatForNextShift?: boolean
   closedAt?: string
   closedById?: string
   closedByName?: string
@@ -798,6 +818,25 @@ export interface RegisterSession {
   snapshot?: RegisterSnapshot
   zReportNumber?: number
   reportDetails?: RegisterReportDetails
+}
+
+export type CashDifferenceStatus = 'open' | 'settled' | 'voided' | 'archived'
+export type CashDifferenceResolution = 'paid_back' | 'salary_deduction' | 'waived' | 'error_voided' | 'other'
+
+export interface CashDifference {
+  id: string
+  storeId: string
+  staffId: string
+  shiftId: string
+  amount: number
+  type: 'shortage' | 'overage'
+  status: CashDifferenceStatus
+  createdAt: string
+  resolvedAt?: string
+  resolvedById?: string
+  resolution?: CashDifferenceResolution
+  note?: string
+  archivedFromStatus?: Exclude<CashDifferenceStatus, 'archived'>
 }
 
 export interface AuditLog {
@@ -842,5 +881,6 @@ export interface Database {
   payrolls: Payroll[]
   shifts: Shift[]
   registerSessions: RegisterSession[]
+  cashDifferences: CashDifference[]
   auditLogs: AuditLog[]
 }

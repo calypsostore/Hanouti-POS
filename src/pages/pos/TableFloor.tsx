@@ -5,6 +5,7 @@ import { Button, Field, Input, Modal, Select } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
 import { guestCountError } from '../../lib/tableService'
+import { openShiftForStaff } from '../../lib/registerShifts'
 import { fmtTime, money } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
 import type { DiningTable, OpenOrder } from '../../types'
@@ -20,12 +21,14 @@ const elapsedLabel = (order: OpenOrder, now: number) => {
 export default function TableFloor() {
   const {
     db, store, user, openTableOrder, moveOrderToTable, mergeTableOrders, cancelOpenOrder,
+    takeOverTables, handoverTables,
   } = useApp()
   const { push } = useToast()
   const navigate = useNavigate()
   const [now, setNow] = useState(0)
   const [moveTarget, setMoveTarget] = useState<Record<string, string>>({})
   const [mergeTarget, setMergeTarget] = useState<Record<string, string>>({})
+  const [handoverTarget, setHandoverTarget] = useState<Record<string, string>>({})
   const [cancelOrder, setCancelOrder] = useState<OpenOrder | null>(null)
   const [managerPin, setManagerPin] = useState('')
   const [cancelling, setCancelling] = useState(false)
@@ -52,13 +55,14 @@ export default function TableFloor() {
     .filter((section) => section.storeId === store.id && section.active)
     .sort((a, b) => a.sort - b.sort)
   const orders = db.openOrders.filter((order) => order.storeId === store.id)
+  const canTakeHandover = can(user, 'takeOverTables') && !!openShiftForStaff(db, store.id, user.id)
   const manualMode = store.settings.tableMode === 'manual'
   const tableFilter = (item: FloorItem) =>
     sectionFilter === 'all' || item.sectionId === sectionFilter
   const ownerFilter = (item: FloorItem) => {
     if (filter === 'all') return true
     if (filter === 'mine') return !item.order || item.order.staffId === user.id
-    return !!item.order && !item.order.staffId
+    return !!item.order && item.order.staffId === 'unassigned-handover'
   }
   const floorItems: FloorItem[] = manualMode
     ? orders.map((order) => ({ key: order.id, name: order.tableName, sectionId: order.sectionId, order }))
@@ -174,6 +178,18 @@ export default function TableFloor() {
       </header>
 
       <div className="mx-auto max-w-6xl space-y-4">
+        {canTakeHandover && orders.some((order) => order.staffId === 'unassigned-handover') && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
+            <strong>{orders.filter((order) => order.staffId === 'unassigned-handover').length} tables waiting</strong>
+            <Button size="sm" onClick={() => {
+              const result = takeOverTables(orders
+                .filter((order) => order.staffId === 'unassigned-handover')
+                .map((order) => order.id))
+              if (!result.ok) push(result.error, 'error')
+              else push('Handover tables assigned to you.', 'success')
+            }}>Take all</Button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {(['mine', 'all', 'unassigned'] as const).map((value) => (
             <Button key={value} variant={filter === value ? 'primary' : 'secondary'} size="sm" onClick={() => setFilter(value)}>
@@ -233,6 +249,32 @@ export default function TableFloor() {
                     {order ? (
                       <div className="mt-3 space-y-2 border-t border-line/60 pt-3">
                         <Button className="w-full" onClick={() => openOrder(order)}>Open order</Button>
+                        {order.staffId === 'unassigned-handover' && canTakeHandover && (
+                          <Button variant="secondary" className="w-full" onClick={() => {
+                            const result = takeOverTables([order.id])
+                            if (!result.ok) push(result.error, 'error')
+                            else push(`${order.tableName} assigned to you.`, 'success')
+                          }}>Take this table</Button>
+                        )}
+                        {can(user, 'manageTables') && (
+                          <div className="grid grid-cols-[1fr_auto] gap-2">
+                            <Select value={handoverTarget[order.id] ?? ''} onChange={(event) =>
+                              setHandoverTarget((current) => ({ ...current, [order.id]: event.target.value }))
+                            }>
+                              <option value="">Unassigned (handover)</option>
+                              {db.users.filter((member) => member.storeId === store.id && member.active &&
+                                member.id !== user.id && db.registerSessions.some((session) =>
+                                  session.storeId === store.id && session.status === 'open' &&
+                                  (session.staffId ?? session.openedById) === member.id,
+                                )).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                            </Select>
+                            <Button variant="secondary" size="sm" onClick={() => {
+                              const result = handoverTables(store.id, [order.id], handoverTarget[order.id] || undefined)
+                              if (!result.ok) push(result.error, 'error')
+                              else push('Table ownership updated.', 'success')
+                            }}>Reassign</Button>
+                          </div>
+                        )}
                         {!manualMode && (
                           <div className="grid grid-cols-[1fr_auto] gap-2">
                             <Select value={moveTarget[order.id] ?? ''} onChange={(event) => setMoveTarget((current) => ({ ...current, [order.id]: event.target.value }))}>

@@ -7,6 +7,7 @@ import type {
   RegisterVoidedItemRow,
 } from '../types'
 import { round } from './pricing-utils.ts'
+import { orderPaidBy } from './shiftCash.ts'
 
 type ItemSource = Pick<Database, 'orders' | 'products' | 'categories'>
 type ItemSort = 'name' | 'quantity'
@@ -36,22 +37,24 @@ export const completedOrdersAt = (orders: Order[], end: number) => orders.filter
 
 export const ordersForRegisterSession = (
   db: Pick<Database, 'orders'>,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'>,
+  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
   endISO: string,
 ) => {
   const end = Date.parse(endISO)
   const start = Date.parse(session.openedAt)
+  const staffId = session.staffId ?? session.openedById
+  const ownerScoped = Boolean(staffId)
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
-    (order.shiftId === session.id ||
-      (order.shiftId === undefined && isInWindow(order.createdAt, start, end))) &&
+    isInWindow(order.createdAt, start, end) &&
+    (ownerScoped ? orderPaidBy(order) === staffId : order.shiftId === session.id || order.shiftId === undefined) &&
     (order.status === 'completed' || order.status === 'recorded' || order.status === 'void'),
   )
 }
 
 export const voidedOrdersForRegisterSession = (
   db: Pick<Database, 'orders'>,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'>,
+  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
   endISO: string,
 ) => {
   const end = Date.parse(endISO)
@@ -59,8 +62,10 @@ export const voidedOrdersForRegisterSession = (
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
     order.status === 'void' &&
-    ((order.voidShiftId === session.id && isInWindow(order.voidedAt, start, end)) ||
-      (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))),
+    isInWindow(order.voidedAt, start, end) &&
+    (session.staffId || session.openedById
+      ? !order.voidedById || order.voidedById === (session.staffId ?? session.openedById)
+      : order.voidShiftId === session.id || order.voidShiftId === undefined),
   )
 }
 
@@ -160,7 +165,7 @@ const sum = (values: number[]) => round(values.reduce((total, value) => total + 
 
 export const registerSessionItems = (
   db: ItemSource,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'>,
+  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
   endISO: string,
   staffId?: string,
 ): RegisterItemsReport => {
@@ -172,14 +177,19 @@ export const registerSessionItems = (
   const voided = db.orders.filter((order) =>
     order.storeId === session.storeId &&
     order.status === 'void' &&
-    (order.voidShiftId === session.id || (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))),
+    (order.voidShiftId === session.id || (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))) &&
+    (!session.staffId && !session.openedById || !order.voidedById ||
+      order.voidedById === (session.staffId ?? session.openedById)),
   )
-  const inScope = (orders: Order[]) => staffId ? orders.filter((order) => order.staffId === staffId) : orders
+  const inScopeSales = (orders: Order[]) => staffId ? orders.filter((order) => orderPaidBy(order) === staffId) : orders
+  const inScopeVoids = (orders: Order[]) => staffId
+    ? orders.filter((order) => (order.voidedById ?? orderPaidBy(order)) === staffId)
+    : orders
 
   return {
-    itemsSold: aggregateItems(inScope(completed), db),
-    recordedItems: aggregateItems(inScope(recorded), db),
-    voidedItems: aggregateVoidedItems(inScope(voided), db),
+    itemsSold: aggregateItems(inScopeSales(completed), db),
+    recordedItems: aggregateItems(inScopeSales(recorded), db),
+    voidedItems: aggregateVoidedItems(inScopeVoids(voided), db),
   }
 }
 

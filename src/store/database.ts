@@ -1,5 +1,5 @@
 import type {
-  Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
+  Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, CashDifference,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
   ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v30'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v31'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -224,14 +224,16 @@ const normalizeTableHistory = (value: unknown): TableOrderEvent[] =>
 const auditActions: AuditAction[] = [
   'created', 'edited', 'deleted', 'voided', 'discount_applied', 'refund_applied',
   'debt_payment', 'activated', 'deactivated', 'pin_reset', 'register_opened',
-  'register_closed', 'settings_updated', 'login_success', 'login_failure', 'logout', 'demo_reset',
+  'register_closed', 'cash_difference_resolved', 'cash_difference_voided',
+  'cash_difference_archived', 'cash_difference_restored',
+  'settings_updated', 'login_success', 'login_failure', 'logout', 'demo_reset',
   'app_updated', 'backup_exported', 'backup_imported',
   'inventory_opening', 'stock_adjusted', 'waste_recorded', 'stock_counted',
 ]
 const auditEntities: AuditEntity[] = [
   'order', 'product', 'category', 'customer', 'staff', 'expense',
   'register', 'settings', 'auth', 'payroll', 'shift', 'table', 'inventory',
-  'purchase', 'supplier', 'station',
+  'purchase', 'supplier', 'station', 'cash_difference',
 ]
 const auditRoles: AuditRole[] = ['super', 'admin', 'manager', 'staff', 'unknown']
 const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
@@ -420,6 +422,12 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             shiftReminderHours: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.shiftReminderHours : undefined)
               ? Math.max(1, Math.min(24, Math.round(Number(s.settings.automation.shiftReminderHours))))
               : DEFAULT_AUTOMATION_SETTINGS.shiftReminderHours,
+            maxShiftHours: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.maxShiftHours : undefined)
+              ? Math.max(1, Math.min(168, Number(s.settings.automation.maxShiftHours)))
+              : DEFAULT_AUTOMATION_SETTINGS.maxShiftHours,
+            cashDifferenceTolerance: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.cashDifferenceTolerance : undefined)
+              ? round(Math.max(0, Number(s.settings.automation.cashDifferenceTolerance)))
+              : DEFAULT_AUTOMATION_SETTINGS.cashDifferenceTolerance,
             warnAboutOpenTablesAtShiftClose: isRecord(s.settings.automation) &&
               typeof s.settings.automation.warnAboutOpenTablesAtShiftClose === 'boolean'
               ? s.settings.automation.warnAboutOpenTablesAtShiftClose
@@ -904,7 +912,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
   ).map((session) => ({
     ...session,
     snapshot: isRecord(session.snapshot) &&
-      Object.values(session.snapshot).length === 16 &&
+      [16, 18].includes(Object.values(session.snapshot).length) &&
       Object.values(session.snapshot).every(isFiniteNumber)
       ? session.snapshot as RegisterSession['snapshot']
       : undefined,
@@ -948,6 +956,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       staffShiftNumbers.set(key, number)
       return {
         ...session,
+        openingFloat: isFiniteNumber(session.openingFloat) && session.openingFloat >= 0
+          ? round(session.openingFloat)
+          : round(session.openingCash),
         staffId,
         shiftNumber: typeof session.shiftNumber === 'string' && /^S-\d{6}$/.test(session.shiftNumber)
           ? session.shiftNumber
@@ -955,6 +966,31 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         zReportNumber: reportNumbers.get(session),
       }
     })
+  const cashDifferences = collection<CashDifference>('cashDifferences', (item): item is CashDifference =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.staffId === 'string' &&
+    typeof item.shiftId === 'string' && isFiniteNumber(item.amount) && item.amount !== 0 &&
+    (item.type === 'shortage' || item.type === 'overage') &&
+    (item.type === 'shortage' ? item.amount < 0 : item.amount > 0) &&
+    (item.status === 'open' || item.status === 'settled' || item.status === 'voided' || item.status === 'archived') &&
+    typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)),
+  ).map((item) => ({
+    ...item,
+    amount: round(item.amount),
+    resolvedAt: typeof item.resolvedAt === 'string' && Number.isFinite(Date.parse(item.resolvedAt))
+      ? item.resolvedAt
+      : undefined,
+    resolvedById: typeof item.resolvedById === 'string' ? item.resolvedById : undefined,
+    resolution: ['paid_back', 'salary_deduction', 'waived', 'error_voided', 'other'].includes(String(item.resolution))
+      ? item.resolution
+      : undefined,
+    note: typeof item.note === 'string' ? item.note.slice(0, 500) : undefined,
+    archivedFromStatus: item.archivedFromStatus === 'open' || item.archivedFromStatus === 'settled' ||
+      item.archivedFromStatus === 'voided' ? item.archivedFromStatus : undefined,
+  })).filter((item) =>
+    stores.some((store) => store.id === item.storeId) &&
+    users.some((member) => member.id === item.staffId && member.storeId === item.storeId) &&
+    registerSessions.some((session) => session.id === item.shiftId && session.storeId === item.storeId),
+  )
   const sessionForTimestamp = (storeId: string, value: string | undefined) => {
     const time = value ? Date.parse(value) : Number.NaN
     if (!Number.isFinite(time)) return undefined
@@ -969,6 +1005,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     const voidSession = sessionForTimestamp(order.storeId, order.voidedAt)
     return {
       ...order,
+      paidById: typeof order.paidById === 'string' ? order.paidById : order.staffId,
       shiftId: registerSessions.some((candidate) =>
         candidate.id === order.shiftId && candidate.storeId === order.storeId,
       ) ? order.shiftId : session?.id,
@@ -1262,6 +1299,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     payrolls,
     shifts,
     registerSessions,
+    cashDifferences,
     auditLogs,
   }
 }
@@ -1269,13 +1307,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
 const databaseCollectionKeys: Array<keyof Database> = [
   'stores', 'users', 'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs', 'categories', 'tables', 'inventoryItems', 'stockMovements',
   'suppliers', 'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
-  'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'auditLogs',
+  'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'cashDifferences', 'auditLogs',
 ]
 
 export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
   const optionalCollections: Array<keyof Database> = [
     'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs',
-    'suppliers', 'purchases', 'purchasePayments',
+    'suppliers', 'purchases', 'purchasePayments', 'cashDifferences',
   ]
   if (!isRecord(value) || !databaseCollectionKeys.every((key) =>
     optionalCollections.includes(key) || Array.isArray(value[key]),

@@ -133,6 +133,14 @@ export default function AutomationTab({
           <Input type="number" min={1} max={24} value={automation.shiftReminderHours}
             onChange={(event) => update({ shiftReminderHours: Number(event.target.value) || 1 })} />
         </Field>
+        <Field label="Shift alert after (hours)">
+          <Input type="number" min={1} max={168} value={automation.maxShiftHours}
+            onChange={(event) => update({ maxShiftHours: Math.round(Number(event.target.value) || 1) })} />
+        </Field>
+        <Field label="Cash difference tolerance (DT)">
+          <Input type="number" min={0} step={0.001} value={automation.cashDifferenceTolerance}
+            onChange={(event) => update({ cashDifferenceTolerance: Math.max(0, Number(event.target.value) || 0) })} />
+        </Field>
         <Toggle checked={automation.warnAboutOpenTablesAtShiftClose}
           onChange={(value) => update({ warnAboutOpenTablesAtShiftClose: value })}
           label="Warn before closing with open table orders" />

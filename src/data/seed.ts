@@ -505,6 +505,10 @@ const users = ([
     ...user.permissions,
     openShift: user.role !== 'super',
     closeShift: user.role !== 'super',
+    takeOverTables: user.role !== 'super',
+    forceCloseShift: user.role === 'admin',
+    manageCashDifferences: user.role === 'admin',
+    viewStaffAnalytics: user.role !== 'staff' && user.role !== 'super',
   },
 }))
 
@@ -1075,7 +1079,35 @@ export function buildSeed(): Database {
     products,
     customers,
     orders,
-    openOrders: [],
+    openOrders: [{
+      id: 'open_demo_handover',
+      storeId: 'st_darchai',
+      number: 1999,
+      tableId: 'tbl_darchai_1',
+      tableName: 'Table 1',
+      sectionId: 'sec_darchai_inside',
+      sectionName: 'Inside',
+      items: [],
+      subtotal: 0,
+      tax: 0,
+      service: 0,
+      discount: 0,
+      total: 0,
+      channel: 'dine-in',
+      status: 'open',
+      staffId: 'unassigned-handover',
+      staffName: 'Unassigned (handover)',
+      tableHistory: [{
+        id: 'evt_demo_handover',
+        type: 'transferred',
+        actorId: 'u_mehdi',
+        actorName: 'Mehdi Gharbi',
+        at: new Date().toISOString(),
+        details: 'Demo handover waiting for an open shift',
+      }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }],
     ledger,
     expenses,
     attendance: [],
@@ -1083,6 +1115,7 @@ export function buildSeed(): Database {
     payrolls: [],
     shifts,
     registerSessions,
+    cashDifferences: [],
     auditLogs: [],
   }
 
@@ -1109,6 +1142,7 @@ export function buildSeed(): Database {
   }
   database.orders = database.orders.map((order) => ({
     ...order,
+    paidById: order.paidById ?? order.staffId,
     shiftId: order.shiftId ?? sessionAt(order.storeId, order.createdAt)?.id,
     voidShiftId: order.voidedAt
       ? order.voidShiftId ?? sessionAt(order.storeId, order.voidedAt)?.id

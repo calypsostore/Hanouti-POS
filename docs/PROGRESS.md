@@ -127,3 +127,8 @@ phone-local WebSerial fallback are **untested on hardware**.
 - Items 33–40 were implemented; the current full suite passes 43 Node tests,
   successful build and lint (existing warnings only). Browser UI scenarios and
   real printer/drawer operations remain unverified; see `docs/AUTOMATION.md`.
+- Added per-staff shifts, payer attribution, table handover, cash differences,
+  staff performance, dashboard alerts, and payroll deductions.
+- Database v31 migrates legacy session float and payer fields; one demo
+  unassigned handover table is seeded.
+- Browser scenarios remain UNVERIFIED; build, lint, and all 47 Node tests pass.

@@ -86,7 +86,7 @@ export function LiveRegister({
             </div>
             <div className="text-[11.5px] text-muted">
               Opened {fmtDateTime(open.openedAt)} · {open.openedByName} · opening cash{' '}
-              {money(open.openingCash)}
+              {money(open.openingFloat ?? open.openingCash)}
             </div>
           </div>
         </div>
@@ -102,6 +102,7 @@ export function LiveRegister({
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Transactions" value={String(liveSnapshot.ordersCount)} icon={<FileText className="h-4 w-4" />} />
+        <Tile label="Recorded (unpaid)" value={`${liveSnapshot.recordedCount ?? 0} · ${money(liveSnapshot.recordedTotal ?? 0)}`} icon={<FileText className="h-4 w-4" />} />
         <Tile label="Total sales" value={money(liveSnapshot.salesTotal)} icon={<Banknote className="h-4 w-4" />} accent />
         <Tile label="Cash sales" value={money(liveSnapshot.cashSales)} icon={<CircleDollarSign className="h-4 w-4" />} />
         <Tile label="Card sales" value={money(liveSnapshot.cardSales)} icon={<CreditCard className="h-4 w-4" />} />

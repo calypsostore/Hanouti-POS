@@ -252,6 +252,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         shiftId: shift?.id,
         staffId: seller.id,
         staffName: seller.name,
+        paidById: seller.id,
         ownerStaffId: seller.id,
         ownerStaffName: seller.name,
         note: input.note,

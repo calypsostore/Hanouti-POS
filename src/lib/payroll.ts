@@ -1,4 +1,4 @@
-import type { Attendance, AttendanceStatus, Database, PayrollSettings, User } from '../types'
+import type { Advance, Attendance, AttendanceStatus, Database, PayrollSettings, User } from '../types'
 import { DEFAULT_PAYROLL_SETTINGS } from './defaults'
 import { round } from './pricing-utils'
 import { dateKey, uid } from './utils'
@@ -20,6 +20,22 @@ export interface PayrollEstimate {
   openAdvances: number
   netDue: number
 }
+
+export const cashDifferenceDeduction = (
+  storeId: string,
+  userId: string,
+  amount: number,
+  note: string,
+  now = new Date(),
+): Advance => ({
+  id: uid('adv'),
+  storeId,
+  userId,
+  amount: round(amount),
+  date: now.toISOString(),
+  note: `Cash difference deduction: ${note}`.slice(0, 500),
+  status: 'open',
+})
 
 const hoursBetween = (start: string, end: string) => {
   const startTime = Date.parse(start)

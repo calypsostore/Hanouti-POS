@@ -11,6 +11,7 @@ import { openShiftForStaff } from '../lib/registerShifts'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import { resolveOpenOrderItems } from '../lib/openOrderItems'
 import { canTransitionStationItem } from '../lib/orderItemLifecycle'
+import { handoverOpenOrder } from '../lib/shiftCash'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -458,6 +459,106 @@ export function useOpenOrdersSlice(
     [commitDb, createOrder, dbRef, requireActor],
   )
 
+  const handoverTables = useCallback<AppContextValue['handoverTables']>((storeId, orderIds, targetStaffId) => {
+    const actorResult = requireActor(storeId)
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    const current = dbRef.current
+    const selected = [...new Set(orderIds)].map((id) =>
+      current.openOrders.find((order) => order.id === id && order.storeId === storeId),
+    )
+    if (!selected.length || selected.some((order) => !order)) {
+      return { ok: false, error: 'Select valid open tables from this store.' }
+    }
+    if (!can(actor, 'manageTables') && !can(actor, 'closeShift')) {
+      return { ok: false, error: 'You do not have permission to hand over tables.' }
+    }
+    if (!can(actor, 'manageTables') && selected.some((order) => order?.staffId !== actor.id)) {
+      return { ok: false, error: 'You can only hand over tables you own.' }
+    }
+    let target: { id: string; name: string } | undefined
+    if (targetStaffId) {
+      const staff = current.users.find((candidate) =>
+        candidate.id === targetStaffId && candidate.storeId === storeId && candidate.active,
+      )
+      if (!staff || !openShiftForStaff(current, storeId, staff.id)) {
+        return { ok: false, error: 'Choose a colleague with an open shift.' }
+      }
+      target = { id: staff.id, name: staff.name }
+    }
+    const at = new Date().toISOString()
+    const updates = new Map<string, OpenOrder>()
+    for (const order of selected) {
+      if (order) updates.set(order.id, handoverOpenOrder(order, target, actor, at))
+    }
+    commitDb((prev) => {
+      let next = {
+        ...prev,
+        openOrders: prev.openOrders.map((order) => updates.get(order.id) ?? order),
+      }
+      for (const order of selected) {
+        if (!order) continue
+        const updated = updates.get(order.id)
+        if (!updated) continue
+        next = addLog(next, actor, {
+          storeId,
+          action: 'edited',
+          entity: 'table',
+          entityId: order.id,
+          summary: `Handed over ${order.tableName} to ${target?.name ?? 'Unassigned (handover)'}`,
+          before: { staffId: order.staffId, staffName: order.staffName },
+          after: { staffId: updated.staffId, staffName: updated.staffName },
+        })
+      }
+      return next
+    })
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
+  const takeOverTables = useCallback<AppContextValue['takeOverTables']>((orderIds) => {
+    const current = dbRef.current
+    const first = current.openOrders.find((order) => orderIds.includes(order.id))
+    if (!first) return { ok: false, error: 'No open handover tables were selected.' }
+    const actorResult = requireActor(first.storeId)
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    if (!openShiftForStaff(current, first.storeId, actor.id)) {
+      return { ok: false, error: 'Open your shift before taking over tables.' }
+    }
+    if (!can(actor, 'takeOverTables')) {
+      return { ok: false, error: 'You do not have permission to take over tables.' }
+    }
+    const selected = [...new Set(orderIds)].map((id) =>
+      current.openOrders.find((order) =>
+        order.id === id && order.storeId === first.storeId && order.staffId === 'unassigned-handover',
+      ),
+    )
+    if (!selected.length || selected.some((order) => !order)) {
+      return { ok: false, error: 'Select unassigned handover tables from this store.' }
+    }
+    const at = new Date().toISOString()
+    const updates = new Map<string, OpenOrder>()
+    for (const order of selected) {
+      if (order) updates.set(order.id, handoverOpenOrder(
+        order,
+        { id: actor.id, name: actor.name },
+        actor,
+        at,
+      ))
+    }
+    commitDb((prev) => addLog({
+      ...prev,
+      openOrders: prev.openOrders.map((order) => updates.get(order.id) ?? order),
+    }, actor, {
+      storeId: first.storeId,
+      action: 'edited',
+      entity: 'table',
+      summary: `Took over ${selected.length} handover table${selected.length === 1 ? '' : 's'}`,
+      after: { orderIds: [...updates.keys()], staffId: actor.id },
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
   const recordOpenOrder = useCallback<AppContextValue['recordOpenOrder']>((orderId) => {
     const current = dbRef.current
     const order = current.openOrders.find((item) => item.id === orderId)
@@ -685,6 +786,8 @@ export function useOpenOrdersSlice(
     setOpenOrderItemStatus,
     voidSentOrderItem,
     payOpenOrder,
+    handoverTables,
+    takeOverTables,
     moveOrderToTable,
     mergeTableOrders,
     cancelOpenOrder,

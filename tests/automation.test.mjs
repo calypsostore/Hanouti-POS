@@ -17,6 +17,8 @@ const validSettings = {
   autoLogoutMinutes: 720,
   shiftReminders: true,
   shiftReminderHours: 8,
+  maxShiftHours: 12,
+  cashDifferenceTolerance: 0,
   warnAboutOpenTablesAtShiftClose: true,
   lowStockAlerts: true,
   hideOutOfStock: false,

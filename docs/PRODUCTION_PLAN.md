@@ -9,10 +9,11 @@ Last updated: 2026-11-15 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
 orders and station tickets, station-device kiosk pairing, hub sync/offline
-outbox, PWA foundation, and configurable POS automation**. Shift reminders and
-open-table close warnings are implemented; table ownership handover and cash
-accountability remain limited. The current audit status below supersedes older
-roadmap statuses later in this document.
+outbox, PWA foundation, configurable POS automation, per-staff shifts, table
+handover, and cash-difference tracking**. Closed Z reports stay frozen; the
+staff analytics and cash-difference flows are implemented in the client store.
+The current audit status below supersedes older roadmap statuses later in this
+document.
 
 ### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
 
@@ -46,7 +47,9 @@ roadmap statuses later in this document.
   credential hashes to clients.
 - **Shifts/stock:** required-shift prompt, elapsed-shift reminder, open-table
   warning, low-stock dashboard/bell alerts, and optional out-of-stock hiding.
-  No table handover flow exists; the warning does not transfer ownership.
+  Per-staff shifts, table handover, configurable cash differences, and long-shift
+  alerts are now implemented; multi-device browser handover scenarios remain
+  unverified.
 - **Printing:** authorized WebSerial reconnect polling, bounded local and hub
   retries, primary-to-fallback routing, and hub admin alerts after observed
   printer failures. Offline health is not proactively probed; real output and
@@ -354,7 +357,7 @@ stored; no demo values are presented as production data.
 - Settings → Tables supports `sections_tables`, `tables_only`, and `manual`,
   including section/table CRUD, assignment, filtering, and ordering. The floor
   has section tabs and My tables / All / Unassigned filter controls; Unassigned
-  becomes populated when the handover pool is implemented. Manual mode takes
+  is populated by the handover flow and new shifts can take over tables. Manual mode takes
   a free-form table name with suggestions from currently open tables.
 - Settings tabs scroll horizontally on narrow screens without widening the
   page beyond the viewport.
@@ -364,10 +367,9 @@ stored; no demo values are presented as production data.
   ticket preview includes the table, guests and staff. Legacy `DiningTable.zone`
   values migrate to `TableSection` records and `sectionId` under
   `7anouti.db.v24`.
-- The “staff pick sections” setting is stored, but section claiming depends on
-  the not-yet-implemented per-staff shift workflow. Table records and audit
-  events are still local to one browser; there is no realtime multi-device
-  handover.
+- The “staff pick sections” setting is stored, and table ownership can be
+  handed over between open shifts or assigned to the pool. Realtime multi-device
+  handover still requires the pending browser scenarios.
 - All of this remains browser-local demo behavior. It is not authoritative or
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
@@ -495,6 +497,21 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 - `RegisterSession` model: unique id, store, status open/closed, opening cash,
   opener, closer, counted cash, difference, close note, sequential Z number,
   frozen financial snapshot, and frozen report details.
+- Multiple staff can keep independent open sessions. Orders carry `paidById`;
+  table payments, tab settlements, refunds, and cash expenses are attributed to
+  the acting staff member's open session and time window. Opening float and
+  counted cash (including float) are part of expected-cash calculation.
+- Closing never requires closing tables: owned tables are handed to an open
+  colleague or the existing `Unassigned (handover)` pool. Incoming staff can
+  claim all or individual waiting tables; ownership changes are kept in table
+  history, and managers can reassign or force-close with a reason.
+- Cash differences beyond a per-store tolerance (default 0.000 DT) are retained
+  as signed records. Authorized managers can settle, void with reason, archive,
+  or restore records; salary deductions are recorded as payroll advances.
+- Staff profile and Reports provide shift performance comparisons. Excellent
+  means accuracy ≥98%, discounts ≤5%, voids ≤2%; Good means ≥90%, ≤10%, ≤5%;
+  other results are Needs attention. Admin dashboard flags overlong shifts and
+  open differences; thresholds and shift duration are configurable.
 - **X report**: a read-only interim snapshot. It never mutates or closes the
   session. **Z report**: closing computes and saves the snapshot and report
   detail once; duplicate closes are rejected, and reprints use the same
@@ -526,8 +543,9 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   old report details without item rows; those rows are rebuilt from session
   orders at view time and marked `Rebuilt from orders`, without rewriting the
   frozen totals.
-- A closed session cannot be reopened or edited; opening a new session is
-  blocked while one is open.
+- A closed session cannot be reopened or edited; a staff member cannot open a
+  second session while their own shift is open, but colleagues may work
+  concurrently.
 - Void authorization: staff voids require a manager PIN (validated against the
   store's active admins inside the store layer); the void records
   `voidedById/Name/At`, restores tracked stock, and reverses the outstanding
@@ -627,7 +645,7 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
 
 - Historical v22 browser smoke verified migration from `7anouti.db.v21` and earlier keys,
   hashing legacy credentials and retaining
-  2 closed Z sessions + 1 open session per store; register nav visible for admin; staff without `register` permission
+  2 closed Z sessions and concurrent open shifts for different staff; register nav visible for admin; staff without `register` permission
   redirected from `/admin/register`; staff with permission can access.
 - The current `7anouti.db.v24` normalizer preserves frozen Z details while
   accepting old reports without item rows; legacy item detail is rebuilt only
