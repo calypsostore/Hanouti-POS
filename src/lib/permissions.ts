@@ -21,6 +21,7 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   forceCloseShift: true,
   manageCashDifferences: true,
   viewStaffAnalytics: true,
+  manage86: true,
 }
 
 export function can(user: User, capability: Capability): boolean {
@@ -32,6 +33,7 @@ export function can(user: User, capability: Capability): boolean {
     return user.permissions[capability] === true
   }
   if (capability === 'takeOverTables' || capability === 'forceCloseShift' ||
+      capability === 'manage86' ||
       capability === 'manageCashDifferences' || capability === 'viewStaffAnalytics') {
     return user.permissions[capability] === true
   }

@@ -9,6 +9,7 @@ import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
 import { openShiftForStaff } from '../lib/registerShifts'
+import { isUnavailable } from '../lib/availability'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -88,6 +89,15 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         }
         if (variants.length && !variant) {
           return { ok: false, error: `Choose a variant for ${product.name}.` }
+        }
+        const inventoryItem = current.inventoryItems.find((candidate) =>
+          candidate.id === product.inventoryItemId && candidate.storeId === target.id,
+        )
+        if (!['sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))) {
+          const availability = isUnavailable(product, variant, target.settings.availability, inventoryItem)
+          if (availability.unavailable) {
+            return { ok: false, error: `${product.name}${variant ? ` (${variant.name})` : ''} is 86'd (${availability.reason}).` }
+          }
         }
         const selected: OrderModifier[] = []
         const incomingModifiers = Array.isArray(item.modifiers) ? item.modifiers : []

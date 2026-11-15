@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import { Barcode, ChevronRight, LayoutGrid, Plus, Search, ShoppingBag } from 'lucide-react'
-import type { Category, OrderChannel, Product, Store } from '../../types'
+import { useRef, useState } from 'react'
+import { Barcode, ChevronRight, Flag, LayoutGrid, Plus, Search, ShoppingBag } from 'lucide-react'
+import type { Category, InventoryItem, OrderChannel, Product, Store } from '../../types'
 import { Button, EmptyState, Input } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
 import { getProductImage } from '../../lib/productDisplay'
 import { CategoryChip } from './CartPanel'
 import { AppIcon } from '../../components/AppIcon'
 import { ChannelSwitch } from './ChannelSwitch'
+import { isUnavailable } from '../../lib/availability'
 
 type ProductCatalogProps = {
   categories: Category[]
@@ -27,13 +28,19 @@ type ProductCatalogProps = {
   onOpenCart: () => void
   lockedChannel?: boolean
   tableName?: string
+  inventoryItems: InventoryItem[]
+  onUnavailable: (message: string) => void
+  canManage86: boolean
+  onRequest86: (product: Product) => void
 }
 
 export function ProductCatalog({
   categories, products, categoryId, setCategoryId, search, setSearch, channel, setChannel, store, qtyInCart, addItem, onBarcodeScan,
-  count, total, hasCartItems, onOpenCart, lockedChannel, tableName,
+  count, total, hasCartItems, onOpenCart, lockedChannel, tableName, inventoryItems, onUnavailable, canManage86, onRequest86,
 }: ProductCatalogProps) {
   const [scanCode, setScanCode] = useState('')
+  const pressTimer = useRef<number | null>(null)
+  const longPressFired = useRef(false)
   return (
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="glass-subtle shrink-0 space-y-3 border-b border-line/70 px-4 pb-3 pt-4 sm:px-5">
@@ -107,22 +114,59 @@ export function ProductCatalog({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {products.map((p) => {
                   const qty = qtyInCart(p.id)
+                  const linkedInventory = inventoryItems.find((item) => item.id === p.inventoryItemId)
+                  const unavailableStates = (p.variants ?? []).map((variant) =>
+                    isUnavailable(p, variant, store.settings.availability, linkedInventory),
+                  )
+                  const availability = isUnavailable(p, undefined, store.settings.availability, linkedInventory)
                   const out = p.variants?.length
-                    ? p.variants.every((variant) => variant.trackStock && variant.stock <= 0)
-                    : p.trackStock && p.stock <= 0
+                    ? unavailableStates.every((state) => state.unavailable)
+                    : availability.unavailable
                   const low = p.trackStock && p.stock > 0 && p.stock <= store.settings.lowStockThreshold
                   const image = getProductImage(p)
                   return (
                     <button
                       key={p.id}
-                      onClick={() => addItem(p.id)}
-                      disabled={out}
+                      onPointerDown={() => {
+                        if (!canManage86) return
+                        longPressFired.current = false
+                        pressTimer.current = window.setTimeout(() => {
+                          longPressFired.current = true
+                          onRequest86(p)
+                        }, 650)
+                      }}
+                      onPointerUp={() => {
+                        if (pressTimer.current !== null) window.clearTimeout(pressTimer.current)
+                        pressTimer.current = null
+                      }}
+                      onPointerLeave={() => {
+                        if (pressTimer.current !== null) window.clearTimeout(pressTimer.current)
+                        pressTimer.current = null
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        if (canManage86) onRequest86(p)
+                      }}
+                      onClick={(event) => {
+                        if (longPressFired.current) {
+                          longPressFired.current = false
+                          return
+                        }
+                        const bounds = event.currentTarget.getBoundingClientRect()
+                        if (canManage86 && event.clientX >= bounds.right - 42 && event.clientY <= bounds.top + 44) {
+                          onRequest86(p)
+                          return
+                        }
+                        if (out) onUnavailable(`${p.name} is 86'd (${availability.reason || unavailableStates.find((state) => state.unavailable)?.reason || 'Unavailable'}).`)
+                        else addItem(p.id)
+                      }}
                       className={cn(
                         'glass-tile group relative flex flex-col rounded-2xl p-3 text-left transition-all duration-150',
                         'hover:-translate-y-0.5 hover:border-accent-foreground/80 hover:shadow-[0_6px_20px_rgba(17,27,48,0.09)]',
                         qty > 0 ? 'border-accent-foreground ring-2 ring-accent-foreground/30' : 'border-line/80',
-                        out && 'cursor-not-allowed hover:translate-y-0',
+                        out && 'cursor-not-allowed opacity-55 hover:translate-y-0',
                       )}
+                      title={canManage86 ? 'Tap the flag or long-press to 86 this item' : undefined}
                     >
                       <div className="mb-2 flex w-full items-start justify-between">
                         {image
@@ -130,9 +174,10 @@ export function ProductCatalog({
                           : <AppIcon name={p.icon} color={p.iconColor} size={21} className="h-11 w-11 rounded-xl" />}
                         {out && (
                           <span className="rounded-md bg-[var(--semantic-red-solid)] px-1.5 py-0.5 text-[9px] font-bold text-white">
-                            Out of stock
+                            86
                           </span>
                         )}
+                        {canManage86 && !out && <Flag className="h-4 w-4 text-muted/70" aria-label="Long-press to 86 item" />}
                         {qty > 0 && (
                           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-amber px-1.5 text-[11px] font-bold text-brand-navy">
                             {qty}
@@ -142,6 +187,11 @@ export function ProductCatalog({
                           <span className="rounded-md bg-[var(--semantic-amber-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--semantic-amber-text)]">
                             {p.stock} left
                           </span>
+                        )}
+                        {out && store.settings.availability.displayStyle === 'big_red_x' && (
+                          <svg aria-hidden="true" viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
+                            <path d="M12 12L88 88M88 12L12 88" fill="none" stroke="#dc2626" strokeWidth="13" strokeLinecap="round" />
+                          </svg>
                         )}
                       </div>
                       <span className="line-clamp-2 text-[13px] font-semibold leading-tight text-ink">

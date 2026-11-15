@@ -20,6 +20,7 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'forceCloseShift', label: 'Force-close shifts', description: 'Close another staff shift after entering a reason.' },
   { key: 'manageCashDifferences', label: 'Manage cash differences', description: 'Settle, void, and archive shift cash differences.' },
   { key: 'viewStaffAnalytics', label: 'View staff analytics', description: 'View staff performance and cash accuracy metrics.' },
+  { key: 'manage86', label: 'Manage 86 availability', description: '86 and return menu items from POS.' },
 ]
 
 export default function StaffPermissionsEditor({
@@ -71,6 +72,9 @@ export default function StaffPermissionsEditor({
             label="Record purchases"
             description="Manage suppliers, receive stock, and record supplier payments."
           />
+        )}
+        {role === 'staff' && (
+          <Toggle checked={permissions.manage86 === true} onChange={(value) => toggle('manage86', value)} label="Manage 86 availability" description="86 and return menu items from POS." />
         )}
         {role === 'manager' && managerCapabilities.map(({ key, label, description }) => (
           <Toggle

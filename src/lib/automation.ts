@@ -1,4 +1,6 @@
 import type { AutomationSettings, Product, ReceiptPrintPolicy } from '../types.js'
+import type { AvailabilitySettings, InventoryItem } from '../types.js'
+import { isUnavailable } from './availability.ts'
 
 export type InactivityAction = 'lock' | 'logout' | null
 
@@ -70,12 +72,23 @@ export function backupHealthIsStale(lastBackupAt: string | null | undefined, now
 }
 
 export function productIsOutOfStock(product: Product): boolean {
-  if (product.variants?.length) {
-    return product.variants.every((variant) => variant.trackStock && variant.stock <= 0)
-  }
-  return product.trackStock && product.stock <= 0
+  const variants = product.variants ?? []
+  return variants.length
+    ? variants.every((variant) => isUnavailable(product, variant).unavailable)
+    : isUnavailable(product, undefined).unavailable
 }
 
-export function filterPosProducts(products: Product[], hideOutOfStock: boolean): Product[] {
-  return hideOutOfStock ? products.filter((product) => !productIsOutOfStock(product)) : products
+export function filterPosProducts(
+  products: Product[],
+  hideOutOfStock: boolean,
+  settings?: AvailabilitySettings,
+  inventoryItems: InventoryItem[] = [],
+): Product[] {
+  return hideOutOfStock ? products.filter((product) => {
+    const inventoryItem = inventoryItems.find((item) => item.id === product.inventoryItemId)
+    const variants = product.variants ?? []
+    return variants.length
+      ? !variants.every((variant) => isUnavailable(product, variant, settings, inventoryItem).unavailable)
+      : !isUnavailable(product, undefined, settings, inventoryItem).unavailable
+  }) : products
 }

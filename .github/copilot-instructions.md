@@ -48,3 +48,4 @@ Follow these repository rules for all future work.
   list relevant manual test scenarios.
 - Update `docs/PRODUCTION_PLAN.md` after each task to distinguish implemented
   behavior from what is still demo-only.
+Every new behaviour must be controlled from Admin > Settings: add a typed setting with a safe default in store.settings, normalize it in the database migration and the hub, show it in the Settings UI (grouped, with a one-line help text), enforce it in the store and hub (not only in the UI), and add a permission if staff can use it. No hard-coded behaviour that an owner might want to change.

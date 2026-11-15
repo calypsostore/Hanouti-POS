@@ -21,6 +21,9 @@ export default function ProductCatalog({
   onEditProduct,
   onDeleteProduct,
   onToggleProduct,
+  onToggle86,
+  availabilityFilter,
+  onAvailabilityFilterChange,
   onNewProduct,
   stations,
   onBulkAssignProducts,
@@ -40,6 +43,9 @@ export default function ProductCatalog({
   onEditProduct: (product: Product) => void
   onDeleteProduct: (product: Product) => void
   onToggleProduct: (product: Product) => void
+  onToggle86: (product: Product) => void
+  availabilityFilter: 'all' | '86'
+  onAvailabilityFilterChange: (value: 'all' | '86') => void
   onNewProduct: () => void
   stations: Array<{ id: string; name: string }>
   onBulkAssignProducts: (ids: string[], stationId?: string) => boolean
@@ -156,6 +162,30 @@ export default function ProductCatalog({
               className="pl-9"
             />
           </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Select value={availabilityFilter} onChange={(event) => onAvailabilityFilterChange(event.target.value as 'all' | '86')} className="max-w-[180px]">
+              <option value="all">All products</option>
+              <option value="86">86'd</option>
+            </Select>
+            {selectedProducts.length > 0 && (
+              <>
+                <Button size="sm" variant="secondary" onClick={() => {
+                  selectedProducts.forEach((id) => {
+                    const product = products.find((candidate) => candidate.id === id)
+                    if (product && !product.eightySix?.active) onToggle86(product)
+                  })
+                  setSelectedProducts([])
+                }}>86 selected</Button>
+                <Button size="sm" variant="secondary" onClick={() => {
+                  selectedProducts.forEach((id) => {
+                    const product = products.find((candidate) => candidate.id === id)
+                    if (product?.eightySix?.active) onToggle86(product)
+                  })
+                  setSelectedProducts([])
+                }}>Return selected</Button>
+              </>
+            )}
+          </div>
         </div>
 
         {filtered.length === 0 ? (
@@ -194,6 +224,7 @@ export default function ProductCatalog({
                     <th className="px-4 py-2.5 text-right font-semibold">Cost</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Margin</th>
                     <th className="px-4 py-2.5 text-center font-semibold">Stock</th>
+                    <th className="px-4 py-2.5 text-center font-semibold">86</th>
                     <th className="px-4 py-2.5 text-center font-semibold">Active</th>
                     <th className="px-4 py-2.5" />
                   </tr>
@@ -238,6 +269,15 @@ export default function ProductCatalog({
                           ) : (
                             <span className="text-[10.5px] text-muted/60">untracked</span>
                           )}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <Button
+                            size="sm"
+                            variant={product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active) ? 'secondary' : 'ghost'}
+                            onClick={() => onToggle86(product)}
+                          >
+                            {product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active) ? 'Return' : '86'}
+                          </Button>
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <button

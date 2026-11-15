@@ -26,7 +26,7 @@ import type {
   User,
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
@@ -68,6 +68,7 @@ const defaultSettings = (
   stationTicketPrintPolicy: 'automatic',
   reportPrintPolicy: 'manual',
   automation: { ...DEFAULT_AUTOMATION_SETTINGS },
+  availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
   ...over,
 })
 
@@ -716,6 +717,15 @@ export function buildSeed(): Database {
         trackStock,
         stock: trackStock ? 6 + Math.floor(rng() * 34) : 0,
         active: true,
+        ...(store.id === 'st_yasmine' && name === 'Cappuccino' ? {
+          eightySix: {
+            active: true,
+            at: new Date().toISOString(),
+            byId: 'u_sami',
+            reason: 'Machine down',
+            returnMode: 'manual' as const,
+          },
+        } : {}),
         barcode: store.settings.features.barcode ? `${store.id.replace('st_', '')}${String(i + 1).padStart(6, '0')}` : '',
         modifiers: store.businessType === 'cafe' && name === 'Cappuccino'
           ? [{

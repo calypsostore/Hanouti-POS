@@ -3,6 +3,7 @@ import { round } from '../../lib/pricing-utils'
 import { uid } from '../../lib/utils'
 import type { Database, OrderItem, Product, Store } from '../../types'
 import type { ProductSelection } from './ProductOptionsModal'
+import { isUnavailable } from '../../lib/availability'
 
 export function useProductCart(
   db: Database,
@@ -28,6 +29,12 @@ export function useProductCart(
       push('Open your shift before taking orders.', 'error')
     }
     const variant = product.variants?.find((item) => item.id === selection.variantId)
+    const inventoryItem = db.inventoryItems.find((item) => item.id === product.inventoryItemId)
+    const availability = isUnavailable(product, variant, store.settings.availability, inventoryItem)
+    if (availability.unavailable) {
+      push(`${product.name} is 86'd (${availability.reason}).`, 'error')
+      return
+    }
     const tracksStock = variant ? variant.trackStock : product.trackStock
     const availableStock = variant ? variant.stock : product.stock
     const stockQty = cart
@@ -86,6 +93,16 @@ export function useProductCart(
       candidate.id === productId && candidate.storeId === store.id && candidate.active,
     )
     if (!product) return
+    const inventoryItem = db.inventoryItems.find((item) => item.id === product.inventoryItemId)
+    const variants = product.variants ?? []
+    const unavailable = variants.length
+      ? variants.every((variant) => isUnavailable(product, variant, store.settings.availability, inventoryItem).unavailable)
+      : isUnavailable(product, undefined, store.settings.availability, inventoryItem).unavailable
+    if (unavailable) {
+      const state = isUnavailable(product, undefined, store.settings.availability, inventoryItem)
+      push(`${product.name} is 86'd (${state.reason}).`, 'error')
+      return
+    }
     if (product.soldByWeight && !store.settings.features.weightItems) {
       push('Weight-based sales are disabled for this store.', 'error')
       return

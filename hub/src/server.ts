@@ -44,6 +44,94 @@ const PRIVATE_COLLECTIONS: Record<string, string> = {
 }
 const ORDER_COLLECTIONS = new Set(['orders', 'openOrders', 'orderItems', 'payments'])
 
+function isAvailabilityOnlyProductChange(
+  previous: unknown,
+  incoming: unknown,
+  storeId: string,
+  allowed: boolean,
+): boolean {
+  if (!allowed || !record(previous) || !record(incoming) ||
+    previous.storeId !== storeId || incoming.storeId !== storeId) return false
+  const stripAvailability = (document: Record<string, unknown>) => {
+    const copy = { ...document }
+    delete copy.eightySix
+    if (Array.isArray(copy.variants)) {
+      copy.variants = copy.variants.map((variant) => {
+        if (!record(variant)) return variant
+        const normalized = { ...variant }
+        delete normalized.eightySix
+        return normalized
+      })
+    }
+    return copy
+  }
+  const availabilityChanged =
+    !isDeepStrictEqual(previous.eightySix, incoming.eightySix) ||
+    !isDeepStrictEqual(previous.variants, incoming.variants)
+  return availabilityChanged && isDeepStrictEqual(stripAvailability(previous), stripAvailability(incoming))
+}
+
+function productAvailabilityChanged(previous: Record<string, unknown>, incoming: Record<string, unknown>): boolean {
+  const snapshot = (document: Record<string, unknown>) => ({
+    eightySix: document.eightySix,
+    variants: Array.isArray(document.variants)
+      ? document.variants.flatMap((variant) => record(variant) && typeof variant.id === 'string'
+        ? [{ id: variant.id, eightySix: variant.eightySix }]
+        : [])
+      : [],
+  })
+  return !isDeepStrictEqual(snapshot(previous), snapshot(incoming))
+}
+
+function normalizeHubAvailability(value: unknown): Record<string, unknown> {
+  const source = record(value) ? value : {}
+  const reasons = Array.isArray(source.reasons)
+    ? source.reasons.filter((reason): reason is string => typeof reason === 'string')
+      .map((reason) => reason.trim().slice(0, 120)).filter(Boolean).slice(0, 20)
+    : ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue']
+  return {
+    enabled: typeof source.enabled === 'boolean' ? source.enabled : true,
+    autoEightySixAtZero: typeof source.autoEightySixAtZero === 'boolean' ? source.autoEightySixAtZero : true,
+    autoReturnOnRestock: typeof source.autoReturnOnRestock === 'boolean' ? source.autoReturnOnRestock : true,
+    requireReason: typeof source.requireReason === 'boolean' ? source.requireReason : true,
+    reasons,
+    defaultReturnMode: ['manual', 'on_restock', 'at_time'].includes(String(source.defaultReturnMode))
+      ? source.defaultReturnMode
+      : 'manual',
+    resetManualAtDayStart: source.resetManualAtDayStart === true,
+    resetManualAtFirstShift: source.resetManualAtFirstShift === true,
+    displayStyle: source.displayStyle === 'dimmed_badge' ? 'dimmed_badge' : 'big_red_x',
+    showListButton: typeof source.showListButton === 'boolean' ? source.showListButton : true,
+  }
+}
+
+function normalizeHubEightySix(value: unknown): Record<string, unknown> | undefined {
+  if (!record(value) || typeof value.active !== 'boolean' || typeof value.at !== 'string' ||
+    !Number.isFinite(Date.parse(value.at)) || typeof value.byId !== 'string' ||
+    !['manual', 'on_restock', 'at_time'].includes(String(value.returnMode))) return undefined
+  return {
+    active: value.active,
+    at: value.at,
+    byId: value.byId,
+    reason: typeof value.reason === 'string' ? value.reason.trim().slice(0, 120) : undefined,
+    returnMode: value.returnMode,
+    backAt: typeof value.backAt === 'string' && Number.isFinite(Date.parse(value.backAt)) ? value.backAt : undefined,
+  }
+}
+
+function normalizeHubProduct(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...value,
+    inventoryItemId: typeof value.inventoryItemId === 'string' ? value.inventoryItemId : undefined,
+    eightySix: normalizeHubEightySix(value.eightySix),
+    variants: Array.isArray(value.variants)
+      ? value.variants.map((variant) => record(variant)
+        ? { ...variant, eightySix: normalizeHubEightySix(variant.eightySix) }
+        : variant)
+      : value.variants,
+  }
+}
+
 function canManageSchedules(actor: AuthenticatedActor): boolean {
   return can(actor, 'manageStaff') ||
     (actor.role === 'staff' && actor.permissions.supervisor === true)
@@ -219,7 +307,27 @@ export async function createHubServer(): Promise<HubRuntime> {
         !validId(operation.id)) throw new Error('Change set contains an invalid operation.')
       let operationId = operation.id
       const required = PRIVATE_COLLECTIONS[operation.collection]
-      if (required && required !== 'ledger') requireCapability(actor, required)
+      const previousForPermission = validationState.collections[operation.collection]?.[operation.id]
+      const incomingForPermission = operation.kind === 'put' && record(operation.document) ? operation.document : undefined
+      const hasAvailabilityChange = operation.collection === 'products' && record(previousForPermission) &&
+        incomingForPermission !== undefined && productAvailabilityChanged(previousForPermission, incomingForPermission)
+      const availabilityOnly = operation.collection === 'products' && operation.kind === 'put' &&
+        isAvailabilityOnlyProductChange(
+          previousForPermission,
+          incomingForPermission,
+          actor.storeId,
+          can(actor, 'manage86'),
+        )
+      if (required && required !== 'ledger' && !availabilityOnly) requireCapability(actor, required)
+      if (hasAvailabilityChange) {
+        const storeDoc = validationState.collections.stores?.[actor.storeId]
+        const availability = record(storeDoc) && record(storeDoc.settings) && record(storeDoc.settings.availability)
+          ? storeDoc.settings.availability
+          : undefined
+        if (availability?.enabled === false) {
+          throw Object.assign(new Error('86 availability is disabled for this store.'), { status: 403 })
+        }
+      }
       if (operation.collection === 'shifts') {
         if (!canManageSchedules(actor)) {
           throw Object.assign(new Error('Permission denied: schedule management is required.'), { status: 403 })
@@ -302,26 +410,39 @@ export async function createHubServer(): Promise<HubRuntime> {
         requireCapability(actor, 'voidOrders')
       }
       if (operation.kind === 'put') {
+        let document: Record<string, unknown>
         if (operation.collection === 'stores') {
           if (!record(operation.document) || operation.document.id !== actor.storeId) {
             throw new Error('Store document must belong to the authenticated store.')
           }
+          const settings = record(operation.document.settings) ? operation.document.settings : {}
+          document = {
+            ...operation.document,
+            settings: {
+            ...settings,
+            availability: normalizeHubAvailability(settings.availability),
+            },
+          }
         } else {
           validateStoreDoc(operation.document, actor.storeId)
+          if (!record(operation.document)) throw new Error('Change set document must be an object.')
+          document = operation.document
+          if (operation.collection === 'products') document = normalizeHubProduct(document)
         }
-        if (operation.document.id !== operation.id) throw new Error('Operation ID does not match document ID.')
+        operation.document = document
+        if (document.id !== operation.id) throw new Error('Operation ID does not match document ID.')
         const previousDocument = validationState.collections[operation.collection]?.[operation.id]
         if ((operation.collection === 'products' || operation.collection === 'categories') &&
           previousDocument && changedDocuments.has(`${operation.collection}:${operation.id}`) &&
-          !isDeepStrictEqual(previousDocument, operation.document)) {
-          const label = typeof operation.document.name === 'string'
-            ? operation.document.name
+          !isDeepStrictEqual(previousDocument, document)) {
+          const label = typeof document.name === 'string'
+            ? document.name
             : typeof previousDocument.name === 'string' ? previousDocument.name : operation.id
           conflicts.push({ collection: operation.collection, id: operation.id, label })
         }
-        if (operation.collection === 'printers') validatePrinter(operation.document, actor.storeId, validationState)
+        if (operation.collection === 'printers') validatePrinter(document, actor.storeId, validationState)
         if (operation.collection === 'openOrders') {
-          const orderDocument = operation.document
+          const orderDocument = document
           if (!record(orderDocument) || typeof orderDocument.id !== 'string') {
             throw new Error('Open-order document must have an ID.')
           }
@@ -353,19 +474,19 @@ export async function createHubServer(): Promise<HubRuntime> {
               createdAt: duplicate.createdAt,
             }
           }
-          operation.document = mergeOpenOrderDocument(
+          document = mergeOpenOrderDocument(
             validationState.collections.openOrders?.[operationId],
             mergedInput,
           )
         }
-        if ((operation.collection === 'orders' || operation.collection === 'openOrders') && record(operation.document)) {
-          operation.document = validateOrderDocument(operation.document, operation.collection, validationState, actor)
+        if (operation.collection === 'orders' || operation.collection === 'openOrders') {
+          document = validateOrderDocument(document, operation.collection, validationState, actor)
         }
-        if (operation.collection === 'ledger' && record(operation.document)) {
-          operation.document = validateLedgerEntry(operation.document, validationState, actor)
+        if (operation.collection === 'ledger') {
+          document = validateLedgerEntry(document, validationState, actor)
         }
-        const document = operation.document
-        if (!record(document) || typeof document.id !== 'string') throw new Error('Change set document must have an ID.')
+        operation.document = document
+        if (typeof document.id !== 'string') throw new Error('Change set document must have an ID.')
         const documents = validationState.collections[operation.collection] ?? (validationState.collections[operation.collection] = {})
         documents[operationId] = structuredClone({ ...document, id: document.id })
       } else {

@@ -4,7 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
@@ -64,6 +64,10 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
     printerOfflineAlerts: settings.automation.printerOfflineAlerts,
     printerOfflineAlertMinutes: settings.automation.printerOfflineAlertMinutes,
     backupHealthAlerts: settings.automation.backupHealthAlerts,
+  },
+  availability: {
+    ...settings.availability,
+    reasons: [...settings.availability.reasons],
   },
 })
 
@@ -196,6 +200,22 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (patch.automation) {
       if (!validAutomationSettings(patch.automation)) {
         return { ok: false, error: 'Check the automation settings and allowed values.' }
+      }
+      if (patch.availability) {
+        const availability = patch.availability
+        if (typeof availability.enabled !== 'boolean' ||
+          typeof availability.autoEightySixAtZero !== 'boolean' ||
+          typeof availability.autoReturnOnRestock !== 'boolean' ||
+          typeof availability.requireReason !== 'boolean' ||
+          typeof availability.resetManualAtDayStart !== 'boolean' ||
+          typeof availability.resetManualAtFirstShift !== 'boolean' ||
+          typeof availability.showListButton !== 'boolean' ||
+          !['manual', 'on_restock', 'at_time'].includes(availability.defaultReturnMode) ||
+          !['big_red_x', 'dimmed_badge'].includes(availability.displayStyle) ||
+          !Array.isArray(availability.reasons) || availability.reasons.length > 20 ||
+          availability.reasons.some((reason) => !reason.trim() || reason.length > 120)) {
+          return { ok: false, error: 'Check the availability settings and allowed values.' }
+        }
       }
     }
     if (patch.ticketSendPolicy !== undefined &&
@@ -433,6 +453,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         stationTicketPrintPolicy: 'automatic',
         reportPrintPolicy: 'manual',
         automation: { ...DEFAULT_AUTOMATION_SETTINGS },
+        availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
       },
     }
     const stations = defaultStationsForStore(storeId)

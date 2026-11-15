@@ -277,7 +277,7 @@ export function useOpenOrdersSlice(
         ...item,
         qty: patch.qty ?? item.qty,
         note: patch.note ?? item.note,
-      }])
+      }], current.inventoryItems)
       if (!resolved.ok) return resolved
       updatedItem = {
         ...resolved.items[0],

@@ -30,7 +30,7 @@ export const buildUpdatedOpenOrder = (
 ): OpenOrderActionResult => {
   const store = current.stores.find((item) => item.id === order.storeId)
   if (!store) return { ok: false, error: 'Store not found.' }
-  const resolved = resolveOpenOrderItems(current.products, store, requestedItems)
+  const resolved = resolveOpenOrderItems(current.products, store, requestedItems, current.inventoryItems)
   if (!resolved.ok) return resolved
   const addedAt = new Date().toISOString()
   const seenLineIds = new Set(order.items.map((item) => item.lineId).filter((id): id is string => !!id))

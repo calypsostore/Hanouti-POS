@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Category, Product, ProductModifierGroup, ProductVariant, SaleUnit } from '../../../types'
+import type { Category, InventoryItem, Product, ProductModifierGroup, ProductVariant, SaleUnit } from '../../../types'
 import { Button, Field, Input, Modal, Select, Toggle } from '../../../components/ui'
 import { AppIcon } from '../../../components/AppIcon'
 import { IconPicker } from '../../../components/IconPicker'
@@ -10,12 +10,14 @@ export function ProductEditor({
   product,
   categories,
   stations,
+  inventoryItems,
   onClose,
   onSave,
 }: {
   product?: Product
   categories: Category[]
   stations: Array<{ id: string; name: string }> | []
+  inventoryItems: InventoryItem[]
   onClose: () => void
   onSave: (data: Omit<Product, 'id' | 'storeId'>) => void
 }) {
@@ -37,6 +39,7 @@ export function ProductEditor({
   const [variants, setVariants] = useState<ProductVariant[]>(product?.variants ?? [])
   const [soldByWeight, setSoldByWeight] = useState(product?.soldByWeight ?? false)
   const [saleUnit, setSaleUnit] = useState<SaleUnit>(product?.saleUnit ?? 'kg')
+  const [inventoryItemId, setInventoryItemId] = useState(product?.inventoryItemId ?? '')
 
   const priceNum = Number(price) || 0
   const costNum = Number(cost) || 0
@@ -80,6 +83,7 @@ export function ProductEditor({
                   variants,
                   soldByWeight,
                   saleUnit,
+                  inventoryItemId: inventoryItemId || undefined,
                 })
               }
             >
@@ -123,6 +127,14 @@ export function ProductEditor({
                     {station.name}
                   </option>
                 ))}
+              </Select>
+            </Field>
+          )}
+          {inventoryItems.length > 0 && (
+            <Field label="Linked inventory item" hint="An empty inventory item makes this product unavailable.">
+              <Select value={inventoryItemId} onChange={(event) => setInventoryItemId(event.target.value)}>
+                <option value="">Not linked</option>
+                {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </Select>
             </Field>
           )}

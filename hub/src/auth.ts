@@ -132,7 +132,15 @@ export class HubAuth {
       id: storeId, name: storeName, slug: storeCode, ownerName: username, ownerEmail: '', phone: '',
       address: '', city: '', icon: 'Store', iconColor: 'amber', plan: 'starter', status: 'trial',
       businessType: 'cafe', setupComplete: false, createdAt: now,
-      settings: { taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false, features: { weightItems: false } },
+      settings: {
+        taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false, features: { weightItems: false },
+        availability: {
+          enabled: true, autoEightySixAtZero: true, autoReturnOnRestock: true,
+          requireReason: true, reasons: ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue'],
+          defaultReturnMode: 'manual', resetManualAtDayStart: false, resetManualAtFirstShift: false,
+          displayStyle: 'big_red_x', showListButton: true,
+        },
+      },
     }
     const owner: HubUser = {
       id: randomBytes(12).toString('hex'), storeId, username, email: username.includes('@') ? username : `${username}@local.invalid`,

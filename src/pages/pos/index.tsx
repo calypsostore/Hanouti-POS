@@ -20,8 +20,9 @@ import { openShiftForStaff } from '../../lib/registerShifts'
 import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 import { linesToEscpos } from '../../lib/escpos'
 import { filterPosProducts, shiftReminderDue as isShiftReminderDue } from '../../lib/automation'
-import { Button, Field, Modal, Textarea } from '../../components/ui'
-import type { OpenOrder, Station, Store } from '../../types'
+import { isUnavailable } from '../../lib/availability'
+import { Button, Field, Input, Modal, Select, Textarea } from '../../components/ui'
+import type { OpenOrder, Product, Station, Store } from '../../types'
 import type { TicketKind } from '../../lib/tickets'
 
 const stationTicketJob = (
@@ -52,7 +53,7 @@ const stationTicketJob = (
 
 export default function POS() {
   const {
-    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToStations, updateOpenOrderItem,
+    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToStations, updateOpenOrderItem, updateProduct,
     voidSentOrderItem, payOpenOrder, recordOpenOrder,
     enqueuePrint,
   } = useApp()
@@ -88,6 +89,11 @@ export default function POS() {
   const [openDiscount, setOpenDiscount] = useState<number>()
   const [openNote, setOpenNote] = useState<string>()
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const [eightySixListOpen, setEightySixListOpen] = useState(false)
+  const [eightySixTarget, setEightySixTarget] = useState<Product | null>(null)
+  const [eightySixReason, setEightySixReason] = useState('')
+  const [eightySixReturnMode, setEightySixReturnMode] = useState<Store['settings']['availability']['defaultReturnMode']>('manual')
+  const [eightySixBackAt, setEightySixBackAt] = useState('')
   const [customerOpen, setCustomerOpen] = useState(false)
   const [mobileCartOpen, setMobileCartOpen] = useState(
     () => tablePickerFocus && window.matchMedia('(max-width: 1023px)').matches,
@@ -237,8 +243,14 @@ export default function POS() {
     .sort((a, b) => a.sort - b.sort)
   const products = filterPosProducts(db.products.filter(
     (p) => p.storeId === store.id && p.active && (categoryId === 'all' || p.categoryId === categoryId),
-  ), store.settings.automation.hideOutOfStock)
+  ), store.settings.automation.hideOutOfStock, store.settings.availability, db.inventoryItems)
   const customers = db.customers.filter((c) => c.storeId === store.id)
+  const eightySixProducts = db.products.filter((product) => {
+    if (product.storeId !== store.id || !product.active) return false
+    const inventoryItem = db.inventoryItems.find((item) => item.id === product.inventoryItemId)
+    return isUnavailable(product, undefined, store.settings.availability, inventoryItem).unavailable ||
+      (product.variants ?? []).some((variant) => isUnavailable(product, variant, store.settings.availability, inventoryItem).unavailable)
+  })
   const tables = db.tables
     .filter((table) => table.storeId === store.id && table.active)
     .sort((a, b) => a.sort - b.sort)
@@ -248,6 +260,18 @@ export default function POS() {
   const openTables = db.openOrders.filter((order) => order.storeId === store.id)
   const customer = customers.find((c) => c.id === customerId)
   const displayCart = openOrder ? [...openOrder.items, ...cart] : cart
+  const unavailableLineIds = displayCart.flatMap((item) => {
+    if (['sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))) return []
+    const product = db.products.find((candidate) =>
+      candidate.id === item.productId && candidate.storeId === store.id,
+    )
+    if (!product) return []
+    const variant = product.variants?.find((candidate) => candidate.id === item.variantId)
+    const inventoryItem = db.inventoryItems.find((candidate) => candidate.id === product.inventoryItemId)
+    return isUnavailable(product, variant, store.settings.availability, inventoryItem).unavailable && item.lineId
+      ? [item.lineId]
+      : []
+  })
   const activeDiscount = openOrder ? openDiscount ?? openOrder.discount : discount
   const activeNote = openOrder ? openNote ?? openOrder.note ?? '' : note
   const activeTableId = openOrder?.tableId ?? tableId
@@ -389,6 +413,15 @@ export default function POS() {
     onOpenCart: () => setMobileCartOpen(true),
     lockedChannel: !!openOrder,
     tableName: openOrder?.tableName,
+    inventoryItems: db.inventoryItems,
+    onUnavailable: (message: string) => push(message, 'error'),
+    canManage86: store.settings.availability.enabled && can(user, 'manage86'),
+    onRequest86: (product: Product) => {
+      setEightySixTarget(product)
+      setEightySixReason(store.settings.availability.reasons[0] ?? '')
+      setEightySixReturnMode(store.settings.availability.defaultReturnMode)
+      setEightySixBackAt('')
+    },
   }
   const cartProps = {
     cart: displayCart,
@@ -432,6 +465,8 @@ export default function POS() {
     sectionName: activeSectionName,
     ownerStaffName: openOrder?.staffName ?? user.name,
     pendingCount,
+    unavailableLineIds,
+    hasUnavailableDraft: unavailableLineIds.length > 0,
     persistedLineIds: openOrder?.items.map((item) => item.lineId ?? ''),
     canVoidSentItems: can(user, 'voidOrders'),
     onVoidSentItem: (lineId: string) => {
@@ -455,6 +490,8 @@ export default function POS() {
           store.settings.automation.shiftReminderHours,
           now,
         )}
+        eightySixCount={eightySixProducts.length}
+        onShowEightySixList={() => setEightySixListOpen(true)}
         onLogout={() => {
           logout()
           navigate('/login')
@@ -488,12 +525,124 @@ export default function POS() {
         key={optionsProduct ? `${optionsProduct.product.id}:${optionsProduct.variantId ?? ''}` : 'none'}
         product={optionsProduct?.product ?? null}
         initialVariantId={optionsProduct?.variantId}
+        availability={store.settings.availability}
+        inventoryItem={db.inventoryItems.find((item) => item.id === optionsProduct?.product.inventoryItemId)}
         onClose={() => setOptionsProduct(null)}
         onAdd={(selection) => {
           if (optionsProduct) addSelection(optionsProduct.product, selection)
           setOptionsProduct(null)
         }}
       />
+
+      <Modal open={eightySixListOpen} onClose={() => setEightySixListOpen(false)} title={`86 list · ${eightySixProducts.length}`}>
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+          {eightySixProducts.length === 0 ? <p className="text-sm text-muted">No unavailable items.</p> : eightySixProducts.map((product) => {
+            const inventoryItem = db.inventoryItems.find((item) => item.id === product.inventoryItemId)
+            const baseState = isUnavailable(product, undefined, store.settings.availability, inventoryItem)
+            const state = baseState.unavailable
+              ? baseState
+              : (product.variants ?? []).map((variant) =>
+                  isUnavailable(product, variant, store.settings.availability, inventoryItem),
+                ).find((variantState) => variantState.unavailable) ?? baseState
+            return (
+              <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl border border-line p-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{product.name}</div>
+                  <div className="text-xs text-muted">
+                    {state.reason} · {db.users.find((member) => member.id === state.byId)?.name ?? 'Automatic'} · {product.eightySix?.at ?? state.since ?? 'Now'}
+                  </div>
+                </div>
+                {can(user, 'manage86') && (product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active)) && (
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    const result = updateProduct(product.id, {
+                      eightySix: undefined,
+                      variants: product.variants?.map((variant) =>
+                        variant.eightySix?.active ? { ...variant, eightySix: undefined } : variant,
+                      ),
+                    })
+                    if (!result.ok) push(result.error, 'error')
+                    else push(`${product.name} returned`)
+                  }}>Back in stock</Button>
+                )}
+              </div>
+            )
+          })}
+          {can(user, 'manage86') && eightySixProducts.some((product) =>
+            product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active),
+          ) && (
+            <Button variant="secondary" onClick={() => {
+              const failures = eightySixProducts.filter((product) =>
+                product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active),
+              ).map((product) => updateProduct(product.id, {
+                eightySix: undefined,
+                variants: product.variants?.map((variant) =>
+                  variant.eightySix?.active ? { ...variant, eightySix: undefined } : variant,
+                ),
+              }))
+                .find((result) => !result.ok)
+              if (failures && !failures.ok) push(failures.error, 'error')
+              else push('Manual 86 items returned')
+            }}>Return all manual 86 items</Button>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!eightySixTarget}
+        onClose={() => setEightySixTarget(null)}
+        title="86 this item"
+        subtitle={eightySixTarget?.name}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setEightySixTarget(null)}>Cancel</Button>
+            <Button
+              disabled={!eightySixTarget || (store.settings.availability.requireReason && !eightySixReason) ||
+                (eightySixReturnMode === 'at_time' && !eightySixBackAt)}
+              onClick={() => {
+                if (!eightySixTarget) return
+                const result = updateProduct(eightySixTarget.id, {
+                  eightySix: {
+                    active: true,
+                    at: new Date().toISOString(),
+                    byId: user.id,
+                    reason: eightySixReason,
+                    returnMode: eightySixReturnMode,
+                    backAt: eightySixReturnMode === 'at_time' ? new Date(eightySixBackAt).toISOString() : undefined,
+                  },
+                })
+                if (!result.ok) push(result.error, 'error')
+                else push(`${eightySixTarget.name} 86'd`)
+                setEightySixTarget(null)
+              }}
+            >Confirm 86</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Reason">
+            <div className="flex flex-wrap gap-2">
+              {store.settings.availability.reasons.map((reason) => (
+                <button key={reason} type="button" onClick={() => setEightySixReason(reason)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${eightySixReason === reason ? 'border-red-500 bg-red-50 text-red-700' : 'border-line text-muted'}`}>
+                  {reason}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Return mode">
+            <Select value={eightySixReturnMode} onChange={(event) => setEightySixReturnMode(event.target.value as typeof eightySixReturnMode)}>
+              <option value="manual">Manual</option>
+              <option value="on_restock">When restocked</option>
+              <option value="at_time">At a time</option>
+            </Select>
+          </Field>
+          {eightySixReturnMode === 'at_time' && (
+            <Field label="Back at">
+              <Input type="datetime-local" value={eightySixBackAt} onChange={(event) => setEightySixBackAt(event.target.value)} />
+            </Field>
+          )}
+        </div>
+      </Modal>
 
       {/* Payment */}
       <PaymentModal

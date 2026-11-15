@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Button, Field, Input, Modal, Textarea } from '../../components/ui'
 import { money } from '../../lib/utils'
 import { round } from '../../lib/pricing-utils'
-import type { OrderModifier, Product, ProductVariant } from '../../types'
+import type { AvailabilitySettings, InventoryItem, OrderModifier, Product, ProductVariant } from '../../types'
+import { isUnavailable } from '../../lib/availability'
 
 export interface ProductSelection {
   variantId?: string
@@ -16,11 +17,15 @@ export function ProductOptionsModal({
   initialVariantId,
   onClose,
   onAdd,
+  availability,
+  inventoryItem,
 }: {
   product: Product | null
   initialVariantId?: string
   onClose: () => void
   onAdd: (selection: ProductSelection) => void
+  availability: AvailabilitySettings
+  inventoryItem?: InventoryItem
 }) {
   const [variantId, setVariantId] = useState(initialVariantId ?? '')
   const [selected, setSelected] = useState<Record<string, string[]>>({})
@@ -44,12 +49,13 @@ export function ProductOptionsModal({
     }),
   )
   const unitPrice = round(basePrice + selectedModifiers.reduce((total, item) => total + item.priceDelta, 0))
+  const unavailable = isUnavailable(product, variant, availability, inventoryItem)
   const quantity = Number(qty)
   const valid = (!variants.length || !!variant) &&
     (product.modifiers ?? []).every((group) => !group.required || (selected[group.id]?.length ?? 0) > 0) &&
     Number.isFinite(quantity) && quantity > 0 &&
     (product.soldByWeight ? round(quantity) === quantity : Number.isSafeInteger(quantity)) &&
-    (!variant?.trackStock || variant.stock > 0)
+    !unavailable.unavailable
 
   const toggleOption = (groupId: string, optionId: string, selection: 'single' | 'multiple') => {
     setSelected((current) => {
@@ -98,9 +104,11 @@ export function ProductOptionsModal({
               {variants.map((item: ProductVariant) => (
                 <label key={item.id} className="flex cursor-pointer items-center justify-between rounded-xl border border-line p-3 text-xs">
                   <span className="flex items-center gap-2">
-                    <input type="radio" name={`variant-${product.id}`} checked={variantId === item.id} disabled={item.trackStock && item.stock <= 0} onChange={() => setVariantId(item.id)} />
+                    <input type="radio" name={`variant-${product.id}`} checked={variantId === item.id} disabled={isUnavailable(product, item, availability, inventoryItem).unavailable} onChange={() => setVariantId(item.id)} />
                     {item.name}
-                    {item.trackStock && <span className="text-muted">({item.stock} left)</span>}
+                    {isUnavailable(product, item, availability, inventoryItem).unavailable
+                      ? <span className="font-bold text-red-600">86</span>
+                      : item.trackStock && <span className="text-muted">({item.stock} left)</span>}
                   </span>
                   <span className="font-semibold tabular">{money(item.price)}</span>
                 </label>

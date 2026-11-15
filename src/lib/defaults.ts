@@ -48,6 +48,19 @@ export const DEFAULT_AUTOMATION_SETTINGS = {
   backupHealthAlerts: true,
 }
 
+export const DEFAULT_AVAILABILITY_SETTINGS: StoreSettings['availability'] = {
+  enabled: true,
+  autoEightySixAtZero: true,
+  autoReturnOnRestock: true,
+  requireReason: true,
+  reasons: ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue'],
+  defaultReturnMode: 'manual',
+  resetManualAtDayStart: false,
+  resetManualAtFirstShift: false,
+  displayStyle: 'big_red_x',
+  showListButton: true,
+}
+
 export const normalizePayrollSettings = (value?: Partial<PayrollSettings>): PayrollSettings => {
   const workingDaysPerMonth = value?.workingDaysPerMonth
   const fullDayHours = value?.fullDayHours
@@ -151,6 +164,7 @@ export const normalizeUser = (u: User): User => {
       forceCloseShift: capability('forceCloseShift'),
       manageCashDifferences: capability('manageCashDifferences'),
       viewStaffAnalytics: capability('viewStaffAnalytics'),
+      manage86: capability('manage86'),
     },
   }
 }

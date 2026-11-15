@@ -17,6 +17,18 @@ document.
 
 ### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
 
+### Availability (86) — partially implemented
+
+- Implemented: typed availability settings and migration defaults, a shared pure
+  rule, local/hub order rejection, POS tile overlays and cart blocking, POS 86
+  list, product-linked inventory, audited manual 86/return actions, and
+  `manage86` permissions. The Products page supports filtering, row toggles and
+  bulk return/86.
+- Still demo-only or incomplete: automatic restock does not persist clearing
+  every manual flag; bell and station-board count notifications, day/first-shift
+  reset behavior, and live multi-phone notification verification are absent.
+  Browser flows remain **UNVERIFIED**.
+
 - `npm run test:all` passes 43 tests, including hub authorization, snapshot
   privacy, backup/restore, pairing scope, change-set replay, station routing,
   ticket formats, ESC/POS width and virtual TCP output. `npm run hub:sim` starts

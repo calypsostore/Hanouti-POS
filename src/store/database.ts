@@ -7,7 +7,7 @@ import type {
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { DEFAULT_AUTOMATION_SETTINGS, normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v31'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v32'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -300,6 +300,20 @@ const normalizeVariant = (value: unknown): ProductVariant | null => {
     barcode: typeof value.barcode === 'string' ? value.barcode : '',
     trackStock: value.trackStock === true,
     stock: Math.max(0, value.stock),
+    eightySix: normalizeEightySix(value.eightySix),
+  }
+}
+const normalizeEightySix = (value: unknown): Product['eightySix'] => {
+  if (!isRecord(value) || typeof value.active !== 'boolean' || typeof value.at !== 'string' ||
+    !Number.isFinite(Date.parse(value.at)) || typeof value.byId !== 'string' ||
+    !['manual', 'on_restock', 'at_time'].includes(String(value.returnMode))) return undefined
+  return {
+    active: value.active,
+    at: value.at,
+    byId: value.byId,
+    reason: typeof value.reason === 'string' ? value.reason.trim().slice(0, 120) : undefined,
+    returnMode: value.returnMode as NonNullable<Product['eightySix']>['returnMode'],
+    backAt: typeof value.backAt === 'string' && Number.isFinite(Date.parse(value.backAt)) ? value.backAt : undefined,
   }
 }
 const isOrderModifier = (value: unknown): value is OrderModifier =>
@@ -321,6 +335,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           ? s.businessType
           : seed.stores.find((seedStore) => seedStore.id === s.id)?.businessType ?? 'cafe'
         const template = businessTemplate(businessType)
+        const availability: Record<string, unknown> = isRecord(s.settings.availability) ? s.settings.availability : {}
         const legacyKitchenScreen = isRecord(s.settings.features) && typeof s.settings.features.kitchenScreen === 'boolean'
           ? s.settings.features.kitchenScreen
           : isRecord(s.settings.printer) && typeof s.settings.printer.kitchenTicket === 'boolean'
@@ -459,6 +474,25 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             backupHealthAlerts: isRecord(s.settings.automation) && typeof s.settings.automation.backupHealthAlerts === 'boolean'
               ? s.settings.automation.backupHealthAlerts
               : DEFAULT_AUTOMATION_SETTINGS.backupHealthAlerts,
+          },
+          availability: {
+            ...DEFAULT_AVAILABILITY_SETTINGS,
+            ...availability,
+            enabled: typeof availability.enabled === 'boolean' ? availability.enabled : DEFAULT_AVAILABILITY_SETTINGS.enabled,
+            autoEightySixAtZero: typeof availability.autoEightySixAtZero === 'boolean' ? availability.autoEightySixAtZero : DEFAULT_AVAILABILITY_SETTINGS.autoEightySixAtZero,
+            autoReturnOnRestock: typeof availability.autoReturnOnRestock === 'boolean' ? availability.autoReturnOnRestock : DEFAULT_AVAILABILITY_SETTINGS.autoReturnOnRestock,
+            requireReason: typeof availability.requireReason === 'boolean' ? availability.requireReason : DEFAULT_AVAILABILITY_SETTINGS.requireReason,
+            reasons: Array.isArray(availability.reasons)
+              ? availability.reasons.filter((reason): reason is string => typeof reason === 'string')
+                .map((reason) => reason.trim().slice(0, 120)).filter(Boolean).slice(0, 20)
+              : DEFAULT_AVAILABILITY_SETTINGS.reasons,
+            defaultReturnMode: ['manual', 'on_restock', 'at_time'].includes(String(availability.defaultReturnMode))
+              ? availability.defaultReturnMode as StoreSettings['availability']['defaultReturnMode']
+              : DEFAULT_AVAILABILITY_SETTINGS.defaultReturnMode,
+            resetManualAtDayStart: typeof availability.resetManualAtDayStart === 'boolean' ? availability.resetManualAtDayStart : DEFAULT_AVAILABILITY_SETTINGS.resetManualAtDayStart,
+            resetManualAtFirstShift: typeof availability.resetManualAtFirstShift === 'boolean' ? availability.resetManualAtFirstShift : DEFAULT_AVAILABILITY_SETTINGS.resetManualAtFirstShift,
+            displayStyle: availability.displayStyle === 'dimmed_badge' ? 'dimmed_badge' : DEFAULT_AVAILABILITY_SETTINGS.displayStyle,
+            showListButton: typeof availability.showListButton === 'boolean' ? availability.showListButton : DEFAULT_AVAILABILITY_SETTINGS.showListButton,
           },
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)
@@ -1273,6 +1307,11 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       variants: Array.isArray(product.variants)
         ? product.variants.map(normalizeVariant).filter((variant): variant is ProductVariant => variant !== null)
         : [],
+      inventoryItemId: typeof product.inventoryItemId === 'string' &&
+        inventoryItems.some((item) => item.id === product.inventoryItemId && item.storeId === product.storeId)
+        ? product.inventoryItemId
+        : undefined,
+      eightySix: normalizeEightySix(product.eightySix),
       soldByWeight: product.soldByWeight === true,
       saleUnit: isSaleUnit(product.saleUnit) ? product.saleUnit : 'piece',
     })),

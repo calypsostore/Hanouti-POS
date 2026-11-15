@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, LogOut, ReceiptText, Utensils, Users, Zap } from 'lucide-react'
+import { ArrowLeft, Flag, LogOut, ReceiptText, Utensils, Users, Zap } from 'lucide-react'
 import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -14,10 +14,12 @@ type POSHeaderProps = {
   canOpenRegister: boolean
   shiftReminderDue: boolean
   onLogout: () => void
+  eightySixCount: number
+  onShowEightySixList: () => void
 }
 
 export function POSHeader({
-  store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout,
+  store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout, eightySixCount, onShowEightySixList,
 }: POSHeaderProps) {
   const quick = store.settings.posMode === 'quick'
 
@@ -44,6 +46,18 @@ export function POSHeader({
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle accent={store.settings.accent} defaultMode={store.settings.colorMode} />
+          {store.settings.availability.enabled && store.settings.availability.showListButton && (
+            <button
+              type="button"
+              onClick={onShowEightySixList}
+              className="relative inline-flex h-9 items-center gap-1.5 rounded-xl border border-red-200 bg-white px-2.5 text-[12px] font-semibold text-red-700 transition hover:bg-red-50"
+              aria-label={`86 list, ${eightySixCount} unavailable items`}
+            >
+              <Flag className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">86 list</span>
+              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{eightySixCount}</span>
+            </button>
+          )}
           {(user.role === 'admin' || user.role === 'manager' || user.role === 'staff') && (
             <Link
               to={user.role === 'admin' || user.role === 'manager' ? '/admin' : '/staff'}

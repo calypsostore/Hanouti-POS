@@ -18,6 +18,7 @@ export function CartFooter({
   count,
   isOpenOrder,
   onOpenFloor,
+  hasUnavailableDraft = false,
 }: {
   totals: { subtotal: number; tax: number; service: number; total: number }
   discount: number
@@ -34,6 +35,7 @@ export function CartFooter({
   count: number
   isOpenOrder?: boolean
   onOpenFloor?: () => void
+  hasUnavailableDraft?: boolean
 }) {
   const showTabButton = allowCredit && !!customerId && !isOpenOrder
 
@@ -99,7 +101,7 @@ export function CartFooter({
               showTabButton && 'px-2 text-[12px] leading-tight',
             )}
             style={{ background: 'var(--semantic-green-gradient)', color: 'white' }}
-            disabled={!count && !isOpenOrder}
+            disabled={hasUnavailableDraft || (!count && !isOpenOrder)}
             onClick={isOpenOrder ? onDone : onCheckout}
           >
             {isOpenOrder
@@ -110,7 +112,7 @@ export function CartFooter({
           </Button>
 
           {isOpenOrder && !quick && (
-            <Button variant="secondary" size="md" className="w-full" disabled={!count} onClick={onCheckout}>
+            <Button variant="secondary" size="md" className="w-full" disabled={hasUnavailableDraft || !count} onClick={onCheckout}>
               <Wallet className="h-4 w-4" /> Pay table · {money(totals.total)}
             </Button>
           )}

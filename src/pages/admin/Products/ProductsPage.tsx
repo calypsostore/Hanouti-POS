@@ -2,22 +2,28 @@ import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useApp } from '../../../store/AppStore'
 import type { Category, Product } from '../../../types'
-import { Button, Modal } from '../../../components/ui'
+import { Button, Input, Modal } from '../../../components/ui'
 import ConfirmDeleteModal from '../../../components/data/ConfirmDeleteModal'
 import { useToast } from '../../../components/toast'
 import ProductCatalog from './ProductCatalog'
 import { CategoryEditor, ProductEditor } from './ProductEditors'
 import ProductsSummary from './ProductsSummary'
+import { isUnavailable } from '../../../lib/availability'
 
 export default function ProductsPage() {
   const {
-    db, store, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct,
+    db, store, user, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct,
     bulkAssignProductStation, bulkAssignCategoryStation,
   } =
     useApp()
   const { push } = useToast()
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [query, setQuery] = useState('')
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | '86'>('all')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyItem, setHistoryItem] = useState('')
+  const [historyUser, setHistoryUser] = useState('')
+  const [historyDate, setHistoryDate] = useState('')
   const [productEditor, setProductEditor] = useState<{ open: boolean; product?: Product }>({ open: false })
   const [categoryEditor, setCategoryEditor] = useState<{ open: boolean; category?: Category }>({
     open: false,
@@ -33,6 +39,12 @@ export default function ProductsPage() {
   const filtered = products
     .filter((p) => categoryFilter === 'all' || p.categoryId === categoryFilter)
     .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
+    .filter((p) => {
+      if (availabilityFilter === 'all') return true
+      const inventoryItem = db.inventoryItems.find((item) => item.id === p.inventoryItemId)
+      return isUnavailable(p, undefined, store.settings.availability, inventoryItem).unavailable ||
+        (p.variants ?? []).some((variant) => isUnavailable(p, variant, store.settings.availability, inventoryItem).unavailable)
+    })
     .sort((a, b) => a.name.localeCompare(b.name))
   const lowStock = products.filter(
     (p) => p.trackStock && p.stock <= store.settings.lowStockThreshold,
@@ -56,6 +68,9 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setHistoryOpen((open) => !open)}>
+            {historyOpen ? 'Products' : '86 history'}
+          </Button>
           <Button variant="secondary" onClick={() => setCategoryEditor({ open: true })}>
             <Plus className="h-4 w-4" /> Category
           </Button>
@@ -72,7 +87,30 @@ export default function ProductsPage() {
         lowStock={lowStock}
       />
 
-      <ProductCatalog
+      {historyOpen ? (
+        <section className="glass rounded-3xl p-4">
+          <h3 className="mb-3 text-sm font-bold">86 history</h3>
+          <div className="mb-3 grid gap-2 sm:grid-cols-3">
+            <Input value={historyItem} onChange={(event) => setHistoryItem(event.target.value)} placeholder="Filter item" />
+            <Input value={historyUser} onChange={(event) => setHistoryUser(event.target.value)} placeholder="Filter user" />
+            <Input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
+          </div>
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto">
+            {db.auditLogs.filter((log) =>
+              log.storeId === store.id && log.entity === 'product' &&
+              (log.summary.startsWith('86d ') || log.summary.startsWith('Returned ')) &&
+              log.summary.toLowerCase().includes(historyItem.trim().toLowerCase()) &&
+              log.userName.toLowerCase().includes(historyUser.trim().toLowerCase()) &&
+              (!historyDate || log.createdAt.slice(0, 10) === historyDate),
+            ).slice().reverse().map((log) => (
+              <div key={log.id} className="flex flex-wrap justify-between gap-2 rounded-xl border border-line p-3 text-xs">
+                <span className="font-semibold">{log.summary}</span>
+                <span className="text-muted">{log.userName} · {new Date(log.createdAt).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : <ProductCatalog
         categories={categories}
         products={products}
         filtered={filtered}
@@ -89,6 +127,30 @@ export default function ProductsPage() {
         onToggleProduct={(product) => {
           const result = updateProduct(product.id, { active: !product.active })
           if (!result.ok) push(result.error, 'error')
+        }}
+        availabilityFilter={availabilityFilter}
+        onAvailabilityFilterChange={setAvailabilityFilter}
+        onToggle86={(product) => {
+          const current = product.eightySix?.active || product.variants?.some((variant) => variant.eightySix?.active)
+          const result = updateProduct(product.id, current
+            ? {
+                eightySix: undefined,
+                variants: product.variants?.map((variant) =>
+                  variant.eightySix?.active ? { ...variant, eightySix: undefined } : variant,
+                ),
+              }
+            : {
+                eightySix: {
+                  active: true,
+                  at: new Date().toISOString(),
+                  byId: user?.id ?? '',
+                  reason: store.settings.availability.reasons[0] ?? '',
+                  returnMode: store.settings.availability.defaultReturnMode,
+                  backAt: undefined,
+                },
+              })
+          if (!result.ok) push(result.error, 'error')
+          else push(current ? `${product.name} returned` : `${product.name} 86'd`)
         }}
         onNewProduct={() => setProductEditor({ open: true })}
         stations={stations}
@@ -110,7 +172,7 @@ export default function ProductsPage() {
           push(`Assigned ${ids.length} categor${ids.length === 1 ? 'y' : 'ies'}`)
           return true
         }}
-      />
+      />}
 
       {productEditor.open && (
         <ProductEditor
@@ -118,6 +180,7 @@ export default function ProductsPage() {
           product={productEditor.product}
           categories={categories}
           stations={stations}
+          inventoryItems={db.inventoryItems.filter((item) => item.storeId === store.id && item.active)}
           onClose={() => setProductEditor({ open: false })}
           onSave={(data) => {
             if (productEditor.product) {

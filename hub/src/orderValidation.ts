@@ -1,7 +1,7 @@
 import { computeTotals } from '../../src/lib/pricing.ts'
 import { resolveOpenOrderItems } from '../../src/lib/openOrderItems.ts'
 import { round } from '../../src/lib/pricing-utils.ts'
-import type { OrderItem, Product, Store } from '../../src/types.ts'
+import type { InventoryItem, OrderItem, Product, Store } from '../../src/types.ts'
 import { requireCapability } from './auth.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
 
@@ -22,7 +22,8 @@ export function validateOrderDocument(
   if (!Array.isArray(input.items) || input.items.length > 300) throw new Error('Order must contain no more than 300 items.')
   const products = Object.values(state.collections.products ?? {}) as unknown as Product[]
   const requestedItems = input.items as OrderItem[]
-  const resolved = resolveOpenOrderItems(products, store, requestedItems)
+  const inventoryItems = Object.values(state.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
+  const resolved = resolveOpenOrderItems(products, store, requestedItems, inventoryItems)
   if (!resolved.ok) throw new Error(resolved.error)
   const previous = state.collections[collection]?.[String(input.id)]
   const previousItems = previous && Array.isArray(previous.items) ? previous.items as Array<Record<string, unknown>> : []

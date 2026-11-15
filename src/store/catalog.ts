@@ -4,6 +4,7 @@ import { uid } from '../lib/utils'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
+import { can } from '../lib/permissions'
 
 const validateOptions = (
   products: Product[],
@@ -73,6 +74,14 @@ const productSnapshot = (product: Product): Record<string, AuditJsonValue> => ({
     stock: variant.stock,
     trackStock: variant.trackStock,
   })),
+  eightySix: product.eightySix ? {
+    active: product.eightySix.active,
+    at: product.eightySix.at,
+    byId: product.eightySix.byId,
+    reason: product.eightySix.reason ?? '',
+    returnMode: product.eightySix.returnMode,
+    backAt: product.eightySix.backAt ?? '',
+  } : null,
 })
 
 const stationSnapshot = (station: Station): Record<string, AuditJsonValue> => ({
@@ -182,6 +191,9 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     if (data.stationId && !dbRef.current.stations.some((station) => station.id === data.stationId && station.storeId === storeId)) {
       return { ok: false, error: 'Choose a station from this store.' }
     }
+    if (data.inventoryItemId && !dbRef.current.inventoryItems.some((item) =>
+      item.id === data.inventoryItemId && item.storeId === storeId,
+    )) return { ok: false, error: 'Choose an inventory item from this store.' }
     if (!Number.isFinite(data.price) || data.price < 0 || !Number.isFinite(data.stock) || data.stock < 0) {
       return { ok: false, error: 'Enter a valid product price and stock quantity.' }
     }
@@ -205,8 +217,28 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
   const updateProduct = useCallback<AppContextValue['updateProduct']>((id, patch) => {
     const product = dbRef.current.products.find((candidate) => candidate.id === id)
     if (!product) return { ok: false, error: 'Product not found.' }
-    const actorResult = requireCapability(product.storeId, 'manageProducts')
+    const stripVariantAvailability = (variants: Product['variants']) =>
+      (variants ?? []).map((variant) => {
+        const copy = { ...variant }
+        delete copy.eightySix
+        return copy
+      })
+    const topLevelAvailabilityChanged = Object.prototype.hasOwnProperty.call(patch, 'eightySix') &&
+      JSON.stringify(patch.eightySix) !== JSON.stringify(product.eightySix)
+    const nestedAvailabilityChanged = patch.variants !== undefined &&
+      JSON.stringify(patch.variants) !== JSON.stringify(product.variants) &&
+      JSON.stringify(stripVariantAvailability(patch.variants)) === JSON.stringify(stripVariantAvailability(product.variants))
+    const changesEightySix = topLevelAvailabilityChanged || nestedAvailabilityChanged
+    const actorResult = requireCapability(product.storeId, changesEightySix ? 'manage86' : 'manageProducts')
     if (!actorResult.ok) return actorResult
+    if (changesEightySix && !can(actorResult.actor, 'manageProducts')) {
+      const beforeVariants = stripVariantAvailability(product.variants)
+      const afterVariants = stripVariantAvailability(patch.variants ?? product.variants)
+      if (Object.keys(patch).some((key) => key !== 'eightySix' && key !== 'variants') ||
+        JSON.stringify(beforeVariants) !== JSON.stringify(afterVariants)) {
+        return { ok: false, error: '86 permission only allows changing availability.' }
+      }
+    }
     if (patch.storeId !== undefined && patch.storeId !== product.storeId) {
       return { ok: false, error: 'A product cannot be moved to another store.' }
     }
@@ -218,11 +250,26 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     if (patch.stationId !== undefined && patch.stationId && !dbRef.current.stations.some((station) => station.id === patch.stationId && station.storeId === product.storeId)) {
       return { ok: false, error: 'Choose a station from this store.' }
     }
+    if (patch.inventoryItemId && !dbRef.current.inventoryItems.some((item) =>
+      item.id === patch.inventoryItemId && item.storeId === product.storeId,
+    )) return { ok: false, error: 'Choose an inventory item from this store.' }
     if (patch.price !== undefined && (!Number.isFinite(patch.price) || patch.price < 0)) {
       return { ok: false, error: 'Enter a valid product price.' }
     }
     if (patch.stock !== undefined && (!Number.isFinite(patch.stock) || patch.stock < 0)) {
       return { ok: false, error: 'Enter a valid stock quantity.' }
+    }
+    if (changesEightySix && patch.eightySix?.active) {
+      const settings = dbRef.current.stores.find((store) => store.id === product.storeId)?.settings.availability
+      if (!settings?.enabled) return { ok: false, error: '86 availability is disabled for this store.' }
+      const reason = patch.eightySix.reason?.trim() ?? ''
+      if ((settings.requireReason && !reason) || (reason && !settings.reasons.includes(reason))) {
+        return { ok: false, error: 'Choose a configured reason for 86 availability.' }
+      }
+      if (patch.eightySix.returnMode === 'at_time' &&
+        (!patch.eightySix.backAt || !Number.isFinite(Date.parse(patch.eightySix.backAt)))) {
+        return { ok: false, error: 'Choose a valid return time.' }
+      }
     }
     const optionsError = validateOptions(
       dbRef.current.products,
@@ -234,6 +281,14 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     const safePatch: Partial<Product> = { ...patch }
     delete safePatch.id
     delete safePatch.storeId
+    if (changesEightySix && patch.eightySix?.active) {
+      safePatch.eightySix = {
+        ...patch.eightySix,
+        at: new Date().toISOString(),
+        byId: actorResult.actor.id,
+        reason: patch.eightySix.reason?.trim() || 'Unavailable',
+      }
+    }
     const updated = { ...product, ...safePatch }
     const changes = changedAuditFields(productSnapshot(product), productSnapshot(updated))
     commitDb((prev) => addLog({
@@ -241,10 +296,12 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       products: prev.products.map((p) => (p.id === id ? updated : p)),
     }, actorResult.actor, {
       storeId: product.storeId,
-      action: 'edited',
+      action: changesEightySix ? (updated.eightySix?.active ? 'activated' : 'deactivated') : 'edited',
       entity: 'product',
       entityId: id,
-      summary: `Edited product ${product.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      summary: changesEightySix
+        ? `${updated.eightySix?.active ? '86d' : 'Returned'} ${product.name}${updated.eightySix?.reason ? `: ${updated.eightySix.reason}` : ''}`
+        : `Edited product ${product.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
       before: changes.before,
       after: changes.after,
     }))

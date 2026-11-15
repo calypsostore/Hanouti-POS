@@ -1,5 +1,6 @@
-import type { OrderItem, OrderModifier, Product, Store } from '../types.ts'
+import type { InventoryItem, OrderItem, OrderModifier, Product, Store } from '../types.ts'
 import { round } from './pricing-utils.ts'
+import { isUnavailable } from './availability.ts'
 
 export type OpenOrderItemsResult =
   | { ok: true; items: OrderItem[] }
@@ -9,6 +10,7 @@ export const resolveOpenOrderItems = (
   products: Product[],
   store: Store,
   requestedItems: OrderItem[],
+  inventoryItems: InventoryItem[] = [],
 ): OpenOrderItemsResult => {
   if (!Array.isArray(requestedItems)) return { ok: false, error: 'The order items are invalid.' }
   const resolved: OrderItem[] = []
@@ -38,6 +40,15 @@ export const resolveOpenOrderItems = (
       : undefined
     if (item.variantId && !variant) return { ok: false, error: `Choose a valid variant for ${product.name}.` }
     if (product.variants?.length && !variant) return { ok: false, error: `Choose a variant for ${product.name}.` }
+    if (!['sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))) {
+      const inventoryItem = inventoryItems.find((candidate) =>
+        candidate.id === product.inventoryItemId && candidate.storeId === store.id,
+      )
+      const availability = isUnavailable(product, variant, store.settings.availability, inventoryItem)
+      if (availability.unavailable) {
+        return { ok: false, error: `${product.name}${variant ? ` (${variant.name})` : ''} is 86'd (${availability.reason}).` }
+      }
+    }
 
     const selected: OrderModifier[] = []
     const seenGroups = new Set<string>()

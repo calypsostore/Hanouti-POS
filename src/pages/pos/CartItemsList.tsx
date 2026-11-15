@@ -12,6 +12,7 @@ export function CartItemsList({
   setLineQty,
   canVoidSentItems = false,
   onVoidSentItem,
+  unavailableLineIds = [],
 }: {
   items: OrderItem[]
   persistedLineIds?: string[]
@@ -19,15 +20,18 @@ export function CartItemsList({
   setLineQty: (id: string, qty: number) => void
   canVoidSentItems?: boolean
   onVoidSentItem?: (lineId: string) => void
+  unavailableLineIds?: string[]
 }) {
   return (
     <ul className="space-y-1">
       {items.map((item) => {
         const persisted = !!item.lineId && persistedLineIds?.includes(item.lineId)
+        const unavailable = !!item.lineId && unavailableLineIds.includes(item.lineId) &&
+          (!persisted || item.status === 'draft')
         return (
           <li
             key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
-            className="glass-row group flex items-center gap-2 rounded-xl px-1.5 py-1"
+            className={`glass-row group flex items-center gap-2 rounded-xl px-1.5 py-1 ${unavailable ? 'border border-red-500 bg-red-50' : ''}`}
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-accent-foreground">
               {item.name.slice(0, 1).toUpperCase()}
@@ -35,6 +39,7 @@ export function CartItemsList({
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12.5px] font-semibold text-ink">{item.name}</div>
               {item.variantName && <div className="truncate text-[10px] text-muted">{item.variantName}</div>}
+              {unavailable && <div className="text-[10px] font-bold text-red-600">86 - remove</div>}
               {!!item.modifiers?.length && (
                 <div className="truncate text-[10px] text-muted">
                   {item.modifiers.map((modifier) => modifier.optionName).join(', ')}
@@ -90,6 +95,11 @@ export function CartItemsList({
                 onClick={() => item.lineId && onVoidSentItem?.(item.lineId)}
               >
                 <Ban className="h-4 w-4 text-red-600" />
+              </Button>
+            )}
+            {unavailable && (
+              <Button variant="ghost" size="sm" className="text-red-600" onClick={() => changeQty(item.lineId ?? item.productId, -item.qty)}>
+                Remove
               </Button>
             )}
           </li>

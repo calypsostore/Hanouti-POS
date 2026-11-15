@@ -20,6 +20,7 @@ export type Capability =
   | 'forceCloseShift'
   | 'manageCashDifferences'
   | 'viewStaffAnalytics'
+  | 'manage86'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
 export type StockMovementType =
   | 'opening'
@@ -186,6 +187,19 @@ export interface AutomationSettings {
   backupHealthAlerts: boolean
 }
 
+export interface AvailabilitySettings {
+  enabled: boolean
+  autoEightySixAtZero: boolean
+  autoReturnOnRestock: boolean
+  requireReason: boolean
+  reasons: string[]
+  defaultReturnMode: 'manual' | 'on_restock' | 'at_time'
+  resetManualAtDayStart: boolean
+  resetManualAtFirstShift: boolean
+  displayStyle: 'big_red_x' | 'dimmed_badge'
+  showListButton: boolean
+}
+
 export interface StoreSettings {
   posMode: PosMode
   currency: string
@@ -213,6 +227,7 @@ export interface StoreSettings {
   stationTicketPrintPolicy: TicketPrintPolicy
   reportPrintPolicy: 'manual'
   automation: AutomationSettings
+  availability: AvailabilitySettings
 }
 
 export interface Store {
@@ -282,6 +297,7 @@ export interface User {
     forceCloseShift?: boolean
     manageCashDifferences?: boolean
     viewStaffAnalytics?: boolean
+    manage86?: boolean
   }
 }
 
@@ -411,6 +427,15 @@ export interface InventoryItem {
   active: boolean
 }
 
+export interface EightySixState {
+  active: boolean
+  at: string
+  byId: string
+  reason?: string
+  returnMode: 'manual' | 'on_restock' | 'at_time'
+  backAt?: string
+}
+
 export interface StockMovement {
   id: string
   storeId: string
@@ -503,6 +528,8 @@ export interface Product {
   variants?: ProductVariant[]
   soldByWeight?: boolean
   saleUnit?: SaleUnit
+  inventoryItemId?: string
+  eightySix?: EightySixState
 }
 
 export interface ProductModifierOption {
@@ -529,6 +556,7 @@ export interface ProductVariant {
   barcode?: string
   trackStock: boolean
   stock: number
+  eightySix?: EightySixState
 }
 
 export interface Customer {

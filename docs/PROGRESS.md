@@ -132,3 +132,8 @@ phone-local WebSerial fallback are **untested on hardware**.
 - Database v31 migrates legacy session float and payer fields; one demo
   unassigned handover table is seeded.
 - Browser scenarios remain UNVERIFIED; build, lint, and all 47 Node tests pass.
+
+## Availability (86)
+- Added shared 86 evaluation, migration/defaults, local and hub order rejection, POS indicators/list, product editor inventory links, and audited manual actions.
+- Added availability settings, `manage86` permissions, Products filtering and bulk controls, and focused availability tests.
+- Browser flow and multi-device notification behavior are UNVERIFIED; automatic restock persistence and 86 history remain incomplete.
