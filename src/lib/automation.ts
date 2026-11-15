@@ -83,12 +83,12 @@ export function filterPosProducts(
   hideOutOfStock: boolean,
   settings?: AvailabilitySettings,
   inventoryItems: InventoryItem[] = [],
+  deductIngredients = false,
 ): Product[] {
   return hideOutOfStock ? products.filter((product) => {
-    const inventoryItem = inventoryItems.find((item) => item.id === product.inventoryItemId)
     const variants = product.variants ?? []
     return variants.length
-      ? !variants.every((variant) => isUnavailable(product, variant, settings, inventoryItem).unavailable)
-      : !isUnavailable(product, undefined, settings, inventoryItem).unavailable
+      ? !variants.every((variant) => isUnavailable(product, variant, settings, inventoryItems, new Date(), deductIngredients).unavailable)
+      : !isUnavailable(product, undefined, settings, inventoryItems, new Date(), deductIngredients).unavailable
   }) : products
 }

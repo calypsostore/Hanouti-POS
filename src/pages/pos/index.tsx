@@ -248,9 +248,23 @@ export default function POS() {
   const categories = db.categories
     .filter((c) => c.storeId === store.id)
     .sort((a, b) => a.sort - b.sort)
-  const products = filterPosProducts(db.products.filter(
+  const activeCategoryProducts = db.products.filter(
     (p) => p.storeId === store.id && p.active && (categoryId === 'all' || p.categoryId === categoryId),
-  ), store.settings.automation.hideOutOfStock, store.settings.availability, db.inventoryItems)
+  )
+  const products = filterPosProducts(
+    activeCategoryProducts,
+    store.settings.automation.hideOutOfStock,
+    store.settings.availability,
+    db.inventoryItems,
+    store.settings.orderRules.deductIngredientsOnSale,
+  )
+  const visibleProductIds = new Set(products.map((product) => product.id))
+  const hiddenOutOfStockCount = store.settings.automation.hideOutOfStock
+    ? activeCategoryProducts.filter((product) =>
+        !visibleProductIds.has(product.id) &&
+        product.name.toLowerCase().includes(search.trim().toLowerCase()),
+      ).length
+    : 0
   const customers = db.customers.filter((c) => c.storeId === store.id)
   const eightySixProducts = db.products.filter((product) => {
     if (product.storeId !== store.id || !product.active) return false
@@ -480,6 +494,7 @@ export default function POS() {
   const catalogProps = {
     categories,
     products: filteredProducts,
+    hiddenOutOfStockCount,
     categoryId,
     setCategoryId,
     search,

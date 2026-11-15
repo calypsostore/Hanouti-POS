@@ -84,3 +84,26 @@ test('out-of-stock filtering respects tracked variants and can be disabled', () 
   assert.deepEqual(filterPosProducts(products, true).map((product) => product.id), ['available', 'variant', 'mixed'])
   assert.equal(filterPosProducts(products, false).length, products.length)
 })
+
+test('new untracked products remain visible and ingredient recipes respect hide-out-of-stock', () => {
+  const product = {
+    id: 'new-item',
+    trackStock: false,
+    stock: 0,
+    recipe: [{ inventoryItemId: 'beans', qtyPerUnit: 2 }],
+    variants: [],
+  }
+  const availableIngredients = [{ id: 'beans', onHand: 2 }]
+  const emptyIngredients = [{ id: 'beans', onHand: 0 }]
+  const availability = { enabled: true, autoEightySixAtZero: true }
+
+  assert.deepEqual(filterPosProducts([product], true, availability), [product])
+  assert.deepEqual(
+    filterPosProducts([product], true, availability, emptyIngredients, true),
+    [],
+  )
+  assert.deepEqual(
+    filterPosProducts([product], true, availability, availableIngredients, true),
+    [product],
+  )
+})

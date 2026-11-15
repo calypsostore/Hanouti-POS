@@ -12,6 +12,7 @@ import { isUnavailable } from '../../lib/availability'
 type ProductCatalogProps = {
   categories: Category[]
   products: Product[]
+  hiddenOutOfStockCount?: number
   categoryId: string
   setCategoryId: (id: string) => void
   search: string
@@ -36,12 +37,15 @@ type ProductCatalogProps = {
 }
 
 export function ProductCatalog({
-  categories, products, categoryId, setCategoryId, search, setSearch, channel, setChannel, store, qtyInCart, addItem, onBarcodeScan,
+  categories, products, hiddenOutOfStockCount = 0, categoryId, setCategoryId, search, setSearch, channel, setChannel, store, qtyInCart, addItem, onBarcodeScan,
   count, total, hasCartItems, onOpenCart, lockedChannel, tableName, inventoryItems, availableStockFor, onUnavailable, canManage86, onRequest86,
 }: ProductCatalogProps) {
   const [scanCode, setScanCode] = useState('')
   const pressTimer = useRef<number | null>(null)
   const longPressFired = useRef(false)
+  const hiddenStockMessage = hiddenOutOfStockCount > 0
+    ? `${hiddenOutOfStockCount} active item${hiddenOutOfStockCount === 1 ? ' is' : 's are'} hidden because stock is unavailable. Restock it or turn off “Hide out of stock” in Settings.`
+    : undefined
   return (
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="glass-subtle shrink-0 space-y-3 border-b border-line/70 px-4 pb-3 pt-4 sm:px-5">
@@ -105,11 +109,19 @@ export function ProductCatalog({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-28 sm:px-5 lg:pb-6 thin-scrollbar">
+            {hiddenStockMessage && products.length > 0 && (
+              <p role="status" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {hiddenStockMessage}
+              </p>
+            )}
             {products.length === 0 ? (
               <EmptyState
                 icon={<ShoppingBag className="h-5 w-5" />}
                 title="No items found"
-                description="Try a different category or search term."
+                description={hiddenStockMessage
+                  ?? (search.trim()
+                    ? 'Try another search or category.'
+                    : 'Check that the product is active and belongs to this store and category.')}
               />
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">

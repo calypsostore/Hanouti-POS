@@ -32,6 +32,15 @@ document.
   Purchases and stock-ledger changes are not yet one atomic hub transaction
   with payment; see `docs/AUDIT.md` and `docs/DECISIONS.md`.
 
+### POS catalog connectivity — code-path verified; browser verification pending
+
+- Admin product creation writes to the same store-scoped product collection the
+  POS reads. POS hides inactive items, other stores/categories, and (when
+  configured) unavailable stock; its empty state now explains matching items
+  hidden by stock. Recipe-based hiding now checks the full ingredient inventory.
+- Still unverified in a live browser: the user’s specific item, store, category,
+  active status and stock settings.
+
 ### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
 
 ### Availability (86) — partially implemented
