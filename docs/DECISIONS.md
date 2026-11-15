@@ -36,3 +36,14 @@
 - Printer selection preference is device-local `localStorage` because the current business database is browser-local. The hub option intentionally fails until M3; cross-device queue delivery is not implemented.
 - ESC/POS byte rendering is isolated in `src/shared/escpos.ts` for future hub reuse. Windows-1252, PC437, PC850 and PC858 are selectable; unsupported glyphs become `?`. Drawer kick and cut commands are configurable but require hardware verification.
 - WebBluetooth is feature-detected at the transport boundary, but printer GATT protocols are vendor-specific and no generic device protocol is configured. Bluetooth printer setup remains hidden until a supported protocol is implemented.
+
+## Local shop hub
+
+- The hub is a separate Node 22+ TypeScript package with zero third-party runtime dependencies. It reuses the app's pure sync and ESC/POS modules and uses Node built-ins for HTTP(S), WebSocket framing, crypto, storage, and printer I/O.
+- The default hub address is a private RFC1918 LAN IPv4 address, falling back to loopback only when none is available. It binds that address rather than all interfaces. `HUB_HOST` is an explicit override.
+- Per-store transaction snapshots are appended and fsynced as JSONL. A torn final record is ignored when the previous complete record is intact. Daily/manual snapshots are atomic JSON backup files, retained to 14. This avoids dependence on Node's changing `node:sqlite` availability.
+- Sessions use app-compatible PBKDF2 hashes and random 12-hour bearer tokens; lockout is persisted to disk. Station device pairing validates M1b code, expiry and active station scope and stores only a hashed device token.
+- Change sets use hub-arrival order for last-writer-wins conflicts, with ID merges for `orderItems`/`payments`; duplicate `opId`s do not reapply. A stale base sequence is accepted and resolved by that policy.
+- Local HTTPS uses an operator-generated self-signed certificate. It is optional because the phones must explicitly trust it; there is no automated certificate issuer or internet dependency.
+- The hub API enforces store ownership and permissions for staff, settings, stock, purchases, payroll, voids, shift close/open, stations, order pricing/totals and ledger writes. Ledger entries are append-only. Payment tender reconciliation, customer credit limits, and authoritative close-report arithmetic remain out of scope; the browser UI is not connected to the hub.
+- Epson ePOS-Print and Star WebPRNT send structured printer markup; CloudPRNT uses a token-protected hub pull endpoint. Printer protocol behavior and physical output are untested on hardware.

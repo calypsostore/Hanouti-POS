@@ -12,6 +12,23 @@ orders and station tickets, station-device kiosk pairing and station-only staff
 access**. Per-staff register shifts, handover and cash accountability remain in
 progress.
 
+### M3 local shop hub — implemented, client connection pending
+
+- The Node 22+ hub serves the built app, status/QR page, REST and WebSocket APIs,
+  paired station boards, fsynced per-store JSONL records, 14 retained backups,
+  restore/import, authentication, rate limiting, private-LAN binding and
+  configurable local HTTPS. It has no third-party runtime dependencies.
+- Order item prices and totals are rebuilt from store catalog/settings;
+  permission-gated ledger writes are append-only and credit charges are checked
+  against their order. Payment tender reconciliation, customer credit limits
+  and authoritative close-report arithmetic remain unimplemented.
+- Automated hub API coverage previously passed, including multiple WebSocket
+  clients and a virtual TCP printer. The latest security edits received a build
+  check only; the user requested no further test runs. No browser-context
+  Playwright verification was completed. Physical printers remain untested.
+- The main POS still uses browser-local IndexedDB. Hub-backed POS sync and PWA
+  installation remain M4 work; the cloud HTTPS site cannot call an HTTP hub.
+
 ### M1b station devices — implemented as a local demo
 
 - Settings → Stations manages station-screen devices, assigned stations,
@@ -21,9 +38,9 @@ progress.
 - Staff with station access can open `/kitchen` or a station-specific board,
   choose their post-login station preference, and use the Cook / Barista
   station-only preset. Station devices and boards enforce local station scope.
-- The station board is responsive and explains that only this browser/device
-  sees orders until the future hub is active. QR generation is deferred because
-  no QR encoder is present and adding a dependency needs approval.
+- The browser-local station board explains that only this browser/device sees
+  orders until M4 connects the POS to the hub. App-local QR generation remains
+  deferred; the hub's `/status` page has its own QR link.
 - These are not cross-device features yet: the database and pairing records are
   stored in local IndexedDB. Pairing from a browser without the store database
   cannot work, and device interactions have not been tested on physical kiosks.

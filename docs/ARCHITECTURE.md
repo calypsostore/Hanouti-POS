@@ -56,6 +56,11 @@
   station board in `src/pages/pos/StationBoard.tsx`; `viewStation` protects
   those routes and station status mutations. Database schema is currently
   `7anouti.db.v27`.
+- The optional shop hub is a separate Node 22+ package in `hub/`. It serves the
+  built `dist/` app and scoped REST/WebSocket APIs, stores each store's data in
+  fsynced JSONL snapshots, and reuses `src/shared/sync.ts` plus
+  `src/shared/escpos.ts`. The browser app remains IndexedDB-backed until M4
+  connects a HubProvider; see `docs/HUB.md` and `docs/SYNC.md`.
 
 ## Adding a page
 

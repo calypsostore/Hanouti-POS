@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && tsc --noEmit -p hub/tsconfig.json && vite build",
     "lint": "oxlint",
+    "hub": "node --experimental-strip-types hub/src/main.ts",
+    "hub:doctor": "node --experimental-strip-types hub/src/doctor.ts",
     "test:register-items": "node --experimental-strip-types --test tests/register-items.test.mjs",
     "preview": "vite preview"
   },

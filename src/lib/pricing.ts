@@ -1,5 +1,5 @@
-import type { StoreSettings } from '../types'
-import { round } from './pricing-utils'
+import type { StoreSettings } from '../types.ts'
+import { round } from './pricing-utils.ts'
 
 export const computeTotals = (
   items: Array<{ price: number; qty: number }>,

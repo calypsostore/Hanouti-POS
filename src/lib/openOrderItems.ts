@@ -1,5 +1,5 @@
-import type { OrderItem, OrderModifier, Product, Store } from '../types'
-import { round } from './pricing-utils'
+import type { OrderItem, OrderModifier, Product, Store } from '../types.ts'
+import { round } from './pricing-utils.ts'
 
 export type OpenOrderItemsResult =
   | { ok: true; items: OrderItem[] }

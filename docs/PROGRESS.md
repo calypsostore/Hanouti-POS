@@ -1,10 +1,14 @@
 # Progress
 
-Validated in this session:
-- `npm run build` passed
-- `npm run lint` passed with warnings
-- `node --experimental-strip-types --test tests/*.test.mjs` passed (17 tests)
-- Browser smoke checked Settings → Stations, Settings → Service, and `/kitchen`
+Latest validation:
+- `npm run build` passed after the final hub edits.
+- `npm run lint` passed with existing warnings after the final hub edits.
+- `node --experimental-strip-types --test tests/*.test.mjs` passed (32 tests)
+  before the final ledger permission edits; not rerun at the user's request.
+- Hub API test covered auth, store scoping, pairing, WebSocket station updates,
+  backup/restore and a virtual printer before the final ledger permission edits.
+- Playwright browser contexts were not used for M3; real printers are untested
+  on hardware.
 
 ## M1 Automatic table orders and stations
 - [x] 1. Station management — per-store Kitchen/Bar defaults; add, rename, icon/color, order, screen toggle, and safe deletion.
@@ -34,15 +38,15 @@ Validated in this session:
 - [x] 15. Receipt auto/ask/never, station automatic/manual/never, and reports manual policies
 
 ## M3 Local hub (hub/ folder)
-- [ ] 16. Hub HTTP app server, REST API, WebSocket, /status page
-- [ ] 17. Local HTTPS certificate and install guidance
-- [ ] 18. Persistent on-disk storage, per-store data, daily backups
-- [ ] 19. Auth, session tokens, server-side permission checks
-- [ ] 20. Sync protocol and docs/SYNC.md
-- [ ] 21. Print server, drivers, LAN discovery, fallback, virtual printer
-- [ ] 22. Station-screen WebSocket status updates and broadcast
-- [ ] 23. Service/ops docs, logging, health, `hub doctor`
-- [ ] 24. Security hardening, LAN bind, CORS, rate limits
+- [x] 16. Hub HTTP(S) app server, REST API, WebSocket endpoint, `/status` page and QR link
+- [x] 17. Optional local TLS certificate configuration and Android/iOS trust procedure
+- [x] 18. Per-store fsynced JSONL persistence, 14 retained backups, daily/manual backup, restore and app-backup bootstrap
+- [x] 19. Hashed login, persistent lockout, expiring sessions, scoped M1b device pairing and sensitive-operation guards
+- [x] 20. Pure ID-based change-set diff/apply, idempotency, hub-order conflicts, merge-by-ID and `docs/SYNC.md`
+- [x] 21. Durable ordered print queue, retries/fallback, raw TCP/OS/serial/ePOS/Star transports, LAN scan and virtual printer
+- [x] 22. Station-scoped board snapshot plus persisted preparing/ready/served/bumped/recalled WebSocket broadcasts
+- [x] 23. Windows/Linux/Raspberry Pi service docs, rotating logs, `/health`, and `hub doctor`
+- [x] 24. Security hardening, private-LAN bind, CORS, rate limits, bounded/validated inputs, server-side order pricing/totals, and permission-scoped ledger writes
 
 ## M4 Client sync and offline
 - [ ] 25. `DataProvider` abstraction with LocalProvider and HubProvider
@@ -79,8 +83,13 @@ Validated in this session:
   `/pair` and Settings. Full pairing, kiosk PIN exit, mobile/TV layouts, and
   multi-device delivery remain unverified.
 - M2 uses browser-local IndexedDB queue state. Hub transports intentionally return
-  “hub not connected” until M3; generic Bluetooth printer protocols are not
+  “hub not connected” until M4; generic Bluetooth printer protocols are not
   configured. Browser smoke loaded Settings → Devices & printing, but printer
   submission/queue interaction did not complete reliably in the browser harness.
   Real printer output, drawer kick, codepage rendering and cut behavior are
   untested on hardware.
+- M3 hub APIs and live station/printer queue broadcasts are implemented, but the
+  app is still IndexedDB-only until M4; multi-device POS use through the app UI
+  is therefore not verified. Printer health shows configured/enabled state,
+  not active physical-device reachability. Real printer transports are untested
+  on hardware.

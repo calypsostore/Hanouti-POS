@@ -1,0 +1,730 @@
+import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { access, readFile, stat } from 'node:fs/promises'
+import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
+import { isIP } from 'node:net'
+import { networkInterfaces } from 'node:os'
+import { extname, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { HubAuth, can, requireCapability } from './auth.ts'
+import type { AuthenticatedActor } from './types.ts'
+import { HubStorage } from './storage.ts'
+import { HubPrintQueue } from './printers/queue.ts'
+import type { PrintJobRecord, PrinterRecord } from './printers/queue.ts'
+import { discoverRawPrinters } from './printers/lan.ts'
+import { virtualPrinterPreview, startVirtualPrinter } from './printers/virtual-printer.ts'
+import { qrSvg } from './qr.ts'
+import { HubWebSocket } from './websocket.ts'
+import { logEvent } from './logger.ts'
+import { MAX_BODY_BYTES, record, requireString, validId, validateStoreDoc } from './validation.ts'
+import { stationBoardHtml } from './board.ts'
+import { validateOrderDocument } from './orderValidation.ts'
+import { validateLedgerEntry } from './ledgerValidation.ts'
+
+const RATE_WINDOW = 60_000
+const RATE_LIMIT = 120
+const loginLimits = new Map<string, { count: number; reset: number }>()
+const websocketLimits = new Map<string, { count: number; reset: number }>()
+const mimeTypes: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
+}
+const PRIVATE_COLLECTIONS: Record<string, string> = {
+  users: 'manageStaff', stations: 'manageSettings', stationDevices: 'manageSettings',
+  printers: 'manageSettings', printRoutes: 'manageSettings', stores: 'manageSettings',
+  products: 'manageProducts', categories: 'manageProducts',
+  expenses: 'manageSettings', inventoryItems: 'manageInventory', stockMovements: 'manageInventory',
+  purchases: 'recordPurchases', purchasePayments: 'recordPurchases',
+  payrolls: 'managePayroll', advances: 'managePayroll', suppliers: 'recordPurchases',
+  ledger: 'ledger',
+}
+const ORDER_COLLECTIONS = new Set(['orders', 'openOrders', 'orderItems', 'payments'])
+
+function localAddress(): string {
+  const configured = process.env.HUB_HOST
+  if (configured) return configured
+  const privateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+  for (const entries of Object.values(networkInterfaces())) {
+    const address = entries?.find((entry) => entry.family === 'IPv4' && !entry.internal && privateIpv4.test(entry.address))
+    if (address) return address.address
+  }
+  return '127.0.0.1'
+}
+
+function originAllowed(origin: string | undefined, request: IncomingMessage, address: string, port: number, secure: boolean): boolean {
+  if (!origin) return true
+  const configured = (process.env.HUB_ALLOWED_ORIGINS ?? '').split(',').map((value) => value.trim()).filter(Boolean)
+  if (configured.includes(origin)) return true
+  const scheme = secure ? 'https:' : 'http:'
+  try {
+    const parsed = new URL(origin)
+    const ownPort = request.headers.host?.split(':').at(-1)
+    const expectedPort = ownPort || String(port)
+    return parsed.protocol === scheme && parsed.port === expectedPort &&
+      (parsed.hostname === address || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+  } catch {
+    return false
+  }
+}
+
+function sendJson(response: ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+  response.end(JSON.stringify(body))
+}
+
+async function readJson(request: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = []
+  let length = 0
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    length += buffer.length
+    if (length > maxBytes) throw Object.assign(new Error(`Request body exceeds ${Math.round(maxBytes / (1024 * 1024))} MB.`), { status: 413 })
+    chunks.push(buffer)
+  }
+  let value: unknown
+  try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch {
+    throw Object.assign(new Error('Request body must be valid JSON.'), { status: 400 })
+  }
+  if (!record(value)) throw Object.assign(new Error('Request body must be a JSON object.'), { status: 400 })
+  return value
+}
+
+function bearer(request: IncomingMessage): string | undefined {
+  const value = request.headers.authorization
+  return typeof value === 'string' && value.startsWith('Bearer ') ? value.slice(7) : undefined
+}
+
+function contentSecurityPolicy(): string {
+  return "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' ws: wss:"
+}
+
+function htmlEscape(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? '')
+}
+
+function jsonResponseError(error: unknown): { status: number; message: string } {
+  const candidate = error as { status?: unknown; message?: unknown }
+  const status = typeof candidate.status === 'number' ? candidate.status : 400
+  const message = typeof candidate.message === 'string' ? candidate.message : 'Request failed.'
+  return { status, message }
+}
+
+export interface HubRuntime {
+  server: Server
+  address: string
+  port: number
+  close: () => Promise<void>
+  storage: HubStorage
+}
+
+export async function createHubServer(): Promise<HubRuntime> {
+  const storage = new HubStorage()
+  await storage.initialize()
+  const auth = new HubAuth(storage)
+  await auth.initialize()
+  const httpsKey = process.env.HUB_TLS_KEY
+  const httpsCert = process.env.HUB_TLS_CERT
+  const tlsOptions = httpsKey && httpsCert
+    ? { key: await readFile(resolve(httpsKey)), cert: await readFile(resolve(httpsCert)) }
+    : undefined
+  const address = localAddress()
+  const port = Number(process.env.HUB_PORT ?? 8080)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('HUB_PORT must be an integer from 1 to 65535.')
+
+  let sockets: HubWebSocket
+  const server = tlsOptions
+    ? createHttpsServer(tlsOptions, (request, response) => { void handleRequest(request, response) })
+    : createHttpServer((request, response) => { void handleRequest(request, response) })
+  sockets = new HubWebSocket(server, auth, async (actor, message) => {
+    if (message.type === 'station-status') await updateStationStatus(actor, message, true)
+    else if (message.type === 'sync') await applySync(actor, message.changeSet, true)
+    else throw new Error('Unsupported WebSocket message.')
+  }, (origin, request) => {
+    if (!originAllowed(origin, request, address, port, !!tlsOptions)) return false
+    const ip = request.socket.remoteAddress ?? 'unknown'
+    const current = websocketLimits.get(ip)
+    if (!current || current.reset <= Date.now()) {
+      websocketLimits.set(ip, { count: 1, reset: Date.now() + RATE_WINDOW })
+      return true
+    }
+    if (current.count >= 30) return false
+    current.count += 1
+    return true
+  })
+  const printQueue = new HubPrintQueue(storage, sockets)
+  await printQueue.start()
+  let virtualPrinter: Awaited<ReturnType<typeof startVirtualPrinter>> | undefined
+
+  function authActor(request: IncomingMessage, storeId?: string): AuthenticatedActor {
+    const deviceId = request.headers['x-device-id']
+    const token = bearer(request)
+    const actor = auth.authenticate(token)
+    if (!actor) throw Object.assign(new Error('Authentication required.'), { status: 401 })
+    if (storeId && actor.storeId !== storeId) throw Object.assign(new Error('Store scope mismatch.'), { status: 403 })
+    if (typeof deviceId === 'string') throw Object.assign(new Error('Invalid device authentication.'), { status: 401 })
+    return actor
+  }
+
+  async function actorFor(request: IncomingMessage, storeId?: string): Promise<AuthenticatedActor> {
+    const deviceId = request.headers['x-device-id']
+    const token = bearer(request)
+    if (typeof deviceId === 'string' && token) {
+      const actor = await auth.authenticateDevice(deviceId, token)
+      if (!actor || (storeId && actor.storeId !== storeId)) throw Object.assign(new Error('Station device authentication failed.'), { status: 401 })
+      return actor
+    }
+    const actor = authActor(request, storeId)
+    const refreshed = await auth.refreshActor(actor)
+    if (!refreshed) throw Object.assign(new Error('Account is disabled or no longer available.'), { status: 401 })
+    return refreshed
+  }
+
+  async function authorizedStore(request: IncomingMessage, body?: Record<string, unknown>): Promise<{ actor: AuthenticatedActor; storeId: string }> {
+    const claimedStore = typeof body?.storeId === 'string' ? body.storeId : undefined
+    const actor = await actorFor(request, claimedStore)
+    return { actor, storeId: actor.storeId }
+  }
+
+  async function applySync(actor: AuthenticatedActor, raw: unknown, fromSocket = false): Promise<{ seq: number; duplicate: boolean }> {
+    if (actor.deviceToken) throw new Error('Station devices cannot submit general sync operations.')
+    if (!record(raw) || !Array.isArray(raw.ops) || raw.ops.length > 2000 ||
+      typeof raw.opId !== 'string' || !validId(raw.opId) ||
+      typeof raw.deviceId !== 'string' || !validId(raw.deviceId) ||
+      raw.storeId !== actor.storeId || !Number.isSafeInteger(raw.baseSeq) || (raw.baseSeq as number) < 0) {
+      throw new Error('Invalid change set.')
+    }
+    const state = await storage.readStore(actor.storeId)
+    if (state.appliedOpIds.includes(raw.opId)) return { seq: state.seq, duplicate: true }
+    const validationState = structuredClone(state)
+    for (const operation of raw.ops) {
+      if (!record(operation) || !['put', 'delete'].includes(String(operation.kind)) ||
+        typeof operation.collection !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,40}$/.test(operation.collection) ||
+        !validId(operation.id)) throw new Error('Change set contains an invalid operation.')
+      const required = PRIVATE_COLLECTIONS[operation.collection]
+      if (required && required !== 'ledger') requireCapability(actor, required)
+      if (operation.collection === 'ledger') {
+        if (operation.kind === 'delete') throw Object.assign(new Error('Ledger entries cannot be deleted.'), { status: 403 })
+        if (!record(operation.document)) throw new Error('Ledger entry must be an object.')
+      }
+      if (ORDER_COLLECTIONS.has(operation.collection) && operation.kind === 'delete') {
+        requireCapability(actor, 'voidOrders')
+      }
+      if ((operation.collection === 'registerSessions' || operation.collection === 'shifts') && operation.kind === 'put') {
+        const doc = operation.document
+        const previous = validationState.collections[operation.collection]?.[operation.id]
+        const hasCashCount = record(doc) && (doc.countedCash !== undefined || doc.difference !== undefined)
+        const changingCash = hasCashCount && (!record(previous) ||
+          doc.countedCash !== previous.countedCash || doc.difference !== previous.difference)
+        if (!record(doc) || doc.status === 'closed' || doc.closedAt || changingCash) requireCapability(actor, 'closeShift')
+        else requireCapability(actor, 'openShift')
+      }
+      if (operation.collection === 'orders' && operation.kind === 'put' &&
+        record(operation.document) && (operation.document.status === 'void' || operation.document.voidedAt)) {
+        requireCapability(actor, 'voidOrders')
+      }
+      if (operation.kind === 'put') {
+        validateStoreDoc(operation.document, actor.storeId)
+        if (operation.document.id !== operation.id) throw new Error('Operation ID does not match document ID.')
+        if (operation.collection === 'printers') validatePrinter(operation.document, actor.storeId, validationState)
+        if ((operation.collection === 'orders' || operation.collection === 'openOrders') && record(operation.document)) {
+          operation.document = validateOrderDocument(operation.document, operation.collection, validationState, actor)
+        }
+        if (operation.collection === 'ledger' && record(operation.document)) {
+          operation.document = validateLedgerEntry(operation.document, validationState, actor)
+        }
+        const document = operation.document
+        if (!record(document) || typeof document.id !== 'string') throw new Error('Change set document must have an ID.')
+        const documents = validationState.collections[operation.collection] ?? (validationState.collections[operation.collection] = {})
+        documents[operation.id] = structuredClone({ ...document, id: document.id })
+      } else {
+        delete validationState.collections[operation.collection]?.[operation.id]
+      }
+    }
+    const changeSet = {
+      opId: raw.opId, deviceId: raw.deviceId, storeId: actor.storeId,
+      baseSeq: raw.baseSeq as number,
+      ops: raw.ops as Parameters<HubStorage['transact']>[1]['ops'],
+    }
+    const next = await storage.transact(actor.storeId, changeSet)
+    if (!fromSocket) sockets.broadcast(actor.storeId, { type: 'sync', seq: next.seq, opId: raw.opId })
+    else sockets.broadcast(actor.storeId, { type: 'sync', seq: next.seq, opId: raw.opId })
+    return { seq: next.seq, duplicate: false }
+  }
+
+  async function updateStationStatus(actor: AuthenticatedActor, raw: unknown, broadcast = true): Promise<void> {
+    if (!record(raw) || typeof raw.orderId !== 'string' || typeof raw.itemId !== 'string' ||
+      typeof raw.stationId !== 'string' || typeof raw.status !== 'string' ||
+      !['preparing', 'ready', 'served', 'bumped', 'recalled'].includes(raw.status)) {
+      throw new Error('Invalid station status update.')
+    }
+    requireCapability(actor, 'viewStation')
+    const orderId = raw.orderId
+    const itemId = raw.itemId
+    const stationId = raw.stationId
+    const nextStatus = raw.status
+    if (actor.stationOnly && !actor.stationIds?.includes(stationId)) throw new Error('Station device is not assigned to this station.')
+    const state = await storage.readStore(actor.storeId)
+    const order = state.collections.openOrders?.[orderId] as Record<string, unknown> | undefined
+    if (!order || order.storeId !== actor.storeId || !Array.isArray(order.items)) throw new Error('Order not found in this store.')
+    const transitions: Record<string, string[]> = {
+    sent: ['preparing', 'bumped'], preparing: ['ready', 'sent', 'bumped'],
+    ready: ['served', 'preparing', 'bumped'], served: ['ready', 'bumped'],
+    bumped: ['recalled'], recalled: ['preparing'],
+    }
+    let updatedItem: Record<string, unknown> | undefined
+    const items = (order.items as Array<Record<string, unknown>>).map((item) => {
+      if (item.id !== itemId || item.stationId !== stationId) return item
+    const key = `${orderId}:${itemId}`
+    const currentStatus = state.collections.stationStatuses?.[key]?.status ?? item.status
+    if (!(transitions[String(currentStatus)] ?? []).includes(nextStatus)) throw new Error('Invalid station status transition.')
+    const itemStatus = nextStatus === 'bumped' ? 'served' : nextStatus === 'recalled' ? 'preparing' : nextStatus
+    updatedItem = { ...item, status: itemStatus, updatedAt: new Date().toISOString() }
+      return updatedItem
+    })
+    if (!updatedItem) throw new Error('Station item not found.')
+    const updatedOrder = { ...order, items, updatedAt: new Date().toISOString() }
+    const statusKey = `${orderId}:${itemId}`
+    const stationStatus = {
+      id: statusKey, storeId: actor.storeId, orderId: raw.orderId, itemId: raw.itemId,
+      stationId, status: nextStatus, updatedById: actor.userId, updatedAt: new Date().toISOString(),
+    }
+    const next = await storage.transact(actor.storeId, {
+      opId: randomUUID(), deviceId: actor.deviceId ?? actor.userId, storeId: actor.storeId, baseSeq: state.seq,
+      ops: [
+        { kind: 'put', collection: 'openOrders', id: orderId, document: updatedOrder as typeof updatedOrder & { id: string } },
+        { kind: 'put', collection: 'stationStatuses', id: statusKey, document: stationStatus },
+      ],
+    })
+    if (broadcast) sockets.broadcast(actor.storeId, { type: 'station-status', seq: next.seq, orderId, item: updatedItem, status: nextStatus, stationId }, [stationId])
+  }
+
+  function validatePrinter(document: Record<string, unknown>, storeId: string, state: Awaited<ReturnType<HubStorage['readStore']>>): void {
+    const connection = document.connection
+    const host = typeof document.host === 'string' ? document.host : ''
+    if (typeof document.name !== 'string' || !document.name.trim() || document.name.length > 100) throw new Error('Printer name is required and must be at most 100 characters.')
+    if (!['hub-tcp', 'hub-usb', 'hub-serial', 'hub-epson-epos', 'hub-star', 'browser-webserial', 'browser-bluetooth', 'browser-print', 'screen'].includes(String(connection))) {
+      throw new Error('Unsupported printer connection.')
+    }
+    if (document.paperWidth !== 58 && document.paperWidth !== 80) throw new Error('Printer paper width must be 58 or 80 mm.')
+    if (!['cp1252', 'cp437', 'cp850', 'cp858'].includes(String(document.codepage))) throw new Error('Unsupported printer codepage.')
+    if (!['none', 'partial', 'full'].includes(String(document.cutMode))) throw new Error('Unsupported printer cut mode.')
+    if (document.enabled !== undefined && typeof document.enabled !== 'boolean') throw new Error('Printer enabled flag must be boolean.')
+    if (document.baudRate !== undefined && (!Number.isInteger(document.baudRate) || Number(document.baudRate) < 300 || Number(document.baudRate) > 115200)) {
+      throw new Error('Serial baud rate must be between 300 and 115200.')
+    }
+    const tcpTransport = connection === 'hub-tcp' || connection === 'hub-epson-epos' || connection === 'hub-star'
+    if (tcpTransport && !(connection === 'hub-star' && host.toLowerCase() === 'cloudprnt')) {
+      const family = isIP(host)
+      const octets = family === 4 ? host.split('.').map(Number) : []
+      const privateV4 = family === 4 && (
+        octets[0] === 10 || octets[0] === 127 || octets[0] === 169 && octets[1] === 254 ||
+        octets[0] === 192 && octets[1] === 168 ||
+        octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31
+      )
+      if (!privateV4 && host !== 'localhost' && !(family === 6 && (host === '::1' || host.toLowerCase().startsWith('fc') || host.toLowerCase().startsWith('fd') || host.toLowerCase().startsWith('fe80:')))) {
+        throw new Error('Printer address must be a private LAN IP or localhost.')
+      }
+      const port = document.port
+      if (port !== undefined && (!Number.isInteger(port) || Number(port) < 1 || Number(port) > 65535)) throw new Error('Printer port must be between 1 and 65535.')
+    }
+    if ((connection === 'hub-usb' || connection === 'hub-serial') && host && process.platform !== 'win32' && !host.startsWith('/dev/')) {
+      throw new Error('Linux USB/serial devices must use a /dev/ device path.')
+    }
+    if (typeof document.osPrinterName === 'string' && document.osPrinterName.length > 200) throw new Error('OS printer name is too long.')
+    if (typeof document.fallbackPrinterId === 'string') {
+      const fallback = state.collections.printers?.[document.fallbackPrinterId]
+      if (document.fallbackPrinterId === document.id || !fallback || fallback.storeId !== storeId) throw new Error('Fallback printer must be a different printer in this store.')
+    }
+  }
+
+  async function statusPage(response: ServerResponse): Promise<void> {
+    const origin = `${tlsOptions ? 'https' : 'http'}://${address}:${port}`
+    const stores = await storage.listStoreIds()
+    const data = await Promise.all(stores.map(async (storeId) => {
+      const state = await storage.readStore(storeId)
+      const store = Object.values(state.collections.stores ?? {})[0] as Record<string, unknown> | undefined
+      const printers = Object.values(state.collections.printers ?? {}) as unknown as PrinterRecord[]
+      const counts = await printQueue.counts(storeId)
+      return {
+        name: typeof store?.name === 'string' ? store.name : storeId,
+        storeId, connectedStaff: sockets.countByStore(storeId, false),
+        connectedDevices: sockets.countByStore(storeId, true),
+        printers: printers.map((printer) => ({
+          name: printer.name, enabled: printer.enabled, connection: printer.connection,
+          status: printer.enabled ? 'enabled; health not polled' : 'disabled',
+        })),
+        queue: counts,
+      }
+    }))
+    const page = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}"><title>7anouti Hub status</title><style>body{font:16px system-ui;max-width:900px;margin:2rem auto;padding:0 1rem;color:#17221c}main{display:grid;grid-template-columns:1fr 240px;gap:2rem}section{border:1px solid #ccd5cf;border-radius:12px;padding:1rem;margin:1rem 0}img{width:220px}code{overflow-wrap:anywhere}@media(max-width:600px){main{grid-template-columns:1fr}}</style><h1>7anouti shop hub</h1><main><div><p>Open this address on devices connected to the shop Wi-Fi:</p><p><a href="${htmlEscape(origin)}">${htmlEscape(origin)}</a></p><p>Hub IP: <code>${htmlEscape(address)}</code> · port ${port} · ${tlsOptions ? 'HTTPS enabled' : 'HTTP only'}</p>${data.map((store) => `<section><h2>${htmlEscape(store.name)}</h2><p>Staff connected: ${store.connectedStaff} · Station devices: ${store.connectedDevices}</p>    <p>Printers: ${store.printers.map((printer) => `${htmlEscape(printer.name)} (${htmlEscape(printer.status)})`).join(', ') || 'none configured'}</p><p>Queue: ${htmlEscape(JSON.stringify(store.queue))}</p></section>`).join('')}</div><img alt="QR code to open the hub app" src="/api/status/qr"></main></html>`
+    response.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+      'Content-Security-Policy': contentSecurityPolicy(), 'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+    })
+    response.end(page)
+  }
+
+  async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const started = Date.now()
+    const path = (request.url ?? '/').split('?')[0]
+    const ip = request.socket.remoteAddress ?? 'unknown'
+    const rate = loginLimits.get(ip)
+    if (loginLimits.size > 2000) {
+      for (const [key, value] of loginLimits) if (value.reset <= Date.now()) loginLimits.delete(key)
+    }
+    if (!rate || rate.reset <= Date.now()) loginLimits.set(ip, { count: 1, reset: Date.now() + RATE_WINDOW })
+    else if (rate.count >= RATE_LIMIT) {
+      sendJson(response, 429, { error: 'Rate limit exceeded.' })
+      return
+    } else rate.count += 1
+
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+    response.setHeader('Referrer-Policy', 'no-referrer')
+    response.setHeader('X-Frame-Options', 'DENY')
+    const origin = request.headers.origin
+    if (!originAllowed(typeof origin === 'string' ? origin : undefined, request, address, port, !!tlsOptions)) {
+      sendJson(response, 403, { error: 'Origin is not allowed.' })
+      return
+    }
+    if (origin) {
+      response.setHeader('Access-Control-Allow-Origin', origin)
+      response.setHeader('Vary', 'Origin')
+      response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Device-Id')
+      response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
+    }
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204)
+      response.end()
+      return
+    }
+    try {
+      if (path === '/health' && request.method === 'GET') return sendJson(response, 200, { ok: true, time: new Date().toISOString() })
+      if (path === '/status' && request.method === 'GET') return await statusPage(response)
+      if (request.method === 'GET' && (path === '/kitchen' || /^\/station\/[a-zA-Z0-9._:-]{1,128}$/.test(path))) {
+        const stationId = path === '/kitchen' ? '' : path.slice('/station/'.length)
+        response.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+          'Content-Security-Policy': contentSecurityPolicy(), 'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'no-referrer',
+        })
+        response.end(stationBoardHtml(stationId))
+        return
+      }
+      if (path === '/api/status' && request.method === 'GET') {
+        const stores = await storage.listStoreIds()
+        return sendJson(response, 200, { ok: true, address, port, secure: !!tlsOptions, stores: stores.length })
+      }
+      if (path === '/api/status/qr' && request.method === 'GET') {
+        const originUrl = `${tlsOptions ? 'https' : 'http'}://${address}:${port}`
+        response.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+        response.end(qrSvg(originUrl))
+        return
+      }
+      if (path === '/api/auth/setup' && request.method === 'POST') {
+        const body = await readJson(request)
+        const result = await auth.setupOwner(body)
+        return sendJson(response, 201, result)
+      }
+      if (path === '/api/auth/login' && request.method === 'POST') {
+        const body = await readJson(request)
+        const storeCode = requireString(body.storeCode, 'store code', 40)
+        const username = requireString(body.username, 'username', 64)
+        const secret = requireString(body.secret, 'password or PIN', 128)
+        return sendJson(response, 200, await auth.login(storeCode, username, secret, ip))
+      }
+      if (path === '/api/auth/logout' && request.method === 'POST') {
+        const token = bearer(request)
+        if (token) auth.revoke(token)
+        return sendJson(response, 200, { ok: true })
+      }
+      if (path === '/api/station/pair' && request.method === 'POST') {
+        const body = await readJson(request)
+        return sendJson(response, 200, await auth.pair(requireString(body.storeCode, 'store code', 40), requireString(body.pairingCode, 'pairing code', 6), ip))
+      }
+      if (path === '/api/setup/import-backup' && request.method === 'POST') {
+        if ((await storage.listStoreIds()).length) throw Object.assign(new Error('Backup bootstrap is available only on an empty hub.'), { status: 409 })
+        const body = await readJson(request, 50 * 1024 * 1024)
+        const ids = await storage.importAppBackup(body.backup)
+        return sendJson(response, 201, { stores: ids })
+      }
+      if (path === '/api/backup' && request.method === 'POST') {
+        const { actor, storeId } = await authorizedStore(request)
+        requireCapability(actor, 'manageSettings')
+        const filename = await storage.backupNow([storeId])
+        return sendJson(response, 201, { filename: relative(storage.root, filename) })
+      }
+      if (path === '/api/restore' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor } = await authorizedStore(request, body)
+        requireCapability(actor, 'manageSettings')
+        const filename = requireString(body.filename, 'backup filename', 64)
+        const restored = await storage.restoreSnapshot(filename, actor.storeId)
+        return sendJson(response, 200, { restored })
+      }
+      if (path === '/api/sync' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor } = await authorizedStore(request, body)
+        return sendJson(response, 200, await applySync(actor, body))
+      }
+      if (path === '/api/sync/snapshot' && request.method === 'GET') {
+        const actor = await actorFor(request)
+        const state = await storage.readStore(actor.storeId)
+        const collections: Record<string, Array<Record<string, unknown>>> = {}
+        for (const [name, documents] of Object.entries(state.collections)) {
+          const permission = PRIVATE_COLLECTIONS[name]
+          if (permission === 'ledger') {
+            if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
+          } else if (permission && !can(actor, permission)) continue
+          collections[name] = Object.values(documents).filter((document) => {
+            if (document.storeId !== actor.storeId) return false
+            if (actor.stationOnly) {
+              return name === 'openOrders' && Array.isArray(document.items) &&
+                (document.items as Array<Record<string, unknown>>).some((item) =>
+                  typeof item.stationId === 'string' && actor.stationIds?.includes(item.stationId),
+                )
+            }
+            return true
+          }).map((document) => {
+            if (actor.stationOnly && name === 'openOrders' && Array.isArray(document.items)) {
+              return {
+                ...document,
+                items: (document.items as Array<Record<string, unknown>>).filter((item) =>
+                  typeof item.stationId === 'string' && actor.stationIds?.includes(item.stationId),
+                ),
+              }
+            }
+            if (name !== 'users' && name !== 'stationDevices') return document
+            const safe = { ...document }
+            delete safe.password
+            delete safe.pin
+            delete safe.deviceTokenHash
+            return safe
+          })
+        }
+        return sendJson(response, 200, { storeId: actor.storeId, seq: state.seq, collections })
+      }
+      if (path === '/api/stations' && request.method === 'GET') {
+        const actor = await actorFor(request)
+        requireCapability(actor, 'viewStation')
+        const state = await storage.readStore(actor.storeId)
+        const stations = Object.values(state.collections.stations ?? {}).filter((station) =>
+          station.active === true && station.screen === true && (!actor.stationOnly || actor.stationIds?.includes(String(station.id))),
+        )
+        const orders = Object.values(state.collections.openOrders ?? {}).flatMap((order) => {
+          if (order.storeId !== actor.storeId || !Array.isArray(order.items)) return []
+          const items = (order.items as Array<Record<string, unknown>>).filter((item) => {
+            const status = state.collections.stationStatuses?.[`${order.id}:${item.id}`]?.status ?? item.status
+            return typeof item.stationId === 'string' && (!actor.stationOnly || actor.stationIds?.includes(item.stationId)) &&
+              (['sent', 'preparing', 'ready'].includes(String(item.status)) || status === 'bumped')
+          }).map((item) => ({
+            ...item,
+            boardStatus: state.collections.stationStatuses?.[`${order.id}:${item.id}`]?.status ?? item.status,
+          }))
+          return items.length ? [{ ...order, items }] : []
+        })
+        return sendJson(response, 200, { seq: state.seq, stations, orders })
+      }
+      if (path === '/api/print' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor, storeId } = await authorizedStore(request, body)
+        if (actor.deviceToken) throw Object.assign(new Error('Station devices cannot enqueue print jobs.'), { status: 403 })
+        const printerId = requireString(body.printerId, 'printer ID', 128)
+        const state = await storage.readStore(storeId)
+        const printer = state.collections.printers?.[printerId] as unknown as PrinterRecord | undefined
+        if (!printer || printer.storeId !== storeId || !printer.enabled) throw new Error('Printer is unavailable in this store.')
+        const payload = body.payload
+        if (!Array.isArray(payload) || payload.length > 200 || payload.some((line) =>
+          !record(line) || typeof line.text !== 'string' || line.text.length > 512 ||
+          (line.bold !== undefined && typeof line.bold !== 'boolean') ||
+          (line.size !== undefined && !['normal', 'double'].includes(String(line.size))) ||
+          (line.align !== undefined && !['left', 'center', 'right'].includes(String(line.align))),
+        )) throw new Error('Invalid print payload.')
+        const jobTypes = ['receipt', 'kitchen', 'bar', 'report', 'label', 'test']
+        if (body.type !== undefined && !jobTypes.includes(String(body.type))) throw new Error('Invalid print job type.')
+        if (body.copies !== undefined && (typeof body.copies !== 'number' || !Number.isFinite(body.copies))) throw new Error('Invalid print copy count.')
+        if (body.stationId !== undefined && !validId(body.stationId)) throw new Error('Invalid station ID.')
+        if (body.openDrawer === true && actor.role === 'staff' && actor.permissions.register !== true) {
+          throw Object.assign(new Error('Permission denied: register access is required for a drawer kick.'), { status: 403 })
+        }
+        const job = await printQueue.enqueue({
+          storeId, printerId, type: typeof body.type === 'string' ? body.type as PrintJobRecord['type'] : 'test',
+          stationId: typeof body.stationId === 'string' ? body.stationId : undefined,
+          payload: payload as PrintJobRecord['payload'],
+          copies: typeof body.copies === 'number' ? Math.min(10, Math.max(1, Math.trunc(body.copies))) : 1,
+          createdById: actor.userId,
+          openDrawer: body.openDrawer === true,
+        })
+        return sendJson(response, 202, { job })
+      }
+      if (path === '/api/print/test' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor, storeId } = await authorizedStore(request, body)
+        requireCapability(actor, 'manageSettings')
+        const printerId = requireString(body.printerId, 'printer ID', 128)
+        const state = await storage.readStore(storeId)
+        const printer = state.collections.printers?.[printerId] as unknown as PrinterRecord | undefined
+        if (!printer || printer.storeId !== storeId || !printer.enabled) throw new Error('Printer is unavailable in this store.')
+        return sendJson(response, 202, { job: await printQueue.test(storeId, printerId, actor.userId) })
+      }
+      if (path === '/api/print/jobs' && request.method === 'GET') {
+        const actor = await actorFor(request)
+        const state = await storage.readStore(actor.storeId)
+        const jobs = Object.values(state.collections.printJobs ?? {}) as unknown as PrintJobRecord[]
+        return sendJson(response, 200, { jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 500) })
+      }
+      if (path === '/api/print/retry' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor, storeId } = await authorizedStore(request, body)
+        requireCapability(actor, 'manageSettings')
+        const jobId = requireString(body.jobId, 'job ID', 128)
+        const state = await storage.readStore(storeId)
+        const job = state.collections.printJobs?.[jobId] as unknown as PrintJobRecord | undefined
+        if (!job || job.storeId !== storeId || job.status !== 'failed') throw new Error('Failed print job not found.')
+        await printQueue.update({ ...job, status: 'queued', attempts: 0, lastError: undefined, nextAttemptAt: undefined })
+        return sendJson(response, 200, { ok: true })
+      }
+      if (path === '/api/print/cancel' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor, storeId } = await authorizedStore(request, body)
+        requireCapability(actor, 'manageSettings')
+        const jobId = requireString(body.jobId, 'job ID', 128)
+        const state = await storage.readStore(storeId)
+        const job = state.collections.printJobs?.[jobId] as unknown as PrintJobRecord | undefined
+        if (!job || job.storeId !== storeId || job.status !== 'queued') throw new Error('Queued print job not found.')
+        await printQueue.update({ ...job, status: 'cancelled' })
+        return sendJson(response, 200, { ok: true })
+      }
+      if (path === '/api/printers/discover' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor } = await authorizedStore(request, body)
+        requireCapability(actor, 'manageSettings')
+        return sendJson(response, 200, { printers: await discoverRawPrinters() })
+      }
+      if (path === '/api/station/status' && request.method === 'POST') {
+        const body = await readJson(request)
+        const { actor } = await authorizedStore(request, body)
+        await updateStationStatus(actor, body)
+        return sendJson(response, 200, { ok: true })
+      }
+      if (path.startsWith('/api/cloudprnt/') && request.method === 'GET') {
+        if (!process.env.HUB_CLOUDPRNT_TOKEN || bearer(request) !== process.env.HUB_CLOUDPRNT_TOKEN) {
+          throw Object.assign(new Error('CloudPRNT authentication failed.'), { status: 401 })
+        }
+        const [, , , storeId, printerId] = path.split('/')
+        if (!validId(storeId) || !validId(printerId)) throw new Error('Invalid printer path.')
+        const result = await printQueue.cloudPoll(storeId, printerId)
+        if (!result) {
+          response.writeHead(204)
+          response.end()
+          return
+        }
+        response.writeHead(200, { 'Content-Type': 'application/octet-stream', 'X-Print-Job-Id': result.job.id, 'Cache-Control': 'no-store' })
+        response.end(Buffer.from(result.bytes))
+        return
+      }
+      if (path.startsWith('/api/cloudprnt/') && request.method === 'POST') {
+        if (!process.env.HUB_CLOUDPRNT_TOKEN || bearer(request) !== process.env.HUB_CLOUDPRNT_TOKEN) {
+          throw Object.assign(new Error('CloudPRNT authentication failed.'), { status: 401 })
+        }
+        const [, , , storeId, printerId] = path.split('/')
+        if (!validId(storeId) || !validId(printerId)) throw new Error('Invalid printer path.')
+        const body = await readJson(request)
+        if (typeof body.jobId !== 'string' || typeof body.success !== 'boolean') throw new Error('Invalid CloudPRNT result.')
+        await printQueue.reportCloudPrint(storeId, body.jobId, body.success, typeof body.message === 'string' ? body.message : undefined)
+        return sendJson(response, 200, { ok: true })
+      }
+      if (path === '/api/virtual/preview' && request.method === 'GET') {
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': contentSecurityPolicy(), 'X-Content-Type-Options': 'nosniff' })
+        response.end(await virtualPrinterPreview())
+        return
+      }
+
+      if (path.startsWith('/api/')) throw Object.assign(new Error('API endpoint not found.'), { status: 404 })
+      if (request.method !== 'GET') throw Object.assign(new Error('Method not allowed.'), { status: 405 })
+      await serveApp(response, path)
+    } catch (error) {
+      const detail = jsonResponseError(error)
+      sendJson(response, detail.status, { error: detail.message })
+      if (detail.status >= 500) await logEvent(storage.root, 'error', `${request.method} ${path} failed with status ${detail.status}.`)
+    } finally {
+      if (!path.startsWith('/api/auth/')) await logEvent(storage.root, 'info', `${request.method} ${path} ${response.statusCode || 200} ${Date.now() - started}ms`)
+    }
+  }
+
+  async function serveApp(response: ServerResponse, path: string): Promise<void> {
+    const dist = resolve(process.env.HUB_DIST_DIR ?? fileURLToPath(new URL('../../dist/', import.meta.url)))
+    let relativePath = path === '/' ? 'index.html' : decodeURIComponent(path.slice(1))
+    if (relativePath.includes('\0')) throw Object.assign(new Error('Invalid app path.'), { status: 400 })
+    let target = resolve(dist, relativePath)
+    const fromDist = relative(dist, target)
+    if (fromDist.startsWith(`..${sep}`) || fromDist === '..' || resolve(dist, fromDist) !== target) {
+      throw Object.assign(new Error('Invalid app path.'), { status: 400 })
+    }
+    try {
+      const fileStat = await stat(target)
+      if (fileStat.isDirectory()) target = join(target, 'index.html')
+      await access(target)
+    } catch {
+      target = join(dist, 'index.html')
+      try { await access(target) } catch {
+        throw Object.assign(new Error('Built app is not available. Run npm run build.'), { status: 503 })
+      }
+    }
+    response.writeHead(200, {
+      'Content-Type': mimeTypes[extname(target)] ?? 'application/octet-stream',
+      'Cache-Control': target.endsWith('index.html') ? 'no-cache' : 'public, max-age=3600',
+      'Content-Security-Policy': contentSecurityPolicy(),
+      'X-Content-Type-Options': 'nosniff',
+    })
+    createReadStream(target).pipe(response)
+  }
+
+  server.on('clientError', (_error, socket) => socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'))
+  await new Promise<void>((resolveListen, reject) => {
+    server.once('error', reject)
+    server.listen(port, address, () => {
+      server.removeListener('error', reject)
+      resolveListen()
+    })
+  })
+  try {
+    virtualPrinter = await startVirtualPrinter()
+  } catch (error) {
+    await logEvent(storage.root, 'warn', `Virtual printer did not start: ${error instanceof Error ? error.message : 'unknown error'}`)
+  }
+  const scheme = tlsOptions ? 'https' : 'http'
+  scheduleDailyBackup(storage)
+  await logEvent(storage.root, 'info', `Hub listening at ${scheme}://${address}:${port}.`)
+  return {
+    server, address, port, storage,
+    close: async () => {
+      printQueue.stop()
+      virtualPrinter?.close()
+      await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
+    },
+  }
+
+  function scheduleDailyBackup(storage: HubStorage): void {
+    const schedule = () => {
+      const now = new Date()
+      const next = new Date(now)
+      next.setHours(24, 0, 0, 0)
+      const timer = setTimeout(async () => {
+        try {
+          const date = new Date().toISOString().slice(0, 10)
+          await storage.saveSnapshot(date, await storage.listStoreIds())
+          await logEvent(storage.root, 'info', `Daily backup completed for ${date}.`)
+        } catch (error) {
+          await logEvent(storage.root, 'error', `Daily backup failed: ${error instanceof Error ? error.message : 'unknown error'}`)
+        } finally {
+          schedule()
+        }
+      }, Math.max(1000, next.getTime() - now.getTime()))
+      timer.unref()
+    }
+    schedule()
+  }
+}

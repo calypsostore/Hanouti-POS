@@ -18,6 +18,15 @@ npm run build     # production build
 npm run preview   # preview the build
 ```
 
+## Optional shop hub
+
+The local Node 22+ hub serves the built app, station boards, scoped APIs and
+printer queue over shop Wi-Fi. Build first, then run `npm run hub`; open
+`/status` on the hub machine for its LAN address and QR code. Setup, HTTPS,
+backups and service installation are documented in [docs/HUB.md](./docs/HUB.md).
+The browser app still uses local IndexedDB and does not yet sync POS activity
+through the hub; see [docs/SYNC.md](./docs/SYNC.md) and the M4 roadmap.
+
 ## Demo accounts
 
 | Role | Login | Credential |
