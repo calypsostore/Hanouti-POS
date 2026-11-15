@@ -18,6 +18,8 @@ import { useOpenOrdersSlice } from './openOrders'
 import { useStationDevicesSlice } from './stationDevices'
 import { usePrintingSlice } from './printing'
 import { useDatabase, useActorGuards } from './runtime'
+import { dateKey } from '../lib/utils'
+import { availabilityMaintenanceNeeded, clearManualAvailability, maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
 import type { AppContextValue } from './types'
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -55,8 +57,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const printing = usePrintingSlice(dependencies)
   const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
-  const { db } = database
+  const {
+    db,
+    commitDb,
+    dbRef,
+    ready: databaseReady,
+    loadError: databaseLoadError,
+  } = database
   const { userId } = auth
+  useEffect(() => {
+    if (!databaseReady || databaseLoadError) return
+    const checkAvailability = () => {
+      const now = new Date()
+      const day = dateKey(now)
+      const current = dbRef.current
+      if (!availabilityMaintenanceNeeded(current, now, day)) return
+      commitDb((previous) => {
+        let next = maintainAvailabilityAfterStockChange(previous, previous.products, previous.inventoryItems, {
+          id: 'system', name: '7anouti', role: 'unknown',
+        }, now)
+        for (const store of next.stores) {
+          if (store.settings.availability.resetManualAtDayStart) {
+            next = clearManualAvailability(next, store.id, undefined, day)
+          }
+        }
+        return next
+      })
+    }
+    checkAvailability()
+    const interval = window.setInterval(checkAvailability, 60_000)
+    return () => window.clearInterval(interval)
+  }, [commitDb, dbRef, databaseLoadError, databaseReady])
   const user = useMemo<User | null>(
     () => (database.ready && !database.loadError
       ? db.users.find((candidate) => candidate.id === userId && candidate.active) ?? null

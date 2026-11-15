@@ -3,6 +3,7 @@ import type { AuditJsonValue, InventoryItem, StockMovement } from '../types'
 import { roundCost, roundQuantity } from '../lib/inventory'
 import { uid } from '../lib/utils'
 import { addLog, changedAuditFields } from './audit'
+import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
 import type { AppContextValue, InventoryItemInput, Result } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -168,19 +169,23 @@ export function useInventorySlice(dependencies: StoreSliceDependencies) {
       createdAt: new Date().toISOString(),
     }
     const updated = { ...item, onHand: roundQuantity(item.onHand + delta) }
-    commitDb((prev) => addLog({
-      ...prev,
-      inventoryItems: prev.inventoryItems.map((candidate) => candidate.id === item.id ? updated : candidate),
-      stockMovements: [...prev.stockMovements, movement],
-    }, actorResult.actor, {
-      storeId: item.storeId,
-      action,
-      entity: 'inventory',
-      entityId: item.id,
-      summary: `${type === 'opening' ? 'Recorded opening stock for' : type === 'waste' ? 'Recorded waste for' : type === 'count_correction' ? 'Counted stock for' : 'Adjusted stock for'} ${item.name}`,
-      before: { onHand: item.onHand },
-      after: { onHand: updated.onHand, qtyDelta: delta, reason: movement.reason ?? '' },
-    }))
+    commitDb((prev) => {
+      const maintained = maintainAvailabilityAfterStockChange(
+        prev,
+        prev.products,
+        prev.inventoryItems.map((candidate) => candidate.id === item.id ? updated : candidate),
+        actorResult.actor,
+      )
+      return addLog(maintained, actorResult.actor, {
+        storeId: item.storeId,
+        action,
+        entity: 'inventory',
+        entityId: item.id,
+        summary: `${type === 'opening' ? 'Recorded opening stock for' : type === 'waste' ? 'Recorded waste for' : type === 'count_correction' ? 'Counted stock for' : 'Adjusted stock for'} ${item.name}`,
+        before: { onHand: item.onHand },
+        after: { onHand: updated.onHand, qtyDelta: delta, reason: movement.reason ?? '' },
+      })
+    })
     return { ok: true }
   }, [commitDb, dbRef, requireCapability])
 

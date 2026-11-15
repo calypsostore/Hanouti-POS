@@ -59,6 +59,8 @@ export const DEFAULT_AVAILABILITY_SETTINGS: StoreSettings['availability'] = {
   resetManualAtFirstShift: false,
   displayStyle: 'big_red_x',
   showListButton: true,
+  notifyStaffAboutChanges: true,
+  showCountOnStationScreens: true,
 }
 
 export const normalizePayrollSettings = (value?: Partial<PayrollSettings>): PayrollSettings => {

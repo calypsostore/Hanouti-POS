@@ -1,5 +1,6 @@
 import { computeTotals } from '../../src/lib/pricing.ts'
 import { resolveOpenOrderItems } from '../../src/lib/openOrderItems.ts'
+import { isUnavailable } from '../../src/shared/availability.ts'
 import { round } from '../../src/lib/pricing-utils.ts'
 import type { InventoryItem, OrderItem, Product, Store } from '../../src/types.ts'
 import { requireCapability } from './auth.ts'
@@ -23,17 +24,43 @@ export function validateOrderDocument(
   const products = Object.values(state.collections.products ?? {}) as unknown as Product[]
   const requestedItems = input.items as OrderItem[]
   const inventoryItems = Object.values(state.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
-  const resolved = resolveOpenOrderItems(products, store, requestedItems, inventoryItems)
+  const resolved = resolveOpenOrderItems(
+    products,
+    store,
+    requestedItems.map((item) => ({ ...item, status: 'sent' })),
+    inventoryItems,
+  )
   if (!resolved.ok) throw new Error(resolved.error)
   const previous = state.collections[collection]?.[String(input.id)]
   const previousItems = previous && Array.isArray(previous.items) ? previous.items as Array<Record<string, unknown>> : []
+  const availabilityInventory = inventoryItems.filter((item) => item.storeId === actor.storeId)
   const seenLineIds = new Set<string>()
+  const addedStock = new Map<string, number>()
   const items = resolved.items.map((item, index) => {
     const source = requestedItems[index] as unknown as Record<string, unknown>
     const old = previousItems.find((candidate) =>
       (typeof source.lineId === 'string' && candidate.lineId === source.lineId) ||
       (!source.lineId && candidate.productId === item.productId && previousItems.indexOf(candidate) === index),
     )
+    const product = products.find((candidate) => candidate.id === item.productId && candidate.storeId === actor.storeId)
+    if (!old && product) {
+      const variant = product.variants?.find((candidate) => candidate.id === item.variantId)
+      const inventoryItem = availabilityInventory.find((candidate) => candidate.id === product.inventoryItemId)
+      const availability = isUnavailable(product, variant, store.settings.availability, inventoryItem)
+      if (availability.unavailable) {
+        throw new Error(`${product.name}${variant ? ` (${variant.name})` : ''} is unavailable (86: ${availability.reason}).`)
+      }
+      const tracksStock = variant ? variant.trackStock : product.trackStock
+      if (tracksStock) {
+        const key = `${product.id}:${variant?.id ?? 'base'}`
+        const quantity = (addedStock.get(key) ?? 0) + item.qty
+        const available = variant ? variant.stock : product.stock
+        if (quantity > available) {
+          throw new Error(`Not enough stock for ${product.name}${variant ? ` (${variant.name})` : ''}. Available: ${available}.`)
+        }
+        addedStock.set(key, quantity)
+      }
+    }
     const lineId = typeof source.lineId === 'string'
       ? source.lineId
       : typeof old?.lineId === 'string'
@@ -63,7 +90,6 @@ export function validateOrderDocument(
         throw new Error('A reason is required to void an order item.')
       }
     }
-    const product = products.find((candidate) => candidate.id === item.productId && candidate.storeId === actor.storeId)
     const categories = Object.values(state.collections.categories ?? {}) as Array<{
       id: string
       storeId: string

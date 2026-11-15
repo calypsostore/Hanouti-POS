@@ -63,13 +63,24 @@ export function TopBar({
 
   const isSuper = user.role === 'super'
   const notices = store && can(user, 'viewReports') ? getDashboardNotices(db, store) : []
+  const staffOnShift = Boolean(store && db.registerSessions.some((session) =>
+    session.storeId === store.id && session.status === 'open' &&
+    (session.staffId ?? session.openedById) === user.id,
+  ))
+  const availabilityNotices = store?.settings.availability.notifyStaffAboutChanges &&
+    (user.role === 'admin' || (user.role === 'staff' && staffOnShift))
+    ? db.auditLogs.filter((log) => log.storeId === store.id &&
+        Date.parse(log.createdAt) >= now.getTime() - 24 * 60 * 60 * 1000 &&
+        (log.summary.startsWith('86d ') || log.summary.startsWith('Returned ')))
+      .slice(-8).reverse()
+    : []
   const readyOrders = store
     ? db.openOrders.filter((order) => order.storeId === store.id && order.staffId === user.id &&
         order.items.some((item) => item.status === 'ready'))
     : []
   const readyCount = readyOrders.reduce((total, order) =>
     total + order.items.filter((item) => item.status === 'ready').reduce((sum, item) => sum + item.qty, 0), 0)
-  const noticeCount = notices.reduce((total, notice) => total + notice.count, 0) + readyCount
+  const noticeCount = notices.reduce((total, notice) => total + notice.count, 0) + readyCount + availabilityNotices.length
   const localFailedPrintCount = store
     ? db.printJobs.filter((job) => job.storeId === store.id && job.status === 'failed').length
     : 0
@@ -196,7 +207,7 @@ export function TopBar({
             Review menu conflict
           </Link>
         )}
-        {(can(user, 'viewReports') || readyOrders.length > 0) && (
+        {(can(user, 'viewReports') || readyOrders.length > 0 || availabilityNotices.length > 0) && (
           <div className="relative">
             <button type="button" onClick={() => setNoticesOpen(!noticesOpen)} className="relative rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800" aria-label="Notifications" aria-expanded={noticesOpen}>
               <Bell className="h-4 w-4" />
@@ -214,6 +225,18 @@ export function TopBar({
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground"><ChefHat className="h-4 w-4" /></span>
                     <span className="min-w-0 flex-1">{order.tableName} · items ready</span><Badge tone="success">{count}</Badge>
                   </Link>
+                })}
+                {availabilityNotices.map((log) => {
+                  const isReturn = log.summary.startsWith('Returned ')
+                  const summary = log.summary.slice(isReturn ? 9 : 4)
+                  const separator = summary.indexOf(': ')
+                  const item = separator < 0 ? summary : summary.slice(0, separator)
+                  const reason = separator < 0 ? '' : summary.slice(separator + 2)
+                  const label = isReturn ? `Back: ${item}` : `86: ${item}${reason ? ` (${reason})` : ''}`
+                  return <div key={log.id} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-xs">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground"><PackageX className="h-4 w-4" /></span>
+                    <span className="min-w-0 flex-1">{label}</span>
+                  </div>
                 })}
                 {notices.length === 0 && readyOrders.length === 0 ? <p className="px-2 py-4 text-xs text-muted">You&apos;re all caught up.</p> : notices.map((notice) => {
                   const Icon = notice.id === 'stock' ? PackageX : notice.id === 'tabs' ? CreditCard : Clock3

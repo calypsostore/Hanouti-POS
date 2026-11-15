@@ -197,25 +197,25 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       typeof patch.requireShiftForOrders !== 'boolean') {
       return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
     }
-    if (patch.automation) {
-      if (!validAutomationSettings(patch.automation)) {
-        return { ok: false, error: 'Check the automation settings and allowed values.' }
-      }
-      if (patch.availability) {
-        const availability = patch.availability
-        if (typeof availability.enabled !== 'boolean' ||
-          typeof availability.autoEightySixAtZero !== 'boolean' ||
-          typeof availability.autoReturnOnRestock !== 'boolean' ||
-          typeof availability.requireReason !== 'boolean' ||
-          typeof availability.resetManualAtDayStart !== 'boolean' ||
-          typeof availability.resetManualAtFirstShift !== 'boolean' ||
-          typeof availability.showListButton !== 'boolean' ||
-          !['manual', 'on_restock', 'at_time'].includes(availability.defaultReturnMode) ||
-          !['big_red_x', 'dimmed_badge'].includes(availability.displayStyle) ||
-          !Array.isArray(availability.reasons) || availability.reasons.length > 20 ||
-          availability.reasons.some((reason) => !reason.trim() || reason.length > 120)) {
-          return { ok: false, error: 'Check the availability settings and allowed values.' }
-        }
+    if (patch.automation && !validAutomationSettings(patch.automation)) {
+      return { ok: false, error: 'Check the automation settings and allowed values.' }
+    }
+    if (patch.availability) {
+      const availability = patch.availability
+      if (typeof availability.enabled !== 'boolean' ||
+        typeof availability.autoEightySixAtZero !== 'boolean' ||
+        typeof availability.autoReturnOnRestock !== 'boolean' ||
+        typeof availability.requireReason !== 'boolean' ||
+        typeof availability.resetManualAtDayStart !== 'boolean' ||
+        typeof availability.resetManualAtFirstShift !== 'boolean' ||
+        typeof availability.showListButton !== 'boolean' ||
+        typeof availability.notifyStaffAboutChanges !== 'boolean' ||
+        typeof availability.showCountOnStationScreens !== 'boolean' ||
+        !['manual', 'on_restock', 'at_time'].includes(availability.defaultReturnMode) ||
+        !['big_red_x', 'dimmed_badge'].includes(availability.displayStyle) ||
+        !Array.isArray(availability.reasons) || availability.reasons.length > 20 ||
+        availability.reasons.some((reason) => !reason.trim() || reason.length > 120)) {
+        return { ok: false, error: 'Check the availability settings and allowed values.' }
       }
     }
     if (patch.ticketSendPolicy !== undefined &&

@@ -3,6 +3,7 @@ import type { Purchase, StockMovement, Supplier } from '../types'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { addLog } from './audit'
+import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
 import { openShiftForStaff } from '../lib/registerShifts'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -133,19 +134,26 @@ export function usePurchasesSlice(dependencies: StoreSliceDependencies) {
       refId: purchase.id,
       createdAt: now,
     }))
-    commitDb((prev) => addLog({
-      ...prev,
-      purchases: [purchase, ...prev.purchases],
-      inventoryItems: applied.items,
-      stockMovements: [...prev.stockMovements, ...movements],
-    }, actor, {
-      storeId,
-      action: 'created',
-      entity: 'purchase',
-      entityId: purchase.id,
-      summary: `Received purchase from ${purchase.supplierName}`,
-      after: purchaseSnapshot(purchase),
-    }))
+    commitDb((prev) => {
+      const maintained = maintainAvailabilityAfterStockChange(
+        prev,
+        prev.products,
+        applied.items,
+        actor,
+      )
+      return addLog({
+        ...maintained,
+        purchases: [purchase, ...prev.purchases],
+        stockMovements: [...prev.stockMovements, ...movements],
+      }, actor, {
+        storeId,
+        action: 'created',
+        entity: 'purchase',
+        entityId: purchase.id,
+        summary: `Received purchase from ${purchase.supplierName}`,
+        after: purchaseSnapshot(purchase),
+      })
+    })
     return { ok: true, purchase }
   }, [commitDb, dbRef, requireCapability])
 
@@ -195,20 +203,27 @@ export function usePurchasesSlice(dependencies: StoreSliceDependencies) {
       refId: purchase.id,
       createdAt: now,
     }))
-    commitDb((prev) => addLog({
-      ...prev,
-      purchases: prev.purchases.map((item) => item.id === id ? updated : item),
-      inventoryItems: applied.items,
-      stockMovements: [...prev.stockMovements, ...reversed.movements, ...movements],
-    }, actorResult.actor, {
-      storeId: purchase.storeId,
-      action: 'edited',
-      entity: 'purchase',
-      entityId: id,
-      summary: `Edited purchase from ${purchase.supplierName}`,
-      before: purchaseSnapshot(purchase),
-      after: purchaseSnapshot(updated),
-    }))
+    commitDb((prev) => {
+      const maintained = maintainAvailabilityAfterStockChange(
+        prev,
+        prev.products,
+        applied.items,
+        actorResult.actor,
+      )
+      return addLog({
+        ...maintained,
+        purchases: prev.purchases.map((item) => item.id === id ? updated : item),
+        stockMovements: [...prev.stockMovements, ...reversed.movements, ...movements],
+      }, actorResult.actor, {
+        storeId: purchase.storeId,
+        action: 'edited',
+        entity: 'purchase',
+        entityId: id,
+        summary: `Edited purchase from ${purchase.supplierName}`,
+        before: purchaseSnapshot(purchase),
+        after: purchaseSnapshot(updated),
+      })
+    })
     return { ok: true }
   }, [commitDb, dbRef, requireCapability])
 

@@ -198,6 +198,8 @@ export interface AvailabilitySettings {
   resetManualAtFirstShift: boolean
   displayStyle: 'big_red_x' | 'dimmed_badge'
   showListButton: boolean
+  notifyStaffAboutChanges: boolean
+  showCountOnStationScreens: boolean
 }
 
 export interface StoreSettings {

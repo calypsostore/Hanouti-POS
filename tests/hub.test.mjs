@@ -318,6 +318,85 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const bumpedBoard = await fetch(`${base}/api/stations`, { headers: deviceHeaders })
     assert.equal((await bumpedBoard.json()).orders[0].items[0].boardStatus, 'bumped')
+    const teaDocument = update.ops.find((op) => op.id === 'tea').document
+    const zeroStock = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'tea-positive-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'products', id: 'tea', document: {
+          ...teaDocument, trackStock: true, stock: 1,
+        } }],
+      }),
+    })
+    assert.equal(zeroStock.status, 200)
+    const excessTrackedStock = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'tea-excess-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'openOrders', id: 'excess-stock-order', document: {
+          id: 'excess-stock-order', storeId: owner.actor.storeId, number: 76, status: 'open', discount: 0,
+          items: [{ lineId: 'excess-tea', productId: 'tea', name: 'Tea', price: 1, qty: 2, status: 'draft' }],
+        } }],
+      }),
+    })
+    assert.equal(excessTrackedStock.status, 400)
+    assert.match((await excessTrackedStock.json()).error, /Not enough stock for Tea/)
+    const teaZeroAgain = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'tea-zero-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'products', id: 'tea', document: {
+          ...teaDocument, trackStock: true, stock: 0,
+        } }],
+      }),
+    })
+    assert.equal(teaZeroAgain.status, 200)
+    const manual86 = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'soup-manual-86', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'products', id: 'soup', document: {
+          ...update.ops.find((op) => op.id === 'soup').document,
+          eightySix: {
+            active: true, at: new Date().toISOString(), byId: owner.actor.userId,
+            reason: 'Machine down', returnMode: 'manual',
+          },
+        } }],
+      }),
+    })
+    assert.equal(manual86.status, 200)
+    const boardCount = await fetch(`${base}/api/stations`, { headers: deviceHeaders })
+    assert.ok((await boardCount.json()).eightySixCount >= 2)
+    const availabilitySnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
+    let availabilitySeq = availabilitySnapshot.seq
+    const sentItemsStillAccepted = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'existing-sent-after-86', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: availabilitySeq,
+        ops: [{ kind: 'put', collection: 'openOrders', id: 'order-one', document: {
+          id: 'order-one', storeId: owner.actor.storeId, number: 12, shiftId: 'shift-one',
+          tableId: 'table-1', tableName: 'T1', status: 'open', discount: 0, note: 'Existing sent items',
+          items: [
+            { lineId: 'kitchen-item', productId: 'soup', status: 'sent', qty: 1 },
+            { lineId: 'bar-item', productId: 'tea', status: 'sent', qty: 1 },
+          ],
+        } }],
+      }),
+    })
+    assert.equal(sentItemsStillAccepted.status, 200)
+    availabilitySeq = (await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()).seq
+    for (const [productId, lineId, name, errorText] of [
+      ['tea', 'new-tea', 'Tea', 'Out of stock'],
+      ['soup', 'new-soup', 'Soup', "Machine down"],
+    ]) {
+      const rejected = await fetch(`${base}/api/sync`, {
+        method: 'POST', headers: auth, body: JSON.stringify({
+          opId: `add-unavailable-${productId}`, deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: availabilitySeq,
+          ops: [{ kind: 'put', collection: 'openOrders', id: `new-order-${productId}`, document: {
+            id: `new-order-${productId}`, storeId: owner.actor.storeId, number: productId === 'tea' ? 77 : 78,
+            status: 'open', discount: 0,
+            items: [{ lineId, productId, name, price: 1, qty: 1, status: 'draft' }],
+          } }],
+        }),
+      })
+      assert.equal(rejected.status, 400)
+      assert.match((await rejected.json()).error, new RegExp(`${name}.*${errorText}`))
+    }
     const crossStore = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth,
       body: JSON.stringify({ ...update, opId: 'sync-two', storeId: 'other-store' }),

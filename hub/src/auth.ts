@@ -139,6 +139,7 @@ export class HubAuth {
           requireReason: true, reasons: ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue'],
           defaultReturnMode: 'manual', resetManualAtDayStart: false, resetManualAtFirstShift: false,
           displayStyle: 'big_red_x', showListButton: true,
+          notifyStaffAboutChanges: true, showCountOnStationScreens: true,
         },
       },
     }

@@ -23,6 +23,8 @@ import { mergeOpenOrderDocument, type SyncDocument } from '../../src/shared/sync
 import { stationBoardHtml } from './board.ts'
 import { validateOrderDocument } from './orderValidation.ts'
 import { validateLedgerEntry } from './ledgerValidation.ts'
+import { isUnavailable } from '../../src/shared/availability.ts'
+import type { InventoryItem, Product, Store } from '../../src/types.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -102,6 +104,8 @@ function normalizeHubAvailability(value: unknown): Record<string, unknown> {
     resetManualAtFirstShift: source.resetManualAtFirstShift === true,
     displayStyle: source.displayStyle === 'dimmed_badge' ? 'dimmed_badge' : 'big_red_x',
     showListButton: typeof source.showListButton === 'boolean' ? source.showListButton : true,
+    notifyStaffAboutChanges: typeof source.notifyStaffAboutChanges === 'boolean' ? source.notifyStaffAboutChanges : true,
+    showCountOnStationScreens: typeof source.showCountOnStationScreens === 'boolean' ? source.showCountOnStationScreens : true,
   }
 }
 
@@ -793,6 +797,23 @@ export async function createHubServer(): Promise<HubRuntime> {
         const stations = Object.values(state.collections.stations ?? {}).filter((station) =>
           station.active === true && station.screen === true && (!actor.stationOnly || actor.stationIds?.includes(String(station.id))),
         )
+        const store = state.collections.stores?.[actor.storeId] as unknown as Store | undefined
+        const availabilitySettings = store?.settings.availability
+        let eightySixCount: number | undefined
+        if (store && availabilitySettings?.showCountOnStationScreens !== false) {
+          const products = Object.values(state.collections.products ?? {}) as unknown as Product[]
+          const inventoryItems = Object.values(state.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
+          eightySixCount = products.filter((product) => product.storeId === actor.storeId && product.active)
+            .reduce((count, product) => {
+              const inventory = inventoryItems.find((item) => item.id === product.inventoryItemId && item.storeId === actor.storeId)
+              const variants = product.variants ?? []
+              if (!variants.length) {
+                return count + Number(isUnavailable(product, undefined, availabilitySettings, inventory).unavailable)
+              }
+              return count + variants.reduce((variantCount, variant) =>
+                variantCount + Number(isUnavailable(product, variant, availabilitySettings, inventory).unavailable), 0)
+            }, 0)
+        }
         const orders = Object.values(state.collections.openOrders ?? {}).flatMap((order) => {
           if (order.storeId !== actor.storeId || !Array.isArray(order.items)) return []
           const items = (order.items as Array<Record<string, unknown>>).filter((item) => {
@@ -805,7 +826,7 @@ export async function createHubServer(): Promise<HubRuntime> {
           }))
           return items.length ? [{ ...order, items }] : []
         })
-        return sendJson(response, 200, { seq: state.seq, stations, orders })
+        return sendJson(response, 200, { seq: state.seq, stations, orders, eightySixCount })
       }
       if (path === '/api/print' && request.method === 'POST') {
         const body = await readJson(request)

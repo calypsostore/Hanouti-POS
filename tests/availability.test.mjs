@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isUnavailable } from '../src/lib/availability.ts'
+import { clearManualFlags, clearReturnedFlags, isUnavailable } from '../src/lib/availability.ts'
 
 const settings = {
   enabled: true,
@@ -81,4 +81,36 @@ test('manual 86 does not auto-return when stock rises', () => {
     eightySix: { active: true, at: '2026-01-01T10:00:00Z', byId: 'staff', returnMode: 'manual' },
   }, undefined, settings)
   assert.equal(result.source, 'manual')
+})
+
+test('day-start reset clears manual flags only from prior local business days', () => {
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const localDay = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const { products, changes } = clearManualFlags([{
+    ...product,
+    eightySix: { active: true, at: `${localDay(yesterday)}T10:00:00`, byId: 'staff', reason: 'Machine down', returnMode: 'manual' },
+    variants: [{
+      id: 'large', name: 'Large', trackStock: false, stock: 0,
+      eightySix: { active: true, at: `${localDay(today)}T10:00:00`, byId: 'staff', returnMode: 'manual' },
+    }],
+  }], localDay(today))
+  assert.equal(changes.length, 1)
+  assert.equal(products[0].eightySix.active, false)
+  assert.equal(products[0].variants[0].eightySix.active, true)
+})
+
+test('restock and elapsed return times persistently clear active 86 flags', () => {
+  const result = clearReturnedFlags([{
+    ...product,
+    eightySix: { active: true, at: '2026-01-01T10:00:00Z', byId: 'staff', returnMode: 'on_restock' },
+    variants: [{
+      id: 'large', name: 'Large', trackStock: false, stock: 0,
+      eightySix: { active: true, at: '2026-01-01T10:00:00Z', byId: 'staff', returnMode: 'at_time', backAt: '2026-01-01T11:00:00Z' },
+    }],
+  }], [{ id: 'beans', storeId: 'store', onHand: 1 }], settings, new Date('2026-01-01T12:00:00Z'))
+  assert.equal(result.changes.length, 2)
+  assert.equal(result.products[0].eightySix.active, false)
+  assert.equal(result.products[0].variants[0].eightySix.active, false)
 })

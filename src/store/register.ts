@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import type { CashDifferenceResolution, RegisterSession } from '../types'
 import { round } from '../lib/pricing-utils'
-import { uid } from '../lib/utils'
+import { dateKey, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
 import { can } from '../lib/permissions'
@@ -9,6 +9,7 @@ import { nextShiftNumber, openShiftForStaff } from '../lib/registerShifts'
 import { addLog } from './audit'
 import { isCashDifferenceWithinTolerance, shiftCashDifference } from '../lib/shiftCash'
 import { cashDifferenceDeduction } from '../lib/payroll'
+import { clearManualAvailability } from './availabilityMaintenance'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -40,17 +41,24 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         openingCash: round(openingCash),
         openingFloat: round(openingCash),
       }
-      commitDb((prev) => addLog({
-        ...prev,
-        registerSessions: [...prev.registerSessions, session],
-      }, actor, {
+      const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+      const firstShiftToday = !dbRef.current.registerSessions.some((candidate) =>
+        candidate.storeId === storeId && dateKey(candidate.openedAt) === dateKey(session.openedAt),
+      )
+      commitDb((prev) => {
+        let next = { ...prev, registerSessions: [...prev.registerSessions, session] }
+        if (firstShiftToday && store?.settings.availability.resetManualAtFirstShift) {
+          next = clearManualAvailability(next, storeId, actor)
+        }
+        return addLog(next, actor, {
         storeId,
         action: 'register_opened',
         entity: 'register',
         entityId: session.id,
         summary: `Opened shift ${session.shiftNumber} with ${session.openingCash.toFixed(3)} DT opening cash`,
         after: { openingCash: session.openingCash },
-      }))
+        })
+      })
       return { ok: true }
     },
     [commitDb, dbRef, requireActor],

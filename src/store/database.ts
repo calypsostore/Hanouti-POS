@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v32'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v33'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -493,6 +493,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             resetManualAtFirstShift: typeof availability.resetManualAtFirstShift === 'boolean' ? availability.resetManualAtFirstShift : DEFAULT_AVAILABILITY_SETTINGS.resetManualAtFirstShift,
             displayStyle: availability.displayStyle === 'dimmed_badge' ? 'dimmed_badge' : DEFAULT_AVAILABILITY_SETTINGS.displayStyle,
             showListButton: typeof availability.showListButton === 'boolean' ? availability.showListButton : DEFAULT_AVAILABILITY_SETTINGS.showListButton,
+            notifyStaffAboutChanges: typeof availability.notifyStaffAboutChanges === 'boolean' ? availability.notifyStaffAboutChanges : DEFAULT_AVAILABILITY_SETTINGS.notifyStaffAboutChanges,
+            showCountOnStationScreens: typeof availability.showCountOnStationScreens === 'boolean' ? availability.showCountOnStationScreens : DEFAULT_AVAILABILITY_SETTINGS.showCountOnStationScreens,
           },
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)

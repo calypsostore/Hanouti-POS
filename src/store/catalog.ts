@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import type { AuditJsonValue, Category, Product, Station } from '../types'
 import { uid } from '../lib/utils'
 import { addLog, changedAuditFields } from './audit'
+import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 import { can } from '../lib/permissions'
@@ -291,20 +292,25 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     }
     const updated = { ...product, ...safePatch }
     const changes = changedAuditFields(productSnapshot(product), productSnapshot(updated))
-    commitDb((prev) => addLog({
-      ...prev,
-      products: prev.products.map((p) => (p.id === id ? updated : p)),
-    }, actorResult.actor, {
-      storeId: product.storeId,
-      action: changesEightySix ? (updated.eightySix?.active ? 'activated' : 'deactivated') : 'edited',
-      entity: 'product',
-      entityId: id,
-      summary: changesEightySix
-        ? `${updated.eightySix?.active ? '86d' : 'Returned'} ${product.name}${updated.eightySix?.reason ? `: ${updated.eightySix.reason}` : ''}`
-        : `Edited product ${product.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
-      before: changes.before,
-      after: changes.after,
-    }))
+    commitDb((prev) => {
+      const maintained = maintainAvailabilityAfterStockChange(
+        prev,
+        prev.products.map((candidate) => candidate.id === id ? updated : candidate),
+        prev.inventoryItems,
+        actorResult.actor,
+      )
+      return addLog(maintained, actorResult.actor, {
+        storeId: product.storeId,
+        action: changesEightySix ? (updated.eightySix?.active ? 'activated' : 'deactivated') : 'edited',
+        entity: 'product',
+        entityId: id,
+        summary: changesEightySix
+          ? `${updated.eightySix?.active ? '86d' : 'Returned'} ${product.name}${updated.eightySix?.reason ? `: ${updated.eightySix.reason}` : ''}`
+          : `Edited product ${product.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+        before: changes.before,
+        after: changes.after,
+      })
+    })
     return { ok: true }
   }, [commitDb, requireCapability])
 
