@@ -8,11 +8,85 @@ the audit of the current build, what is implemented per phase, what is honestly
 Last updated: 2026-11-15 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
-orders and station tickets, station-device kiosk pairing and station-only staff
-access**. Per-staff register shifts, handover and cash accountability remain in
-progress.
+orders and station tickets, station-device kiosk pairing, hub sync/offline
+outbox, PWA foundation, and configurable POS automation**. Shift reminders and
+open-table close warnings are implemented; table ownership handover and cash
+accountability remain limited. The current audit status below supersedes older
+roadmap statuses later in this document.
 
-### M3 local shop hub — implemented, client connection pending
+### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
+
+- `npm run test:all` passes 43 tests, including hub authorization, snapshot
+  privacy, backup/restore, pairing scope, change-set replay, station routing,
+  ticket formats, ESC/POS width and virtual TCP output. `npm run hub:sim` starts
+  the real hub with the loopback virtual printer.
+- Hub review findings were fixed: schedules and register sessions now enforce
+  actor permissions/ownership and immutability; permission-filtered snapshots
+  retain the authenticated store document needed for app normalization; public
+  virtual-printer capture preview was removed. The hub integration suite
+  exercises these boundaries.
+- Authenticated WebSocket change messages trigger immediate authoritative
+  snapshot refresh; the 2.5-second poll remains a missed-message/reachability
+  fallback. This is still full-snapshot sync, not an incremental change log.
+- Required operational docs are present. See `docs/PROGRESS.md` for the
+  PASS/UNVERIFIED table for all ten requested scenarios and deployment steps.
+- Multi-context Playwright scenarios and the 360/768/1280 px accessibility,
+  responsive and dark/light contrast audit remain **UNVERIFIED**. Real printer
+  transports, drawer kick and physical output are **untested on hardware**.
+
+### Automation items 33–40 — implemented
+
+- **Orders/receipts:** per-device `auto` / `ask` / `never` receipt policy,
+  automatic latest receipt preview/reprint, cash drawer kick setting, and
+  latest completed receipt shortcut. Drawer/receipt output depends on configured
+  routes and remains unverified on physical hardware.
+- **Security:** inactivity lock and longer auto-logout settings. The lock keeps
+  POS state mounted and does not clock out attendance. Local mode verifies a
+  local PIN hash; hub mode verifies via the authenticated hub without exposing
+  credential hashes to clients.
+- **Shifts/stock:** required-shift prompt, elapsed-shift reminder, open-table
+  warning, low-stock dashboard/bell alerts, and optional out-of-stock hiding.
+  No table handover flow exists; the warning does not transfer ownership.
+- **Printing:** authorized WebSerial reconnect polling, bounded local and hub
+  retries, primary-to-fallback routing, and hub admin alerts after observed
+  printer failures. Offline health is not proactively probed; real output and
+  retry behavior need hardware tests, and retries can duplicate output.
+- **Hub:** backup age health endpoint/admin alert at 48 hours and manual update
+  procedure; no auto-update. Health checks backup metadata, not restoration.
+- **Review/settings:** findings and risk/effort are listed in
+  `docs/AUTOMATION.md`; store options are grouped on one Automation settings
+  page. Safe simple changes were implemented.
+- `npm run build`, `npm run lint`, and all 43 tests pass. Required multi-context
+  Playwright scenarios remain unverified; physical devices require testing.
+
+### M4 client sync and offline — implemented; phone-flow validation pending
+
+- The app auto-selects `HubProvider` when served from the same-origin shop hub;
+  standalone mode retains `LocalProvider`. Hub login uses hub authentication;
+  IndexedDB is the offline cache and ordered change-set/print outbox.
+- Outbox replay uses stable idempotency keys and capped exponential backoff.
+  The hub returns authoritative snapshots with sequence numbers; reconnect
+  applies a full snapshot after pending writes are acknowledged. Concurrent
+  table line additions merge, same-line edits use the newest timestamp, and
+  simultaneous opens coalesce into one table order. Product/category conflicts
+  are surfaced for review.
+- TopBar shows hub/local connection state, pending work, printer status, failed
+  prints, and menu conflicts. An unattempted queued WebSerial print can be
+  redirected to the phone; ambiguous hub attempts remain queued to prevent
+  duplicate output. Printer health is based on hub-observed outcomes, not a
+  physical-device probe.
+- A cloud adapter interface/stub is present; no cloud backend is configured.
+  JSON backup import/export remains the backup path.
+- The PWA shell, manifest, six PNG icons, install prompt and offline font stack
+  are implemented. Service-worker/PWA behavior requires a secure context:
+  plain HTTP on a LAN IP provides online POS only; use the hub HTTPS option for
+  app-shell offline loading and installation.
+- Build and lint pass and all 43 Node tests pass. The real hub and virtual
+  printer are covered by integration tests. Three-phone Playwright coverage of
+  table ownership and live kitchen/bar tickets remains unverified; physical
+  printer output needs hardware.
+
+### M3 local shop hub — implemented
 
 - The Node 22+ hub serves the built app, status/QR page, REST and WebSocket APIs,
   paired station boards, fsynced per-store JSONL records, 14 retained backups,
@@ -22,51 +96,51 @@ progress.
   permission-gated ledger writes are append-only and credit charges are checked
   against their order. Payment tender reconciliation, customer credit limits
   and authoritative close-report arithmetic remain unimplemented.
-- Automated hub API coverage previously passed, including multiple WebSocket
-  clients and a virtual TCP printer. The latest security edits received a build
-  check only; the user requested no further test runs. No browser-context
-  Playwright verification was completed. Physical printers remain untested.
-- The main POS still uses browser-local IndexedDB. Hub-backed POS sync and PWA
-  installation remain M4 work; the cloud HTTPS site cannot call an HTTP hub.
+- Automated hub API coverage passes, including store scoping, multiple WebSocket
+  clients, a virtual TCP printer, concurrent table-order coalescing and shift/
+  owner preservation. Build, lint and all 43 Node tests pass. A single-browser
+  smoke reached hub login/setup; the three-phone Playwright flow remains
+  unverified. Physical printers remain untested.
+- Standalone mode remains browser-local; hub-served POS uses HubProvider.
+  The cloud HTTPS site cannot call an HTTP hub.
 
-### M1b station devices — implemented as a local demo
+### M1b station devices — implemented locally and through the hub
 
 - Settings → Stations manages station-screen devices, assigned stations,
   expiring pairing codes, disable/enable/unpair, and last-seen timestamps.
-  `/pair` pairs a browser-local device; `/kiosk` locks the screen behind an
-  owner/manager PIN and does not create staff attendance or shifts.
+  `/pair` and station operations use hub APIs in HubProvider mode; standalone
+  mode keeps pairing local. `/kiosk` locks the screen behind an owner/manager
+  PIN and does not create staff attendance or shifts.
 - Staff with station access can open `/kitchen` or a station-specific board,
   choose their post-login station preference, and use the Cook / Barista
   station-only preset. Station devices and boards enforce local station scope.
-- The browser-local station board explains that only this browser/device sees
-  orders until M4 connects the POS to the hub. App-local QR generation remains
-  deferred; the hub's `/status` page has its own QR link.
-- These are not cross-device features yet: the database and pairing records are
-  stored in local IndexedDB. Pairing from a browser without the store database
-  cannot work, and device interactions have not been tested on physical kiosks.
+- The station board shows the same-device limitation in standalone mode and
+  hides it when HubProvider is active. App-local QR generation remains deferred;
+  the hub's `/status` page has its own QR link.
+- Standalone pairing remains local. Hub-backed station delivery is implemented,
+  but complete multi-phone and physical-kiosk interactions are not verified.
 - Automated coverage checks code expiry/store matching, station scoping, and
   station-only permissions/attendance. Browser smoke loaded `/pair` and
-  Settings; end-to-end pairing, PIN exit, responsive layouts, and cross-device
-  delivery remain unverified.
+  Settings; end-to-end pairing, PIN exit, responsive layouts, and the complete
+  cross-device phone flow remain unverified.
 
-### M2 printing architecture — implemented as a local demo
+### M2 printing architecture — implemented with local and hub queues
 
 - Settings → Devices & printing manages printer records, routes for receipts,
   X/Z reports, labels and station tickets, station printer links, test prints,
   device-local print preference, and receipt/station print policies. Printer
   history is retained when a used printer is removed.
-- Configured output is persisted through `enqueuePrint`; WebSerial and browser
-  print transports are available, Hub returns an explicit disconnected result,
-  and a Bluetooth transport stub is feature-detected. Print jobs can be filtered,
-  retried, cancelled and reprinted; failed jobs are visible in the TopBar.
+- Configured output is persisted through `enqueuePrint`; HubProvider forwards
+  jobs to the hub and queues them offline. WebSerial and browser print transports
+  are available, while Bluetooth remains a feature-detected protocol stub.
+  Print jobs can be filtered, retried, cancelled and reprinted; failed jobs are
+  visible in the TopBar.
 - ESC/POS byte rendering is shared in `src/shared/escpos.ts`, including 58/80mm
   widths, CP1252/437/850/858 selection, drawer kick and cut modes.
-- Build and lint pass; all 27 Node tests pass. Settings → Devices & printing
-  rendered in the browser, but printer submission and queue interactions could
-  not be completed reliably in the browser harness.
-- The database and queue remain browser-local. The hub is not connected, generic
-  Bluetooth printer protocols are not configured, and no real printer, cash
-  drawer, codepage output or cutter has been tested on hardware.
+- Build and lint pass; all 43 Node tests pass. Physical output, drawer kick,
+  codepage rendering and cut behavior have not been verified on hardware.
+- Standalone printer jobs remain browser-local; hub-served jobs use the hub
+  queue. Generic Bluetooth printer protocols are not configured.
 
 ## Code organization update (2026-11-12)
 
@@ -103,12 +177,22 @@ Existing stores using the former default caramel palette are migrated to the
 
 The admin, staff, and platform-owner dashboards now share a responsive
 dashboard component set and the app shell is split into a collapsible sidebar,
-top bar, and mobile navigation. Dashboard totals reuse the existing report and
-ledger data; month profit is explicitly an estimate based on current product
-costs and recorded expenses. Open table rounds now store per-item station
-routing and lifecycle status; last-login history and billing workflows remain
-unimplemented. Planned staff shifts are modeled separately from live register
-or order-tracking data. Those dashboard
+top bar, and mobile navigation. The top-bar navigation toggle is mobile-only;
+desktop users can collapse the sidebar from its own control. Dashboard totals
+reuse the existing report and ledger data; month profit is explicitly an
+estimate based on current product costs and recorded expenses. The sticky top
+bar uses a 60%-opaque blurred surface. Sidebar spacing,
+store details, icons, and labels are compacted while navigation targets remain
+easy to tap; the selected store icon has a white tile for contrast. The collapsed
+sidebar shows icon-only quick links for Overview, POS, Stations,
+Orders, and Staff, with additional links shown when the available sidebar
+height allows; its three-line button reveals the remaining sections and
+logout in a popover that sizes its columns to the available viewport width and
+number of sections. The sidebar uses a translucent navy glass surface, softly
+animated shortcuts, and a blurred navigation popover. Open table
+rounds now store per-item station routing and lifecycle status; last-login
+history and billing workflows remain unimplemented. Planned staff shifts are
+modeled separately from live register or order-tracking data. Those dashboard
 sections are omitted, marked unavailable, or limited to the data already
 stored; no demo values are presented as production data.
 
@@ -318,7 +402,7 @@ stored; no demo values are presented as production data.
   browser-local activity log. Quick-mode table completion creates a `recorded`
   unpaid order snapshot for the Orders page; later rounds update that snapshot,
   while payment replaces it with the paid order and cancellation removes it.
-- Database schema `7anouti.db.v27` normalizes stations, item statuses,
+- Database schema `7anouti.db.v30` normalizes stations, item statuses,
   ticket policy settings, product-level no-station overrides, and legacy open
   order numbers. This remains a browser-local workflow, not a production-safe
   multi-terminal queue; browser UI smoke did not verify real hardware printing
@@ -339,7 +423,7 @@ wage or timekeeping system.
 
 | Area | State before this phase | Now |
 | --- | --- | --- |
-| Auth | Browser-local demo auth | PBKDF2-hashed passwords/PINs, store-layer checks and PIN lockout; server auth still needed |
+| Auth | Browser-local demo auth | Hub PBKDF2 auth and PIN lockout plus local checks; production identity/session management still needed |
 | POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets and persistent table orders |
 | Orders | History, void (admin only) | + manager-PIN void authorization, reprint, `voidedByName` audit |
 | Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
@@ -348,15 +432,15 @@ wage or timekeeping system.
 | Activity log | Derived dashboard notices only | Append-only browser-local log, admin filters, details, CSV and pagination |
 | Payroll | None | Browser-local attendance, salary estimates, advances, and monthly salary expenses |
 | Printing | Browser print dialog only | + real ESC/POS over WebSerial (58/80 mm), test print, kitchen tickets |
-| Inventory | Product stock counters only | Unchanged (Phase 5) |
-| Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
+| Inventory | Product stock counters only | Inventory movements, supplier purchases and low-stock automation; recipes/costing remain incomplete |
+| Offline | None (browser-local demo DB) | Hub sync/outbox and PWA shell; cloud sync is unavailable |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v27`, migrated from the previous
-IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
-in localStorage. **This is a demo backend, not production storage** — it exists
-so the UX can be reviewed without infrastructure, and every mutation is
-funnelled through `AppStore` so a real API can replace it one-for-one.
+Standalone data lives in IndexedDB under `7anouti.db.v30`, migrated from prior
+IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. Hub mode persists
+store data in local JSONL files and uses IndexedDB as the client cache/outbox.
+Standalone persistence and authorization remain demo-grade; the hub is a
+shop-LAN server, not a cloud-hosted production database or payment service.
 
 ---
 
@@ -364,16 +448,16 @@ funnelled through `AppStore` so a real API can replace it one-for-one.
 
 ### Phase 1 — Audit ✅ (this document)
 
-### Phase 2 — Backend, DB, multi-tenancy ⛔ blocked (next phase)
+### Phase 2 — Production backend, DB, multi-tenancy ⛔ partially implemented
 
-Cannot be completed in this environment: no server, no PostgreSQL. What is
-**not** faked:
+The local Node hub provides authentication, store-scoped persistence and
+validation for selected operations, but no production cloud API/PostgreSQL.
+What remains:
 
-- No API server / PostgreSQL schema / migrations were written.
-- There is no trusted server: PBKDF2 hashing, PIN lockout, manager-PIN checks,
-  store ownership checks, admin-only mutation checks, register requirements,
-  stock/discount/credit-limit validation, expense ownership, and admin
-  protections are currently enforced by the browser store layer (`AppStore`).
+- No production PostgreSQL schema/migrations or hosted API were written.
+- The hub does not yet enforce every business invariant, including complete
+  payment tender reconciliation, customer credit limits, inventory costing,
+  and all register calculations. Some checks remain in the browser store layer.
 - Client-side controls can be bypassed by a user who can alter IndexedDB,
   localStorage, or the running JavaScript. They are defense-in-depth for the
   demo, not production authorization or tamper-resistant audit history.
@@ -453,11 +537,11 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 - Register permissions: `permissions.register` gates open/close/X/Z pages and
   actions (Amine/Karim have it; Salma/Hedi don't — demo lock states).
 
-### Phase 5 — Inventory, recipes, suppliers ⏳ not started
+### Phase 5 — Inventory, recipes, suppliers ⏳ partially implemented
 
-Current stock is per-product counters only. Plan: ingredient catalogue,
-recipe consumption per product, movement ledger (reason + employee + reference
-on every movement), low-stock alerts, valuation, suppliers + purchases.
+Product stock counters, inventory items/movements, supplier records, purchases,
+stock counts, and low-stock alerts are implemented. Recipe consumption per
+product and full ingredient valuation remain unimplemented.
 
 ### Gérant and inventory rollout from the owner brief (2026-11-13)
 
@@ -479,11 +563,11 @@ on every movement), low-stock alerts, valuation, suppliers + purchases.
 
 #### Phases 2–6 — Inventory, purchases, recipes, daily reporting, and staff use
 
-⏳ Not implemented yet. These phases must add trusted store-layer validation,
-append-only stock movements, supplier/purchase records, recipes and costing,
-daily stock counts/reports, and staff-consumption allowances. Bill images and
-business data remain browser-local until production file storage and the Phase
-2 backend exist.
+Inventory items, stock movement actions, supplier/purchase workflows, and stock
+count/reporting basics are implemented in the app and validated by store-layer
+guards; hub validation is partial. Recipes/costing and staff-consumption
+allowances remain unimplemented. Bill images and standalone data remain
+browser-local; hub mode stores business records locally on the hub machine.
 
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 
@@ -494,12 +578,14 @@ records relevant actions but is not tamper-resistant. Phase 2 must add
 server-side hashing, authoritative rate limiting, session timeout, and a
 trusted server-side audit log.
 
-### Phase 7 — Offline-first ⏳ not started (needs Phase 2 API design)
+### Phase 7 — Offline-first ✅ hub mode implemented; cloud sync unavailable
 
-Plan: IndexedDB mirror + mutation queue with UUIDs, service-worker app cache,
-sync with conflict detection (per-record version), never discard pending work.
+Hub mode provides an IndexedDB mirror/outbox, stable operation IDs, retry,
+snapshot reconciliation, conflict notices and a secure-context service-worker
+shell. Cloud sync is an unavailable interface stub; cross-device flows remain
+unverified.
 
-### Phase 8 — Owner PWA ⏳ not started · Phase 9 — Support/subscriptions ⏳ not started
+### Phase 8 — PWA foundation ✅ · Phase 9 — Support/subscriptions ⏳ not started
 
 ### Phase 10 — Full QA ⏳ ongoing per phase
 
@@ -600,21 +686,24 @@ Phase 1 build/type validation also passes. Manual browser scenarios still to run
   three-decimal quantity, total and stock validation; void each order and verify
   tracked stock is restored.
 
-Not executable here: real thermal printer over WebSerial (no hardware) — see
-§3 checklist; backend tests (no backend).
+Real thermal printer over WebSerial remains unverified without shop hardware.
+Automated Node coverage includes app domain rules and hub APIs; the app UI and
+three-phone flow remain unverified in Playwright.
 
 ---
 
 ## 5. Remaining limitations / next steps
 
-1. **Backend (Phase 2)** is the critical path: real auth, tenancy, audit logs,
-   backups. The frontend store layer is the seam.
-2. Server-backed authentication, authorization, lockout and tamper-resistant
-   audit data — Phase 2. Browser-side credential hashing and lockout are only
-   demo protections.
-3. Inventory module (Phase 5) — next implementation phase after backend, or in
-   parallel since it is frontend-compatible.
-4. Arabic receipts — needs raster printing pipeline.
-5. Offline mode (Phase 7) — after the API contract exists.
-6. Payments/gateway — not integrated (no provider/credentials yet).
-7. Tests: no automated test runner yet; per-phase manual QA is recorded here.
+1. A hosted production API/database, full authorization, and tamper-resistant
+   audit history remain unimplemented; the LAN hub is not a cloud service.
+2. Payment tender reconciliation, customer-credit enforcement, fiscal/tax
+   compliance, and authoritative close-report accounting remain incomplete.
+3. Inventory recipes, ingredient consumption and full cost valuation are not
+   implemented.
+4. Arabic receipts need a raster printing pipeline.
+5. Cloud sync and the full three-phone POS/table/kitchen/shift flow are
+   unverified or unavailable.
+6. Printer, drawer-kick, automatic retry and physical reconnect behavior need
+   real hardware testing; hub health is based on observed failed jobs.
+7. Automated Node tests pass (40); UI-level Playwright verification remains
+   unverified.

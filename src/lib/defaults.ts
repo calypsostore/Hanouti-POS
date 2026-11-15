@@ -28,6 +28,24 @@ export const DEFAULT_PAYROLL_SETTINGS = {
   autoCloseHours: 14,
 }
 
+export const DEFAULT_AUTOMATION_SETTINGS = {
+  drawerKickOnCash: true,
+  autoLockMinutes: 5,
+  autoLogoutMinutes: 720,
+  shiftReminders: true,
+  shiftReminderHours: 8,
+  warnAboutOpenTablesAtShiftClose: true,
+  lowStockAlerts: true,
+  hideOutOfStock: false,
+  retryPrintJobs: true,
+  fallbackPrintJobs: true,
+  printerRetryLimit: 5,
+  autoReconnectPrinters: true,
+  printerOfflineAlerts: true,
+  printerOfflineAlertMinutes: 5,
+  backupHealthAlerts: true,
+}
+
 export const normalizePayrollSettings = (value?: Partial<PayrollSettings>): PayrollSettings => {
   const workingDaysPerMonth = value?.workingDaysPerMonth
   const fullDayHours = value?.fullDayHours

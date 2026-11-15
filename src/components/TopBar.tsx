@@ -20,8 +20,12 @@ import { fmtDate, fmtTime } from '../lib/utils'
 import { AppIcon } from './AppIcon'
 import { BrandLogo } from './BrandLogo'
 import { ThemeToggle } from './ThemeToggle'
+import { InstallAppButton } from './InstallAppButton'
 import { Avatar, Badge } from './ui'
 import { can } from '../lib/permissions'
+import { hasPrintCapability } from '../lib/printQueue'
+import { useToast } from './toast'
+import { ReprintLastReceipt } from './ReprintLastReceipt'
 
 const titles: Record<string, string> = {
   '/admin': 'Overview',
@@ -40,12 +44,11 @@ const titles: Record<string, string> = {
 
 export function TopBar({
   onMenu,
-  onToggleSidebar,
 }: {
   onMenu: () => void
-  onToggleSidebar: () => void
 }) {
-  const { db, user, store, logout } = useApp()
+  const { db, user, store, logout, providerMode, providerStatus, printPendingHere, acknowledgeProviderConflicts } = useApp()
+  const { push } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -67,24 +70,41 @@ export function TopBar({
   const readyCount = readyOrders.reduce((total, order) =>
     total + order.items.filter((item) => item.status === 'ready').reduce((sum, item) => sum + item.qty, 0), 0)
   const noticeCount = notices.reduce((total, notice) => total + notice.count, 0) + readyCount
-  const failedPrintCount = store
+  const localFailedPrintCount = store
     ? db.printJobs.filter((job) => job.storeId === store.id && job.status === 'failed').length
     : 0
+  const failedPrintCount = providerMode === 'hub'
+    ? Math.max(localFailedPrintCount, providerStatus.failedPrintCount)
+    : localFailedPrintCount
+  const localPrinterAvailable = store && db.printers.some((printer) =>
+    printer.storeId === store.id && printer.enabled && printer.connection === 'browser-webserial' &&
+    hasPrintCapability(printer),
+  )
+  const queuedHubPrint = store && providerStatus.pendingPrintCount > 0
+    ? db.printJobs.find((job) => job.storeId === store.id && job.status === 'queued')
+    : undefined
+  const connectionLabel = providerStatus.connection === 'connected'
+    ? 'Hub connected'
+    : providerStatus.connection === 'internet-offline'
+      ? 'Internet offline · hub is fine'
+      : 'Hub offline · working locally'
+  const connectionTone = providerStatus.connection === 'connected'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : providerStatus.connection === 'internet-offline'
+      ? 'border-amber-200 bg-amber-50 text-amber-900'
+      : 'border-rose-200 bg-rose-50 text-rose-800'
   const title = titles[location.pathname] ?? BRAND_NAME
   const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
   const onSignOut = () => { logout(); navigate('/login') }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line/80 bg-white/95 backdrop-blur-md dark:bg-espresso-800/95">
+    <header className="sticky top-0 z-30 border-b border-line/80 bg-white/60 backdrop-blur-md dark:bg-espresso-800/60">
       <div className="mx-auto flex min-h-[68px] max-w-[1680px] items-center gap-2 px-3 sm:px-5 lg:px-7">
         <button
           type="button"
-          onClick={() => {
-            if (window.matchMedia('(min-width: 1024px)').matches) onToggleSidebar()
-            else onMenu()
-          }}
-          className="rounded-xl border border-line bg-white p-2 text-ink shadow-sm hover:bg-cream-100 dark:bg-espresso-800"
+          onClick={onMenu}
+          className="rounded-xl border border-line bg-white p-2 text-ink shadow-sm hover:bg-cream-100 dark:bg-espresso-800 lg:hidden"
           aria-label="Toggle navigation"
           title="Toggle navigation"
         ><Menu className="h-4 w-4" /></button>
@@ -112,6 +132,70 @@ export function TopBar({
           <span>{fmtDate(now.toISOString())}</span><span>{fmtTime(now.toISOString())}</span>
         </div>
         <ThemeToggle accent={store?.settings.accent} defaultMode={store?.settings.colorMode} />
+        <InstallAppButton />
+        {!isSuper && store && <div className="hidden sm:block"><ReprintLastReceipt /></div>}
+        <div
+          className={`max-w-40 truncate rounded-lg border px-2 py-1 text-[9px] font-bold leading-tight sm:max-w-none sm:text-[10px] ${providerMode === 'hub' ? connectionTone : 'border-line bg-cream-100 text-muted'}`}
+          role="status"
+          aria-live="polite"
+          title={providerMode === 'hub' ? connectionLabel : 'Local data on this device'}
+        >
+          {providerMode === 'hub'
+            ? `${connectionLabel}${providerStatus.pendingCount ? ` · ${providerStatus.pendingCount} changes waiting` : ''}${providerStatus.lastError ? ` · ${providerStatus.lastError}` : ''}`
+            : 'This device'}
+        </div>
+        {providerMode === 'hub' && providerStatus.connection === 'offline' &&
+          providerStatus.pendingPrintCount > 0 && !localPrinterAvailable && (
+            <span
+              className="max-w-40 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-semibold text-amber-900 sm:max-w-64"
+              role="status"
+              title="Print jobs remain queued on this device until the hub reconnects or a local WebSerial printer is configured."
+            >
+              Print queued · reconnect hub or configure local printer
+            </span>
+          )}
+        {providerMode === 'hub' && store && (
+          <div className="flex max-w-32 gap-1 overflow-x-auto sm:max-w-56" aria-label="Hub printer status">
+            {db.printers.filter((printer) => printer.storeId === store.id && printer.enabled).map((printer) => {
+              const status = providerStatus.printerStatuses[printer.id] ?? 'offline'
+              const tone = status === 'online'
+                ? 'bg-emerald-100 text-emerald-800'
+                : status === 'error'
+                  ? 'bg-rose-100 text-rose-800'
+                  : 'bg-slate-100 text-slate-700'
+              return <span key={printer.id} className={`shrink-0 rounded-full px-1.5 py-1 text-[9px] font-semibold ${tone}`} title={`${printer.name}: ${status}`} aria-label={`${printer.name}: ${status}`}>
+                {printer.name.slice(0, 7)} · {status}
+              </span>
+            })}
+          </div>
+        )}
+        {providerMode === 'hub' && providerStatus.connection === 'offline' &&
+          providerStatus.pendingPrintCount > 0 && queuedHubPrint && localPrinterAvailable && (
+            <button
+              type="button"
+              onClick={() => {
+                void printPendingHere(queuedHubPrint.id).then((result) => {
+                  push(result.ok ? 'Print sent to this device.' : result.error, result.ok ? 'success' : 'error')
+                }).catch((error: unknown) => {
+                  push(error instanceof Error ? error.message : 'Local printing failed.', 'error')
+                })
+              }}
+              className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-900"
+              title="Send the oldest unattempted hub print job to a local WebSerial printer"
+            >
+              Print here instead
+            </button>
+          )}
+        {providerMode === 'hub' && providerStatus.conflicts.length > 0 && (
+          <Link
+            to="/admin/products"
+            onClick={acknowledgeProviderConflicts}
+            className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-900"
+            title={`Another phone changed ${providerStatus.conflicts.join(', ')}. The hub's latest edit is active; review the menu.`}
+          >
+            Review menu conflict
+          </Link>
+        )}
         {(can(user, 'viewReports') || readyOrders.length > 0) && (
           <div className="relative">
             <button type="button" onClick={() => setNoticesOpen(!noticesOpen)} className="relative rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800" aria-label="Notifications" aria-expanded={noticesOpen}>

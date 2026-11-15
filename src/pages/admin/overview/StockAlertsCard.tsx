@@ -4,8 +4,8 @@ import type { AdminDashboardData } from '../../../lib/dashboard'
 import { AlertPill } from '../../../components/dashboard/AlertPill'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
 
-export function StockAlertsCard({ data }: { data: AdminDashboardData }) {
-  if (!data.trackedProducts) return null
+export function StockAlertsCard({ data, enabled }: { data: AdminDashboardData; enabled: boolean }) {
+  if (!enabled || !data.trackedProducts) return null
   const products = [...data.outOfStock.slice(0, 3), ...data.lowStock.slice(0, 3)].slice(0, 5)
   return (
     <SectionCard

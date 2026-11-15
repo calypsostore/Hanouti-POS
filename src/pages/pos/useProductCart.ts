@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { round } from '../../lib/pricing-utils'
 import { uid } from '../../lib/utils'
 import type { Database, OrderItem, Product, Store } from '../../types'
@@ -8,15 +8,25 @@ export function useProductCart(
   db: Database,
   store: Store | null,
   push: (message: string, type?: 'success' | 'error' | 'info') => void,
+  hasOpenShift: boolean,
 ) {
   const [cart, setCart] = useState<OrderItem[]>([])
   const [optionsProduct, setOptionsProduct] = useState<{ product: Product; variantId?: string } | null>(null)
+  const shiftPromptShown = useRef(false)
+
+  useEffect(() => {
+    if (hasOpenShift) shiftPromptShown.current = false
+  }, [hasOpenShift])
 
   const qtyInCart = (productId: string) =>
     cart.filter((item) => item.productId === productId).reduce((total, item) => total + item.qty, 0)
 
   const addSelection = (product: Product, selection: ProductSelection) => {
     if (!store) return
+    if (store.settings.requireShiftForOrders && !hasOpenShift && !shiftPromptShown.current) {
+      shiftPromptShown.current = true
+      push('Open your shift before taking orders.', 'error')
+    }
     const variant = product.variants?.find((item) => item.id === selection.variantId)
     const tracksStock = variant ? variant.trackStock : product.trackStock
     const availableStock = variant ? variant.stock : product.stock

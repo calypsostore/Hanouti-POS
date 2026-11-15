@@ -34,3 +34,37 @@ test('reconnect replay does not duplicate order items or payments', () => {
   assert.equal(state.collections.orderItems.o1.items.length, 1)
   assert.equal(state.collections.payments.p1.payments.length, 1)
 })
+
+test('stale phone updates merge separate table lines and preserve the newest shared-line edit', () => {
+  const initial = {
+    seq: 0,
+    collections: {
+      openOrders: {
+        order1: { id: 'order1', items: [{ lineId: 'old', qty: 1, updatedAt: '2026-01-01T10:00:00Z' }], tableHistory: [] },
+      },
+    },
+    appliedOpIds: [],
+  }
+  const phoneA = applyChangeSet(initial, {
+    ...metadata, opId: 'phone-a',
+    ops: [{ kind: 'put', collection: 'openOrders', id: 'order1', document: {
+      id: 'order1', items: [
+        { lineId: 'old', qty: 2, updatedAt: '2026-01-01T10:02:00Z' },
+        { lineId: 'a', qty: 1, updatedAt: '2026-01-01T10:02:00Z' },
+      ], tableHistory: [{ id: 'event-a', at: '2026-01-01T10:02:00Z' }],
+    } }],
+  })
+  const phoneB = applyChangeSet(phoneA, {
+    ...metadata, opId: 'phone-b', baseSeq: 0,
+    ops: [{ kind: 'put', collection: 'openOrders', id: 'order1', document: {
+      id: 'order1', items: [
+        { lineId: 'old', qty: 3, updatedAt: '2026-01-01T10:03:00Z' },
+        { lineId: 'b', qty: 1, updatedAt: '2026-01-01T10:03:00Z' },
+      ], tableHistory: [{ id: 'event-b', at: '2026-01-01T10:03:00Z' }],
+    } }],
+  })
+  const order = phoneB.collections.openOrders.order1
+  assert.deepEqual(order.items.map((item) => item.lineId).sort(), ['a', 'b', 'old'])
+  assert.equal(order.items.find((item) => item.lineId === 'old').qty, 3)
+  assert.deepEqual(order.tableHistory.map((event) => event.id).sort(), ['event-a', 'event-b'])
+})

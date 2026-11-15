@@ -56,7 +56,7 @@ export default function StationBoard({
   hubConnected?: boolean
 }) {
   const { stationId: routeStationId } = useParams()
-  const { db, user, store: signedInStore, setOpenOrderItemStatus, updateDeviceOrderItemStatus } = useApp()
+  const { db, user, store: signedInStore, setOpenOrderItemStatus, updateDeviceOrderItemStatus, providerMode } = useApp()
   const { push } = useToast()
   const [stationFilter, setStationFilter] = useState(
     deviceSession?.stationIds.length === 1 ? deviceSession.stationIds[0] : 'all',
@@ -69,6 +69,7 @@ export default function StationBoard({
   const store = deviceSession
     ? db.stores.find((candidate) => candidate.id === deviceSession.storeId) ?? null
     : signedInStore
+  const sharedHub = hubConnected || providerMode === 'hub'
   const stations = db.stations.filter((station) =>
     station.storeId === store?.id && station.active && station.screen &&
     (!deviceSession || deviceSession.stationIds.includes(station.id)),
@@ -214,7 +215,7 @@ export default function StationBoard({
           {soundEnabled ? 'Sound on' : 'Enable sound'}
         </Button>
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-900">
-          {hubConnected ? 'Connected to shop hub' : 'Same device only'}
+          {sharedHub ? 'Shop hub mode' : 'Same device only'}
         </span>
         {!wakeLockAvailable && deviceSession && <span className="text-[10px] text-muted">Screen may sleep</span>}
         {onExitRequest && (
@@ -224,7 +225,7 @@ export default function StationBoard({
         )}
       </header>
 
-      {!hubConnected && (
+      {!sharedHub && (
         <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950">
           This screen only sees orders from this browser/device. Connect through the{' '}
           <a className="font-semibold underline" href="https://github.com/calypsostore/cafeteria-POS/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noreferrer">shop hub</a>

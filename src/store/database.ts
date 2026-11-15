@@ -7,7 +7,7 @@ import type {
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
 import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v29'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v30'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -402,6 +402,56 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             ? s.settings.stationTicketPrintPolicy
             : 'automatic' as const,
           reportPrintPolicy: 'manual' as const,
+          automation: {
+            ...DEFAULT_AUTOMATION_SETTINGS,
+            ...(isRecord(s.settings.automation) ? s.settings.automation : {}),
+            drawerKickOnCash: isRecord(s.settings.automation) && typeof s.settings.automation.drawerKickOnCash === 'boolean'
+              ? s.settings.automation.drawerKickOnCash
+              : DEFAULT_AUTOMATION_SETTINGS.drawerKickOnCash,
+            autoLockMinutes: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.autoLockMinutes : undefined)
+              ? Math.max(0, Math.min(120, Math.round(Number(s.settings.automation.autoLockMinutes))))
+              : DEFAULT_AUTOMATION_SETTINGS.autoLockMinutes,
+            autoLogoutMinutes: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.autoLogoutMinutes : undefined)
+              ? Math.max(0, Math.min(10080, Math.round(Number(s.settings.automation.autoLogoutMinutes))))
+              : DEFAULT_AUTOMATION_SETTINGS.autoLogoutMinutes,
+            shiftReminders: isRecord(s.settings.automation) && typeof s.settings.automation.shiftReminders === 'boolean'
+              ? s.settings.automation.shiftReminders
+              : DEFAULT_AUTOMATION_SETTINGS.shiftReminders,
+            shiftReminderHours: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.shiftReminderHours : undefined)
+              ? Math.max(1, Math.min(24, Math.round(Number(s.settings.automation.shiftReminderHours))))
+              : DEFAULT_AUTOMATION_SETTINGS.shiftReminderHours,
+            warnAboutOpenTablesAtShiftClose: isRecord(s.settings.automation) &&
+              typeof s.settings.automation.warnAboutOpenTablesAtShiftClose === 'boolean'
+              ? s.settings.automation.warnAboutOpenTablesAtShiftClose
+              : DEFAULT_AUTOMATION_SETTINGS.warnAboutOpenTablesAtShiftClose,
+            lowStockAlerts: isRecord(s.settings.automation) && typeof s.settings.automation.lowStockAlerts === 'boolean'
+              ? s.settings.automation.lowStockAlerts
+              : DEFAULT_AUTOMATION_SETTINGS.lowStockAlerts,
+            hideOutOfStock: isRecord(s.settings.automation) && typeof s.settings.automation.hideOutOfStock === 'boolean'
+              ? s.settings.automation.hideOutOfStock
+              : DEFAULT_AUTOMATION_SETTINGS.hideOutOfStock,
+            retryPrintJobs: isRecord(s.settings.automation) && typeof s.settings.automation.retryPrintJobs === 'boolean'
+              ? s.settings.automation.retryPrintJobs
+              : DEFAULT_AUTOMATION_SETTINGS.retryPrintJobs,
+            fallbackPrintJobs: isRecord(s.settings.automation) && typeof s.settings.automation.fallbackPrintJobs === 'boolean'
+              ? s.settings.automation.fallbackPrintJobs
+              : DEFAULT_AUTOMATION_SETTINGS.fallbackPrintJobs,
+            printerRetryLimit: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.printerRetryLimit : undefined)
+              ? Math.max(1, Math.min(10, Math.round(Number(s.settings.automation.printerRetryLimit))))
+              : DEFAULT_AUTOMATION_SETTINGS.printerRetryLimit,
+            autoReconnectPrinters: isRecord(s.settings.automation) && typeof s.settings.automation.autoReconnectPrinters === 'boolean'
+              ? s.settings.automation.autoReconnectPrinters
+              : DEFAULT_AUTOMATION_SETTINGS.autoReconnectPrinters,
+            printerOfflineAlerts: isRecord(s.settings.automation) && typeof s.settings.automation.printerOfflineAlerts === 'boolean'
+              ? s.settings.automation.printerOfflineAlerts
+              : DEFAULT_AUTOMATION_SETTINGS.printerOfflineAlerts,
+            printerOfflineAlertMinutes: isFiniteNumber(isRecord(s.settings.automation) ? s.settings.automation.printerOfflineAlertMinutes : undefined)
+              ? Math.max(1, Math.min(1440, Math.round(Number(s.settings.automation.printerOfflineAlertMinutes))))
+              : DEFAULT_AUTOMATION_SETTINGS.printerOfflineAlertMinutes,
+            backupHealthAlerts: isRecord(s.settings.automation) && typeof s.settings.automation.backupHealthAlerts === 'boolean'
+              ? s.settings.automation.backupHealthAlerts
+              : DEFAULT_AUTOMATION_SETTINGS.backupHealthAlerts,
+          },
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']

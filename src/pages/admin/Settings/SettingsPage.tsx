@@ -19,8 +19,10 @@ import DataTab from './DataTab'
 import StationsTab from './StationsTab'
 import ServiceTab from './ServiceTab'
 import DevicesTab from './DevicesTab'
+import AutomationTab from './AutomationTab'
+import { readDeviceReceiptPolicy, saveDeviceReceiptPolicy } from '../../../lib/printPreferences'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'data'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'automation' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 export type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
@@ -30,13 +32,13 @@ export default function SettingsPage() {
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices'
+    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation'
       ? requested
       : 'profile'
   })
   const requestedTab = searchParams.get('tab')
   const activeTab: Tab = requestedTab === 'tables' || requestedTab === 'stations' ||
-    requestedTab === 'service' || requestedTab === 'devices'
+    requestedTab === 'service' || requestedTab === 'devices' || requestedTab === 'automation'
     ? requestedTab
     : tab
   const changeTab = (next: Tab) => {
@@ -81,9 +83,21 @@ export default function SettingsPage() {
         receiptPrintPolicy: 'ask',
         stationTicketPrintPolicy: 'automatic',
         reportPrintPolicy: 'manual',
+        automation: {
+          drawerKickOnCash: true, autoLockMinutes: 5, autoLogoutMinutes: 720,
+          shiftReminders: true, shiftReminderHours: 8,
+          warnAboutOpenTablesAtShiftClose: true, lowStockAlerts: true, hideOutOfStock: false,
+          retryPrintJobs: true, fallbackPrintJobs: true, printerRetryLimit: 5,
+          autoReconnectPrinters: true, printerOfflineAlerts: true,
+          printerOfflineAlertMinutes: 5, backupHealthAlerts: true,
+        },
       },
   )
   const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)
+  const [deviceReceiptPolicyState, setDeviceReceiptPolicyState] = useState<{
+    storeId: string
+    value: StoreSettings['receiptPrintPolicy']
+  } | null>(null)
   const [copied, setCopied] = useState(false)
   const [printer, setPrinter] = useState<PrinterState>(readPrinterState())
   const [testJob, setTestJob] = useState(false)
@@ -94,6 +108,21 @@ export default function SettingsPage() {
 
   const set: SettingsSetter = (key, value) =>
     setSettings((current) => ({ ...current, [key]: value }))
+  const deviceReceiptPolicy = deviceReceiptPolicyState?.storeId === store?.id
+    ? deviceReceiptPolicyState.value
+    : store
+      ? readDeviceReceiptPolicy(store.id, settings.receiptPrintPolicy)
+      : 'ask'
+  const changeDeviceReceiptPolicy = (value: StoreSettings['receiptPrintPolicy']) => {
+    if (!store) return
+    try {
+      saveDeviceReceiptPolicy(store.id, value)
+      setDeviceReceiptPolicyState({ storeId: store.id, value })
+      push('This device receipt policy saved', 'success')
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save this device receipt policy.', 'error')
+    }
+  }
 
   const save = async () => {
     const profileResult = updateStore(store.id, form)
@@ -163,6 +192,7 @@ export default function SettingsPage() {
             { value: 'stations' as const, label: 'Stations' },
             { value: 'service' as const, label: 'Service' },
             { value: 'devices' as const, label: 'Devices & printing' },
+            { value: 'automation' as const, label: 'Automation' },
             ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
           ]}
         />
@@ -212,7 +242,13 @@ export default function SettingsPage() {
       {activeTab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
       {activeTab === 'stations' && <StationsTab storeId={store.id} />}
       {activeTab === 'service' && <ServiceTab settings={settings} set={set} />}
-      {activeTab === 'devices' && <DevicesTab storeId={store.id} settings={settings} set={set} />}
+      {activeTab === 'devices' && <DevicesTab storeId={store.id} />}
+      {activeTab === 'automation' && <AutomationTab
+        settings={settings}
+        set={set}
+        receiptPolicy={deviceReceiptPolicy}
+        onReceiptPolicyChange={changeDeviceReceiptPolicy}
+      />}
       {activeTab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal

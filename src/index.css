@@ -9,7 +9,7 @@
 }
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --color-cream-50: #ffffff;
   --color-cream-100: #f6f7fe;
@@ -258,7 +258,7 @@ html.dark {
   width: 320px;
   background: #fff;
   color: #111b30;
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 12px;
   line-height: 1.5;
   padding: 22px 20px;

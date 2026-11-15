@@ -20,6 +20,7 @@ import { cn, money } from '../lib/utils'
 import { BRAND_NAME } from '../lib/brand'
 import { BrandLogo } from '../components/BrandLogo'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { InstallAppButton } from '../components/InstallAppButton'
 import { APP_BUILD_TIMESTAMP, APP_VERSION } from '../lib/appVersion'
 import { DB_KEY } from '../store/database'
 import type { User } from '../types'
@@ -60,7 +61,7 @@ const demoAccounts: DemoAccount[] = [
 ]
 
 export default function Login() {
-  const { db, login, loginPin, databaseReady, databaseError } = useApp()
+  const { db, login, loginPin, databaseReady, databaseError, providerMode } = useApp()
   const navigate = useNavigate()
   const [method, setMethod] = useState<'email' | 'pin'>('email')
   const [email, setEmail] = useState('sami@cafeyasmine.tn')
@@ -68,6 +69,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [username, setUsername] = useState('amine.yasmine')
   const [pin, setPin] = useState('1234')
+  const [storeCode, setStoreCode] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const canSubmit = databaseReady && !databaseError && !isSubmitting
@@ -88,12 +90,12 @@ export default function Login() {
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await login(email, password)
+      const res = await login(email, password, storeCode)
       if (!res.ok) {
         setError(res.error)
         return
       }
-      const account = db.users.find((candidate) => candidate.email?.toLowerCase() === email.trim().toLowerCase())
+      const account = res.user ?? db.users.find((candidate) => candidate.email?.toLowerCase() === email.trim().toLowerCase())
       const target = account?.role ?? (email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : 'admin')
       go(target, account)
     } catch (loginError) {
@@ -109,12 +111,12 @@ export default function Login() {
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await loginPin(username, pin)
+      const res = await loginPin(username, pin, storeCode)
       if (!res.ok) {
         setError(res.error)
         return
       }
-      const account = db.users.find((candidate) => candidate.username?.toLowerCase() === username.trim().toLowerCase())
+      const account = res.user ?? db.users.find((candidate) => candidate.username?.toLowerCase() === username.trim().toLowerCase())
       go(account?.role ?? 'staff', account)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
@@ -135,9 +137,9 @@ export default function Login() {
         setError(res.error)
         return
       }
-      const user = account.role === 'Staff'
+      const user = res.user ?? (account.role === 'Staff'
         ? db.users.find((candidate) => candidate.username === account.username)
-        : db.users.find((candidate) => candidate.email === account.email)
+        : db.users.find((candidate) => candidate.email === account.email))
       go(user?.role ?? (account.role === 'Super admin' ? 'super' : account.role === 'Staff' ? 'staff' : 'admin'), user)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
@@ -223,13 +225,17 @@ export default function Login() {
       {/* Form panel */}
       <div className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
         <div className="glass-strong w-full max-w-[500px] rounded-[30px] p-5 sm:p-8">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+          <div className="mb-8 flex items-center justify-between gap-2.5 lg:hidden">
             <BrandLogo size="md" />
+            <InstallAppButton />
           </div>
 
           <h2 className="text-[28px] font-extrabold tracking-[-0.03em] text-ink">Welcome back</h2>
           <p className="mt-1.5 text-[13.5px] text-muted">
             Sign in to your workspace to start the day.
+          </p>
+          <p className="mt-2 text-[11px] font-semibold text-muted">
+            Data mode: {providerMode === 'hub' ? 'Shop hub' : 'This device'}
           </p>
 
           <div className="mt-6">
@@ -263,6 +269,11 @@ export default function Login() {
 
           {method === 'email' ? (
             <form onSubmit={submitEmail} className="mt-5 space-y-4">
+              {providerMode === 'hub' && (
+                <Field label="Store code">
+                  <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toLowerCase())} placeholder="your-store-code" autoComplete="organization" required />
+                </Field>
+              )}
               <Field label="Email address">
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
@@ -304,6 +315,11 @@ export default function Login() {
             </form>
           ) : (
             <form onSubmit={submitPin} className="mt-5 space-y-4">
+              {providerMode === 'hub' && (
+                <Field label="Store code">
+                  <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toLowerCase())} placeholder="your-store-code" autoComplete="organization" required />
+                </Field>
+              )}
               <Field label="Username" hint="Demo: amine.yasmine">
                 <Input
                   value={username}
@@ -332,15 +348,15 @@ export default function Login() {
             </form>
           )}
 
-          <div className="my-6 flex items-center gap-3">
+          {providerMode === 'local' && <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-line" />
             <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted/70">
               Explore the demo
             </span>
             <div className="h-px flex-1 bg-line" />
-          </div>
+          </div>}
 
-          <div className="space-y-2">
+          {providerMode === 'local' && <div className="space-y-2">
             {demoAccounts.map((a) => (
               <button
                 key={a.role}
@@ -366,12 +382,14 @@ export default function Login() {
                 <Check className="h-4 w-4 text-line opacity-0 transition group-hover:text-accent-foreground group-hover:opacity-100" />
               </button>
             ))}
-          </div>
+          </div>}
 
           <p className="mt-5 text-center text-[10.5px] leading-relaxed text-muted/80">
-            Data is stored in this browser/device. Staff must use the same device or import the store backup.
+            {providerMode === 'hub'
+              ? 'The shop hub is the sync authority. This device keeps an encrypted-session local data cache for offline work.'
+              : 'Data is stored in this browser/device. Staff must use the same device or import the store backup.'}
             <br />
-            Owner/admin demo password: <span className="font-semibold text-muted">password</span>.
+            {providerMode === 'local' && <>Owner/admin demo password: <span className="font-semibold text-muted">password</span>.</>}
           </p>
           <p className="mt-3 break-all text-center text-[9.5px] leading-relaxed text-muted/70">
             App {APP_VERSION} · Database {DB_KEY} · Built {APP_BUILD_TIMESTAMP}

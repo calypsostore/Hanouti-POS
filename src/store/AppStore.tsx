@@ -29,6 +29,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ready: database.ready,
     loadError: database.loadError,
     commitDb: database.commitDb,
+    provider: database.provider,
+    applyProviderSnapshot: database.applyProviderSnapshot,
   })
   const guards = useActorGuards({
     dbRef: database.dbRef,
@@ -92,10 +94,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     db,
     databaseReady: database.ready,
     databaseError: database.loadError,
+    providerMode: database.provider.mode,
+    providerStatus: database.providerStatus,
+    acknowledgeProviderConflicts: () => database.provider.acknowledgeConflicts(),
     user,
     store,
     login: auth.login,
     loginPin: auth.loginPin,
+    verifyPin: (pin: string) => database.provider.verifyPin(pin, user?.pin),
     logout: auth.logout,
     ...orders,
     ...openOrders,

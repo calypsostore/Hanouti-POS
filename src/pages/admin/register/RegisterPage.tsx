@@ -43,6 +43,7 @@ export default function RegisterPage() {
   const canSeeAll = user.role !== 'staff' || !!user.permissions.supervisor
   const sessions = canSeeAll ? allSessions : allSessions.filter((session) => (session.staffId ?? session.openedById) === user.id)
   const open = openShiftForStaff(db, store.id, user.id) ?? null
+  const openTableCount = db.openOrders.filter((order) => order.storeId === store.id).length
   const anyOpen = allSessions.find((session) => session.status === 'open') ?? null
   const closed = sessions.filter((session) => session.status === 'closed')
 
@@ -220,6 +221,8 @@ export default function RegisterPage() {
       <RegisterDialogs
         store={store}
         open={open}
+        openTableCount={openTableCount}
+        warnAboutOpenTables={store.settings.automation.warnAboutOpenTablesAtShiftClose}
         expected={expected}
         itemsReport={open ? itemDetailsForSession(open, nowISO).report : undefined}
         openingInput={openingInput}

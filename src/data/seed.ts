@@ -26,7 +26,7 @@ import type {
   User,
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
-import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
@@ -67,6 +67,7 @@ const defaultSettings = (
   receiptPrintPolicy: 'ask',
   stationTicketPrintPolicy: 'automatic',
   reportPrintPolicy: 'manual',
+  automation: { ...DEFAULT_AUTOMATION_SETTINGS },
   ...over,
 })
 

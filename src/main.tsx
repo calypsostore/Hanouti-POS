@@ -3,13 +3,18 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { BRAND_NAME } from './lib/brand'
-import logoImage from '../logo/logo1.png'
 
 document.title = BRAND_NAME
 const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
 if (favicon) {
-  favicon.href = logoImage
+  favicon.href = '/favicon-32.png'
   favicon.type = 'image/png'
+}
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  void navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+    console.error('7anouti: service worker registration failed.', error)
+  })
 }
 
 createRoot(document.getElementById('root')!).render(

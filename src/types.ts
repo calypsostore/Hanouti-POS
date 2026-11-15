@@ -157,6 +157,24 @@ export interface PayrollSettings {
   autoCloseHours: number
 }
 
+export interface AutomationSettings {
+  drawerKickOnCash: boolean
+  autoLockMinutes: number
+  autoLogoutMinutes: number
+  shiftReminders: boolean
+  shiftReminderHours: number
+  warnAboutOpenTablesAtShiftClose: boolean
+  lowStockAlerts: boolean
+  hideOutOfStock: boolean
+  retryPrintJobs: boolean
+  fallbackPrintJobs: boolean
+  printerRetryLimit: number
+  autoReconnectPrinters: boolean
+  printerOfflineAlerts: boolean
+  printerOfflineAlertMinutes: number
+  backupHealthAlerts: boolean
+}
+
 export interface StoreSettings {
   posMode: PosMode
   currency: string
@@ -183,6 +201,7 @@ export interface StoreSettings {
   receiptPrintPolicy: ReceiptPrintPolicy
   stationTicketPrintPolicy: TicketPrintPolicy
   reportPrintPolicy: 'manual'
+  automation: AutomationSettings
 }
 
 export interface Store {

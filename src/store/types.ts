@@ -6,6 +6,7 @@ import type {
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
+export type LoginResult = { ok: true; user?: User } | { ok: false; error: string }
 export type ActorResult = { ok: true; actor: User } | { ok: false; error: string }
 export type BackupExportResult =
   | { ok: true; database: Database }
@@ -177,8 +178,9 @@ export interface AppContextValue {
   databaseError: string
   user: User | null
   store: Store | null
-  login: (email: string, password: string) => Promise<Result>
-  loginPin: (username: string, pin: string) => Promise<Result>
+  login: (email: string, password: string, storeCode?: string) => Promise<LoginResult>
+  loginPin: (username: string, pin: string, storeCode?: string) => Promise<LoginResult>
+  verifyPin: (pin: string) => Promise<boolean>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
   addTable: (storeId: string, data: Pick<DiningTableInput, 'name' | 'seats' | 'sectionId'>) => Result
@@ -232,6 +234,7 @@ export interface AppContextValue {
   setPrintRoute: (storeId: string, type: PrintJobType, stationId: string | undefined, printerId: string | undefined) => Result
   enqueuePrint: (input: EnqueuePrintInput) => Promise<PrintJobResult>
   retryPrintJob: (id: string) => Promise<PrintJobResult>
+  printPendingHere: (id: string) => Promise<PrintJobResult>
   cancelPrintJob: (id: string) => Result
   pairStationDevice: (storeCode: string, pairingCode: string) => Promise<PairedDeviceResult>
   validateStationDeviceSession: (deviceId: string, token: string) => Promise<PairedDeviceResult>
@@ -287,4 +290,7 @@ export interface AppContextValue {
   exportDatabaseBackup: () => BackupExportResult
   importDatabaseBackup: (value: unknown) => Promise<Result>
   resetDemo: (confirmation: string) => Promise<Result>
+  providerMode: 'local' | 'hub'
+  providerStatus: import('./providers/DataProvider').ProviderStatus
+  acknowledgeProviderConflicts: () => void
 }

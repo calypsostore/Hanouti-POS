@@ -30,6 +30,7 @@ import { can } from './lib/permissions'
 import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
+import { SessionAutomationGuard } from './components/SessionAutomationGuard'
 
 function homeFor(user: User) {
   if (user.stationOnly) return user.stationId ? `/station/${encodeURIComponent(user.stationId)}` : '/kitchen'
@@ -135,6 +136,7 @@ export default function App() {
           <ScrollToTop />
           <DeviceKioskGate>
           <StationOnlyGate>
+          <SessionAutomationGuard>
           <Routes>
             <Route path="/pair" element={<PairStationDevice />} />
             <Route path="/kiosk" element={<StationDeviceKiosk />} />
@@ -318,6 +320,7 @@ export default function App() {
 
             <Route path="*" element={<HomeRoute />} />
           </Routes>
+          </SessionAutomationGuard>
           </StationOnlyGate>
           </DeviceKioskGate>
         </BrowserRouter>

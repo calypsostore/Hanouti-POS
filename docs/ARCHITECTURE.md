@@ -34,8 +34,10 @@
 - Shared application types are in `src/types.ts`; slice contracts are in
   `src/store/types.ts` and `src/store/sliceTypes.ts`. Seed data belongs in
   `src/data/`.
-- This is a browser-local demo application. Business data uses IndexedDB;
-  the session identifier and small UI preferences remain in localStorage.
+- Standalone mode uses browser-local IndexedDB through `LocalProvider`.
+  Same-origin hub hosting selects `HubProvider`, which uses the hub as the
+  sync authority and IndexedDB as its offline cache/outbox; credentials and
+  small UI preferences remain in localStorage.
   Appearance supports System, Light, and Dark; System follows the live device
   color-scheme preference and sets `html.dark` before React mounts.
   Browser storage is not a trusted backend or production security boundary.
@@ -55,12 +57,20 @@
   `stationId`. The `/kitchen` and `/station/:stationId` routes render the
   station board in `src/pages/pos/StationBoard.tsx`; `viewStation` protects
   those routes and station status mutations. Database schema is currently
-  `7anouti.db.v27`.
+  `7anouti.db.v30`; v30 normalizes store automation settings with safe defaults
+  for existing local data.
 - The optional shop hub is a separate Node 22+ package in `hub/`. It serves the
   built `dist/` app and scoped REST/WebSocket APIs, stores each store's data in
   fsynced JSONL snapshots, and reuses `src/shared/sync.ts` plus
-  `src/shared/escpos.ts`. The browser app remains IndexedDB-backed until M4
-  connects a HubProvider; see `docs/HUB.md` and `docs/SYNC.md`.
+  `src/shared/escpos.ts`. Provider implementations and the cloud adapter stub
+  live in `src/store/providers/`; hub mode refreshes full snapshots on live
+  WebSocket events and periodically polls as a repair fallback.
+  The hub enforces bearer authentication, store scope, permissions, order
+  pricing and bounded request/rate limits for its protected API paths.
+  Standalone mode remains browser-local and is not a trusted security
+  boundary. Hub payment tender reconciliation, customer credit limits, and
+  independently recomputed close-report arithmetic remain unenforced.
+  See `docs/HUB.md`, `docs/SYNC.md`, and `docs/STATIONS.md`.
 
 ## Adding a page
 

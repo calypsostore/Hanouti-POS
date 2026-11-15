@@ -30,3 +30,10 @@ test('selects the printer codepage and limits rows to the requested paper width'
   const cp850 = [...linesToEscpos([], 80, { codepage: 'cp850' })]
   assert.ok(cp850.includes(0x02))
 })
+
+test('limits double-width rows to half the available character columns', () => {
+  const bytes58 = [...linesToEscpos([{ text: 'X'.repeat(40), size: 'double' }], 58, { cutMode: 'none' })]
+  const bytes80 = [...linesToEscpos([{ text: 'X'.repeat(40), size: 'double' }], 80, { cutMode: 'none' })]
+  assert.equal(bytes58.filter((byte) => byte === 0x58).length, 16)
+  assert.equal(bytes80.filter((byte) => byte === 0x58).length, 24)
+})

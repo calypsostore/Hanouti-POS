@@ -1,6 +1,7 @@
 import type { Database } from '../types'
 import type { Capability } from '../types'
 import type { ActorResult } from './types'
+import type { DataProvider } from './providers/DataProvider'
 
 type DbRef = { current: Database }
 type UserIdRef = { current: string | null }
@@ -15,6 +16,7 @@ export interface StoreSliceDependencies {
   requireActor: RequireActor
   requireAdmin: RequireAdmin
   requireCapability: RequireCapability
+  provider: DataProvider
 }
 
 export interface SettingsSliceDependencies extends StoreSliceDependencies {

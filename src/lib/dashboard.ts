@@ -234,7 +234,9 @@ export type DashboardNotice = { id: 'stock' | 'tabs' | 'register'; label: string
 
 export function getDashboardNotices(db: Database, store: Store, now = new Date()): DashboardNotice[] {
   const stock = trackedStockItems(db, store.id)
-  const lowStock = stock.filter((product) => product.stock <= store.settings.lowStockThreshold).length
+  const lowStock = store.settings.automation.lowStockAlerts
+    ? stock.filter((product) => product.stock <= store.settings.lowStockThreshold).length
+    : 0
   const customers = db.customers.filter((customer) =>
     customer.storeId === store.id
       && balanceFor(db.ledger, customer.id) > 0

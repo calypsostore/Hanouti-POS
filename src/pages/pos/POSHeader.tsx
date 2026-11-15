@@ -4,6 +4,7 @@ import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { AppIcon } from '../../components/AppIcon'
+import { ReprintLastReceipt } from '../../components/ReprintLastReceipt'
 
 type POSHeaderProps = {
   store: Store
@@ -11,10 +12,13 @@ type POSHeaderProps = {
   now: Date
   registerOpen: boolean
   canOpenRegister: boolean
+  shiftReminderDue: boolean
   onLogout: () => void
 }
 
-export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onLogout }: POSHeaderProps) {
+export function POSHeader({
+  store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout,
+}: POSHeaderProps) {
   const quick = store.settings.posMode === 'quick'
 
   return (
@@ -58,6 +62,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               <Utensils className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Floor</span>
             </Link>
           )}
+          <ReprintLastReceipt compact />
           {(user.role === 'staff' || user.role === 'manager') && (
             <>
               <Link
@@ -91,7 +96,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
         </div>
       </header>
 
-      {!registerOpen && (
+      {!registerOpen && store.settings.requireShiftForOrders && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-brand-amber/40 bg-brand-amber-soft px-4 py-2.5 text-[12.5px] text-brand-navy sm:px-5">
           <span>{canOpenRegister ? 'Open your shift before taking orders.' : 'Your shift is closed. Ask a manager to open one if you need access.'}</span>
           {canOpenRegister && (
@@ -102,6 +107,14 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               Open shift
             </Link>
           )}
+        </div>
+      )}
+      {registerOpen && shiftReminderDue && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-brand-amber/40 bg-brand-amber-soft px-4 py-2.5 text-[12.5px] text-brand-navy sm:px-5">
+          <span>Close your shift when you are ready to hand over.</span>
+          <Link to="/admin/register" className="shrink-0 rounded-lg bg-brand-amber px-3 py-1.5 font-semibold text-brand-navy hover:bg-brand-amber-hover">
+            Close shift
+          </Link>
         </div>
       )}
 

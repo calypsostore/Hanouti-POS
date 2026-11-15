@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Banknote,
   ClipboardList,
@@ -22,6 +22,8 @@ import { HourlyHeatStrip } from './HourlyHeatStrip'
 import { StockAlertsCard } from './StockAlertsCard'
 import { TopTabsAndOrders } from './TopTabsAndOrders'
 import { TrackedOrdersCard } from './TrackedOrdersCard'
+import { backupHealthIsStale, printerOfflineAlertDue } from '../../../lib/automation'
+import { Link } from 'react-router-dom'
 
 function trend(current: number, previous: number) {
   const value = percentChange(current, previous)
@@ -29,17 +31,58 @@ function trend(current: number, previous: number) {
 }
 
 export default function AdminDashboard() {
-  const { db, store, user } = useApp()
-  const [now] = useState(() => new Date())
+  const { db, store, user, providerMode, providerStatus } = useApp()
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const data = useMemo(() => store ? getAdminDashboardData({ db, store, now }) : null, [db, now, store])
   if (!store || !user || !data) return null
   const isTracking = data.isTrackingMode
   const todayCount = data.todayOrders.length
   const ordersMetric = todayCount
+  const backupNeedsAttention = user.role === 'admin' && providerMode === 'hub' &&
+    store.settings.automation.backupHealthAlerts &&
+    backupHealthIsStale(providerStatus.lastBackupAt, now)
+  const backupHealthError = user.role === 'admin' && providerMode === 'hub' &&
+    store.settings.automation.backupHealthAlerts
+    ? providerStatus.backupHealthError
+    : undefined
+  const offlinePrinters = user.role === 'admin' && providerMode === 'hub' &&
+    store.settings.automation.printerOfflineAlerts
+    ? db.printers.filter((printer) => printer.storeId === store.id && printer.enabled &&
+      printerOfflineAlertDue(
+        providerStatus.printerOfflineSince[printer.id],
+        store.settings.automation.printerOfflineAlertMinutes,
+        now,
+      ))
+    : []
 
   return (
     <div className="space-y-4 sm:space-y-5">
       <AdminHeader store={store} user={user} registerOpen={!!data.registerSession} now={now} />
+      {(backupNeedsAttention || backupHealthError || offlinePrinters.length > 0) && (
+        <div className="space-y-2" aria-live="polite">
+          {backupNeedsAttention && (
+            <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Hub backup health needs attention: the latest backup is missing or older than 48 hours.
+              <Link to="/admin/settings?tab=data" className="ml-2 font-bold underline">Check data settings</Link>
+            </div>
+          )}
+          {backupHealthError && (
+            <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+              Hub backup health could not be checked: {backupHealthError}
+            </div>
+          )}
+          {offlinePrinters.map((printer) => (
+            <div key={printer.id} role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+              Printer alert: {printer.name} has been offline since {new Date(providerStatus.printerOfflineSince[printer.id]).toLocaleString()}.
+              <Link to="/admin/settings?tab=devices" className="ml-2 font-bold underline">Check printer</Link>
+            </div>
+          ))}
+        </div>
+      )}
       {isTracking ? (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <GradientKpiCard icon={ClipboardList} tone="blue" label="Tracked orders" value={data.trackedOrders} caption="Recorded without payment" />
@@ -66,7 +109,7 @@ export default function AdminDashboard() {
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
         <div className="min-w-0 space-y-4">
-          <StockAlertsCard data={data} />
+          <StockAlertsCard data={data} enabled={store.settings.automation.lowStockAlerts} />
           {!isTracking && <DashboardCharts data={data} />}
           {!isTracking && <HourlyHeatStrip data={data.hourly} />}
           {!isTracking && <TopTabsAndOrders data={data} />}

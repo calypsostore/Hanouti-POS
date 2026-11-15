@@ -135,10 +135,60 @@ html.dark .glass-strong {
 .glass-sidebar {
   color: white;
   border: 1px solid rgb(255 255 255 / 16%);
-  background: linear-gradient(150deg, rgb(25 38 62 / 95%), rgb(11 18 34 / 94%));
+  background: linear-gradient(150deg, rgb(25 38 62 / 90%), rgb(11 18 34 / 86%));
   box-shadow: 0 20px 60px rgb(11 18 34 / 20%), inset 0 1px 0 rgb(255 255 255 / 12%);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+.sidebar-glass-panel {
+  border: 1px solid rgb(255 255 255 / 10%);
+  background: linear-gradient(145deg, rgb(255 255 255 / 9%), rgb(255 255 255 / 3%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%), 0 8px 24px rgb(0 0 0 / 8%);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+.sidebar-glass-menu {
+  border: 1px solid rgb(255 255 255 / 68%);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 24px 64px rgb(11 18 34 / 25%), inset 0 1px 0 rgb(255 255 255 / 78%);
+  backdrop-filter: blur(28px) saturate(175%);
+  -webkit-backdrop-filter: blur(28px) saturate(175%);
+}
+
+html.dark .sidebar-glass-menu {
+  border-color: rgb(255 255 255 / 14%);
+  background: rgb(17 27 48 / 88%);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 38%), inset 0 1px 0 rgb(255 255 255 / 10%);
+}
+
+.sidebar-link {
+  animation: sidebar-link-in 260ms cubic-bezier(.16,1,.3,1) both;
+  transition: transform 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+.sidebar-link:hover {
+  transform: translateX(2px);
+}
+
+.sidebar-link:active {
+  transform: scale(.96);
+}
+
+.sidebar-link[aria-current='page'] {
+  box-shadow: 0 7px 20px rgb(248 168 26 / 18%), inset 0 1px 0 rgb(255 255 255 / 32%);
+}
+
+.sidebar-icon-tile {
+  transition: transform 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms ease-out;
+}
+
+.sidebar-link:hover .sidebar-icon-tile {
+  transform: scale(1.08);
+}
+
+@keyframes sidebar-link-in {
+  from { opacity: 0; transform: translateY(7px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .glass-tint-green { border: 1px solid transparent; background: linear-gradient(145deg, var(--semantic-green-soft), var(--glass-light)) padding-box, linear-gradient(145deg, var(--glass-line), transparent) border-box; box-shadow: 0 8px 28px var(--semantic-green-soft); }
@@ -163,6 +213,12 @@ html.dark .app-icon-tile {
     radial-gradient(circle at 25% 12%, rgb(255 255 255 / 10%), transparent 62%),
     linear-gradient(145deg, var(--icon-soft), rgb(255 255 255 / 4%));
   box-shadow: 0 5px 18px color-mix(in srgb, var(--icon-solid) 17%, transparent), inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+html.dark .app-icon-tile.sidebar-store-icon,
+.app-icon-tile.sidebar-store-icon {
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 16%);
 }
 
 .icon-picker-tile {
@@ -242,8 +298,10 @@ html.dark .glass-row:hover {
   .glass-tint-rose,
   .glass-tint-violet,
   .glass-tint-teal,
-  .chart-tooltip { background: #fff; }
+  .chart-tooltip,
+  .sidebar-glass-menu { background: #fff; }
   .glass-sidebar { background: #111b30; }
+  .sidebar-glass-panel { background: #111b30; }
   html.dark .glass,
   html.dark .glass-subtle,
   html.dark .glass-strong,
@@ -255,7 +313,9 @@ html.dark .glass-row:hover {
   html.dark .glass-tint-violet,
   html.dark .glass-tint-teal,
   html.dark .chart-tooltip { background: #18243b; }
+  html.dark .sidebar-glass-menu { background: #111b30; }
   html.dark .glass-sidebar { background: #111b30; }
+  html.dark .sidebar-glass-panel { background: #111b30; }
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
@@ -287,7 +347,19 @@ html.dark .glass-row:hover {
   html.dark .glass-tint-violet,
   html.dark .glass-tint-teal,
   html.dark .chart-tooltip { background: #111b30; }
-  .glass-sidebar { background: #111b30; }
+  .glass-sidebar,
+  .sidebar-glass-panel {
+    background: #111b30;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .sidebar-glass-menu {
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 0 2px 10px rgb(17 27 48 / 12%);
+  }
+  html.dark .sidebar-glass-menu { background: #111b30; }
 }
 
 @media (prefers-reduced-motion: reduce) {

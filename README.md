@@ -24,8 +24,15 @@ The local Node 22+ hub serves the built app, station boards, scoped APIs and
 printer queue over shop Wi-Fi. Build first, then run `npm run hub`; open
 `/status` on the hub machine for its LAN address and QR code. Setup, HTTPS,
 backups and service installation are documented in [docs/HUB.md](./docs/HUB.md).
-The browser app still uses local IndexedDB and does not yet sync POS activity
-through the hub; see [docs/SYNC.md](./docs/SYNC.md) and the M4 roadmap.
+When served by the hub, the browser app uses hub sync and the IndexedDB offline
+cache/outbox. Standalone browser mode remains local to that device. See
+[docs/SYNC.md](./docs/SYNC.md) for sync limits and
+[docs/PRODUCTION_PLAN.md](./docs/PRODUCTION_PLAN.md) for production status.
+Run `npm run hub:sim` for a local hub with its virtual TCP printer and
+`npm run test:all` for the complete pure-function and hub API test suite.
+Physical printer output is **untested on hardware**; see
+[docs/PRINTING.md](./docs/PRINTING.md) for connection-by-connection status.
+Station pairing steps are in [docs/STATIONS.md](./docs/STATIONS.md).
 
 ## Demo accounts
 
@@ -107,6 +114,10 @@ The login screen has one-click demo buttons for the first three.
   receipt footer, accent colour, **thermal printer setup** (58/80 mm, auto or
   manual, USB/WebSerial or browser, baud rate, kitchen tickets, test print),
   demo reset
+- Automation: per-device receipt policy, cash drawer kick, idle lock/logout,
+  shift reminders, stock alerts/hide-out-of-stock, hub print retry/health and
+  backup health alert controls. Physical printer and drawer behavior still
+  requires supported hardware.
 
 ### Staff
 - Scoped to their own store only

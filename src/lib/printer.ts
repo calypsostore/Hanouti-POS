@@ -133,15 +133,19 @@ export const connectPrinter = async (
   }
 }
 
-/** Silently re-open a port the user already authorized for this site. */
-export const restorePrinter = async (baudRate = 9600) => {
+/** Re-open a port the user already authorized for this site, without a chooser prompt. */
+export const restorePrinter = async (baudRate = 9600): Promise<boolean> => {
   const serial = getSerial()
-  if (!serial || port) return
+  if (!serial) return false
+  if (port && writer) return true
   try {
     const ports = await serial.getPorts()
-    if (ports.length) await openPort(ports[0], baudRate)
-  } catch {
-    /* silent — the user can connect manually */
+    if (!ports.length) return false
+    await openPort(ports[0], baudRate)
+    return true
+  } catch (error) {
+    console.warn('7anouti: could not reconnect to the previously authorized printer.', error)
+    return false
   }
 }
 

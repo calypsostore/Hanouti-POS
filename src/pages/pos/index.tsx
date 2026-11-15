@@ -19,6 +19,7 @@ import { useProductCart } from './useProductCart'
 import { openShiftForStaff } from '../../lib/registerShifts'
 import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 import { linesToEscpos } from '../../lib/escpos'
+import { filterPosProducts, shiftReminderDue as isShiftReminderDue } from '../../lib/automation'
 import { Button, Field, Modal, Textarea } from '../../components/ui'
 import type { OpenOrder, Station, Store } from '../../types'
 import type { TicketKind } from '../../lib/tickets'
@@ -59,6 +60,8 @@ export default function POS() {
   const { push } = useToast()
   const [searchParams] = useSearchParams()
   const linkedCustomerId = searchParams.get('customer') ?? undefined
+  const currentShift = store && user ? openShiftForStaff(db, store.id, user.id) : undefined
+  const registerOpen = !!currentShift
   const openOrderId = searchParams.get('orderId') ?? undefined
   const openOrder = db.openOrders.find((order) =>
     order.id === openOrderId && order.storeId === store?.id,
@@ -67,7 +70,7 @@ export default function POS() {
 
   const [categoryId, setCategoryId] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const productCart = useProductCart(db, store, push)
+  const productCart = useProductCart(db, store, push, registerOpen)
   const { cart, setCart, optionsProduct, setOptionsProduct, qtyInCart, addItem, addSelection, scanBarcode, changeQty, setLineQty } = productCart
   const [channel, setChannel] = useState<OrderChannel>(
     searchParams.get('channel') === 'dine-in'
@@ -147,9 +150,26 @@ export default function POS() {
 
   // Reconnect a previously authorized USB printer silently (Chrome/Edge).
   useEffect(() => {
+    if (!store?.settings.automation.autoReconnectPrinters) return
     const baud = store?.settings.printer.baudRate ?? 9600
-    void restorePrinter(baud)
-  }, [store?.settings.printer.baudRate])
+    let active = true
+    let reconnecting = false
+    const reconnect = async () => {
+      if (!active || reconnecting) return
+      reconnecting = true
+      try {
+        await restorePrinter(baud)
+      } finally {
+        reconnecting = false
+      }
+    }
+    void reconnect()
+    const timer = window.setInterval(() => void reconnect(), 15_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [store?.settings.automation.autoReconnectPrinters, store?.settings.printer.baudRate])
 
   useEffect(() => {
     if (linkedCustomerId) setCustomerId(linkedCustomerId)
@@ -215,9 +235,9 @@ export default function POS() {
   const categories = db.categories
     .filter((c) => c.storeId === store.id)
     .sort((a, b) => a.sort - b.sort)
-  const products = db.products.filter(
+  const products = filterPosProducts(db.products.filter(
     (p) => p.storeId === store.id && p.active && (categoryId === 'all' || p.categoryId === categoryId),
-  )
+  ), store.settings.automation.hideOutOfStock)
   const customers = db.customers.filter((c) => c.storeId === store.id)
   const tables = db.tables
     .filter((table) => table.storeId === store.id && table.active)
@@ -248,7 +268,6 @@ export default function POS() {
     activeNote !== (openOrder.note ?? '')
   )
   const quick = store.settings.posMode === 'quick'
-  const registerOpen = !!openShiftForStaff(db, store.id, user.id)
   const canOpenRegister = can(user, 'openShift')
   const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
@@ -431,6 +450,11 @@ export default function POS() {
         now={now}
         registerOpen={registerOpen}
         canOpenRegister={canOpenRegister}
+        shiftReminderDue={!!currentShift && store.settings.automation.shiftReminders && isShiftReminderDue(
+          currentShift.openedAt,
+          store.settings.automation.shiftReminderHours,
+          now,
+        )}
         onLogout={() => {
           logout()
           navigate('/login')

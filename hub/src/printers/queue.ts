@@ -4,6 +4,8 @@ import type { HubWebSocket } from '../websocket.ts'
 import { sendToPrinter } from './drivers.ts'
 import type { PrintConnection, PrintJobType } from '../../../src/types.ts'
 import type { SyncDocument } from '../../../src/shared/sync.ts'
+import { automaticPrintRetryLimit } from '../../../src/lib/automation.ts'
+import type { AutomationSettings } from '../../../src/types.ts'
 
 export interface PrinterRecord extends SyncDocument {
   id: string
@@ -39,18 +41,21 @@ export interface PrintJobRecord extends SyncDocument {
   lastError?: string
   nextAttemptAt?: string
   fallbackTried?: boolean
+  idempotencyKey?: string
 }
 
 type NewPrintJob = Pick<
   PrintJobRecord,
   'storeId' | 'type' | 'printerId' | 'payload' | 'copies' | 'createdById'
-> & Partial<Pick<PrintJobRecord, 'stationId' | 'openDrawer'>>
+> & Partial<Pick<PrintJobRecord, 'stationId' | 'openDrawer' | 'idempotencyKey'>>
 
 export class HubPrintQueue {
   private readonly working = new Set<string>()
   private timer: NodeJS.Timeout | undefined
   private readonly storage: HubStorage
   private readonly sockets: HubWebSocket
+  private readonly printerStatus = new Map<string, 'online' | 'offline' | 'error'>()
+  private readonly printerOfflineSince = new Map<string, string>()
 
   constructor(storage: HubStorage, sockets: HubWebSocket) {
     this.storage = storage
@@ -77,6 +82,13 @@ export class HubPrintQueue {
   }
 
   async enqueue(job: NewPrintJob): Promise<PrintJobRecord> {
+    if (job.idempotencyKey) {
+      const state = await this.storage.readStore(job.storeId)
+      const existing = Object.values(state.collections.printJobs ?? {}).find((candidate) =>
+        (candidate as unknown as PrintJobRecord).idempotencyKey === job.idempotencyKey,
+      ) as unknown as PrintJobRecord | undefined
+      if (existing) return existing
+    }
     const record: PrintJobRecord = {
       ...job,
       id: randomUUID(),
@@ -112,6 +124,24 @@ export class HubPrintQueue {
       counts[job.status] = (counts[job.status] ?? 0) + 1
       return counts
     }, {})
+  }
+
+  async statuses(
+    storeId: string,
+    state?: Awaited<ReturnType<HubStorage['readStore']>>,
+  ): Promise<Record<string, 'online' | 'offline' | 'error'>> {
+    const snapshot = state ?? await this.storage.readStore(storeId)
+    const printers = Object.values(snapshot.collections.printers ?? {}) as unknown as PrinterRecord[]
+    return Object.fromEntries(printers.filter((printer) => printer.storeId === storeId).map((printer) => [
+      printer.id,
+      printer.enabled ? this.printerStatus.get(`${storeId}:${printer.id}`) ?? 'offline' : 'offline',
+    ]))
+  }
+
+  offlineSince(storeId: string): Record<string, string> {
+    return Object.fromEntries([...this.printerOfflineSince.entries()]
+      .filter(([key]) => key.startsWith(`${storeId}:`))
+      .map(([key, at]) => [key.slice(storeId.length + 1), at]))
   }
 
   async cloudPoll(storeId: string, printerId: string): Promise<{ job: PrintJobRecord; bytes: Uint8Array } | null> {
@@ -163,14 +193,26 @@ export class HubPrintQueue {
     try {
       for (let copy = 0; copy < Math.max(1, Math.min(10, job.copies)); copy += 1) await sendToPrinter(job, printer)
       await this.update({ ...sending, status: 'printed', lastError: undefined, nextAttemptAt: undefined })
+      this.printerStatus.set(`${job.storeId}:${printer.id}`, 'online')
+      this.printerOfflineSince.delete(`${job.storeId}:${printer.id}`)
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 256) : 'Printer error.'
+      const printerKey = `${job.storeId}:${printer.id}`
+      this.printerStatus.set(printerKey, 'error')
+      if (!this.printerOfflineSince.has(printerKey)) {
+        this.printerOfflineSince.set(printerKey, new Date().toISOString())
+      }
       const fallback = printer.fallbackPrinterId
       const state = await this.storage.readStore(job.storeId)
+      const storeDocument = state.collections.stores?.[job.storeId] as
+        | { settings?: { automation?: Partial<AutomationSettings> } }
+        | undefined
+      const retryLimit = automaticPrintRetryLimit(storeDocument?.settings?.automation)
       const fallbackPrinter = fallback ? state.collections.printers?.[fallback] as unknown as PrinterRecord | undefined : undefined
-      if (fallbackPrinter?.enabled && fallbackPrinter.storeId === job.storeId && !job.fallbackTried) {
+      if (storeDocument?.settings?.automation?.fallbackPrintJobs !== false &&
+        fallbackPrinter?.enabled && fallbackPrinter.storeId === job.storeId && !job.fallbackTried) {
         await this.update({ ...sending, printerId: fallbackPrinter.id, fallbackTried: true, status: 'queued', lastError: `Primary printer failed: ${message}` })
-      } else if (sending.attempts < 5) {
+      } else if (sending.attempts < retryLimit) {
         const delay = Math.min(300_000, 1000 * (2 ** sending.attempts))
         await this.update({
           ...sending, status: 'queued', lastError: message,

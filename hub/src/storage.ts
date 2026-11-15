@@ -51,6 +51,26 @@ export class HubStorage {
     }
   }
 
+  async changesSince(storeId: string, sequence: number): Promise<PersistedChange[]> {
+    try {
+      const contents = await readFile(this.storePath(storeId), 'utf8')
+      return contents.split(/\r?\n/).filter(Boolean).flatMap((line): PersistedChange[] => {
+        try {
+          const parsed = JSON.parse(line) as Partial<PersistedChange>
+          return Number.isSafeInteger(parsed.seq) && Number(parsed.seq) > sequence &&
+            parsed.changeSet && Array.isArray(parsed.changeSet.ops)
+            ? [parsed as PersistedChange]
+            : []
+        } catch {
+          return []
+        }
+      })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    }
+  }
+
   async transact(storeId: string, changeSet: ChangeSet): Promise<HubStoreState> {
     const previous = this.queues.get(storeId) ?? Promise.resolve()
     let release: () => void = () => {}
@@ -141,6 +161,27 @@ export class HubStorage {
 
   async readBackups(): Promise<string[]> {
     return (await readdir(join(this.root, 'backups'))).filter((name) => name.endsWith('.json')).sort().reverse()
+  }
+
+  async lastBackupAt(storeId?: string): Promise<string | null> {
+    let newest: { createdAt: string; timestamp: number } | null = null
+    for (const filename of await this.readBackups()) {
+      const backup: unknown = JSON.parse(await readFile(join(this.root, 'backups', filename), 'utf8'))
+      if (!backup || typeof backup !== 'object' ||
+        typeof (backup as { createdAt?: unknown }).createdAt !== 'string' ||
+        !Number.isFinite(Date.parse((backup as { createdAt: string }).createdAt)) ||
+        !Array.isArray((backup as { stores?: unknown }).stores)) {
+        throw new Error(`Hub backup ${filename} has invalid metadata.`)
+      }
+      const stores = (backup as { stores: Array<{ storeId?: unknown }> }).stores
+      const createdAt = (backup as { createdAt: string }).createdAt
+      const timestamp = Date.parse(createdAt)
+      if ((!storeId || stores.some((store) => store?.storeId === storeId)) &&
+        (!newest || timestamp > newest.timestamp)) {
+        newest = { createdAt, timestamp }
+      }
+    }
+    return newest?.createdAt ?? null
   }
 
   async importAppBackup(backup: unknown): Promise<string[]> {

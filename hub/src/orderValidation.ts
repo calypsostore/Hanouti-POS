@@ -132,8 +132,8 @@ export function validateOrderDocument(
     discount: round(discount),
     ...totals,
     taxRate: store.settings.taxRate,
-    staffId: actor.userId,
-    staffName: String(user.name),
+    staffId: typeof previous?.staffId === 'string' ? previous.staffId : actor.userId,
+    staffName: typeof previous?.staffName === 'string' ? previous.staffName : String(user.name),
     createdAt: typeof previous?.createdAt === 'string' ? previous.createdAt : new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }

@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Cable, Printer, RefreshCw, X } from 'lucide-react'
-import type { DevicePrintPreference, PrintJobType, StoreSettings } from '../../../types'
+import type { DevicePrintPreference, PrintJobType } from '../../../types'
 import { Button, Card, Field, Select } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
 import { useApp } from '../../../store/AppStore'
-import type { SettingsSetter } from './SettingsPage'
 import { readDevicePrintPreference, saveDevicePrintPreference } from '../../../lib/printPreferences'
 import PrinterManager from './PrinterManager'
 import { buildTestLines } from '../../../lib/escpos'
@@ -18,12 +17,8 @@ const routeTypes: Array<{ type: PrintJobType; label: string }> = [
 
 export default function DevicesTab({
   storeId,
-  settings,
-  set,
 }: {
   storeId: string
-  settings: StoreSettings
-  set: SettingsSetter
 }) {
   const {
     db, addPrinter, updatePrinter, deletePrinter, setPrintRoute, updateStation,
@@ -165,30 +160,6 @@ export default function DevicesTab({
               <Printer className="h-4 w-4" /> Test print
             </Button>
           </div>
-        </div>
-      </Card>
-
-      <Card className="space-y-4 p-4">
-        <div>
-          <h3 className="font-bold text-ink">Automatic print policies</h3>
-          <p className="mt-1 text-xs text-muted">Policies apply when a matching printer route is configured; manual preview remains available.</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Receipt after payment">
-            <Select value={settings.receiptPrintPolicy} onChange={(event) =>
-              set('receiptPrintPolicy', event.target.value as StoreSettings['receiptPrintPolicy'])
-            }>
-              <option value="auto">Automatic</option><option value="ask">Ask / preview</option><option value="never">Never</option>
-            </Select>
-          </Field>
-          <Field label="Station tickets">
-            <Select value={settings.stationTicketPrintPolicy} onChange={(event) =>
-              set('stationTicketPrintPolicy', event.target.value as StoreSettings['stationTicketPrintPolicy'])
-            }>
-              <option value="automatic">Automatic</option><option value="manual">Manual</option><option value="never">Never</option>
-            </Select>
-          </Field>
-          <Field label="Reports"><Select value="manual" disabled><option value="manual">Manual</option></Select></Field>
         </div>
       </Card>
 

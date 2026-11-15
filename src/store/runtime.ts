@@ -9,6 +9,8 @@ import { normalizeDb } from './database'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { mergeOpenOrderSnapshots } from '../lib/openOrderMerge'
+import { diffCollections, type SyncDocument } from '../shared/sync'
+import { detectDataProvider, LocalProvider, type DataProvider, type ProviderStatus } from './providers/DataProvider'
 import type { Capability } from '../types'
 import type { ActorResult } from './types'
 
@@ -18,6 +20,9 @@ type DatabaseRuntime = {
   ready: boolean
   loadError: string
   commitDb: (update: (prev: Database) => Database) => Database
+  provider: DataProvider
+  providerStatus: ProviderStatus
+  applyProviderSnapshot: (snapshot: Database) => void
 }
 
 export function useDatabase(): DatabaseRuntime {
@@ -27,6 +32,9 @@ export function useDatabase(): DatabaseRuntime {
   const channelRef = useRef<BroadcastChannel | null>(null)
   const remoteSnapshotRef = useRef<Database | null>(null)
   const persistenceWarningShown = useRef(false)
+  const providerRef = useRef<DataProvider>(new LocalProvider())
+  const [provider, setProvider] = useState<DataProvider>(providerRef.current)
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus>(providerRef.current.status())
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState('')
   const reportStorageError = useCallback((operation: string, error: unknown) => {
@@ -40,13 +48,62 @@ export function useDatabase(): DatabaseRuntime {
     if (operation.includes('app build metadata')) {
       push('Could not update app-version information in this browser.', 'error')
     }
+    if (operation.includes('hub')) {
+      push(`Hub sync issue: ${error instanceof Error ? error.message : 'The hub request failed.'}`, 'error')
+    }
   }, [push])
+  const applyHubSnapshot = useCallback((snapshot: Database) => {
+    const normalized = normalizeDb(snapshot, dbRef.current)
+    if (!normalized) {
+      reportStorageError('applying a hub database snapshot', new Error('The hub snapshot did not match the app database shape.'))
+      return
+    }
+    dbRef.current = normalized
+    providerRef.current.setCache(normalized)
+    remoteSnapshotRef.current = normalized
+    setDbState(normalized)
+  }, [reportStorageError])
   const commitDb = useCallback((update: (prev: Database) => Database) => {
-    const next = update(dbRef.current)
+    const previous = dbRef.current
+    const next = update(previous)
     dbRef.current = next
+    providerRef.current.setCache(next)
     setDbState(next)
+    const activeProvider = providerRef.current
+    if (activeProvider.mode === 'hub') {
+      let sessionUserId: string | null = null
+      try { sessionUserId = localStorage.getItem('7anouti.session.v2') } catch { /* The in-memory session still works. */ }
+      const storeId = next.users.find((candidate) => candidate.id === sessionUserId)?.storeId
+      if (storeId) {
+        const asCollections = (value: Database) =>
+          Object.fromEntries(Object.entries(value).map(([key, rows]) => [
+            key,
+            key === 'printJobs'
+              ? []
+              : (rows as Array<SyncDocument & { storeId?: string }>).filter((row) =>
+                  key === 'stores' ? row.id === storeId : row.storeId === storeId,
+                ),
+          ]))
+        const changeSet = diffCollections(asCollections(previous), asCollections(next), {
+          opId: typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          deviceId: activeProvider.deviceIdentifier(),
+          storeId,
+          baseSeq: activeProvider.currentSequence(),
+        })
+        void activeProvider.queueChangeSet(changeSet).catch((error: unknown) =>
+          reportStorageError('saving changes to the hub outbox', error),
+        )
+      }
+    }
     return next
-  }, [])
+  }, [reportStorageError])
+
+  useEffect(() => {
+    const unsubscribe = provider.subscribe(() => setProviderStatus(provider.status()))
+    return unsubscribe
+  }, [provider])
 
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return
@@ -108,8 +165,32 @@ export function useDatabase(): DatabaseRuntime {
           reportStorageError('saving IndexedDB', error)
         }
       }
-      dbRef.current = next
-      setDbState(next)
+      const selectedProvider = await detectDataProvider((message) => push(message, 'error'), next)
+      if (!active) return
+      providerRef.current = selectedProvider
+      setProvider(selectedProvider)
+      setProviderStatus(selectedProvider.status())
+      if (selectedProvider.mode === 'hub' && selectedProvider.hasSession()) {
+        const snapshot = await selectedProvider.pullSnapshot()
+        if (snapshot) {
+          const normalized = normalizeDb(snapshot.database, next)
+          if (normalized) {
+            dbRef.current = normalized
+            selectedProvider.setCache(normalized)
+            setDbState(normalized)
+          } else {
+            reportStorageError('applying a hub database snapshot', new Error('The hub snapshot did not match the app database shape.'))
+            dbRef.current = next
+            setDbState(next)
+          }
+        } else {
+          dbRef.current = next
+          setDbState(next)
+        }
+      } else {
+        dbRef.current = next
+        setDbState(next)
+      }
       setReady(true)
       if (isNewerBuild) {
         const newSettings = getOffByDefaultSettings(next)
@@ -133,7 +214,16 @@ export function useDatabase(): DatabaseRuntime {
       setReady(true)
     })
     return () => { active = false }
-  }, [push, reportStorageError])
+  }, [applyHubSnapshot, push, reportStorageError])
+
+  useEffect(() => {
+    const unsubscribeSnapshot = provider.useSnapshot((snapshot) => applyHubSnapshot(snapshot))
+    const unsubscribeStatus = provider.subscribe(() => setProviderStatus(provider.status()))
+    return () => {
+      unsubscribeSnapshot()
+      unsubscribeStatus()
+    }
+  }, [applyHubSnapshot, provider])
 
   useEffect(() => {
     if (!ready || loadError) return
@@ -173,7 +263,10 @@ export function useDatabase(): DatabaseRuntime {
     return () => window.clearTimeout(timeout)
   }, [db, loadError, ready, reportStorageError])
 
-  return { db, dbRef, ready, loadError, commitDb }
+  return {
+    db, dbRef, ready, loadError, commitDb, provider, providerStatus,
+    applyProviderSnapshot: applyHubSnapshot,
+  }
 }
 
 export function useActorGuards({

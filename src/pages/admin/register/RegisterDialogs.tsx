@@ -10,6 +10,8 @@ type Store = NonNullable<ReturnType<typeof import('../../../store/AppStore').use
 export function RegisterDialogs({
   store,
   open,
+  openTableCount,
+  warnAboutOpenTables,
   expected,
   openingInput,
   onOpeningInputChange,
@@ -29,6 +31,8 @@ export function RegisterDialogs({
 }: {
   store: Store
   open: RegisterSession | null
+  openTableCount: number
+  warnAboutOpenTables: boolean
   expected: number
   openingInput: string
   onOpeningInputChange: (value: string) => void
@@ -116,6 +120,11 @@ export function RegisterDialogs({
         }
       >
         <div className="space-y-4">
+          {warnAboutOpenTables && openTableCount > 0 && (
+            <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-950">
+              {openTableCount} table {openTableCount === 1 ? 'order is' : 'orders are'} still open. Confirm they are handed over before closing this shift; this action does not transfer table ownership.
+            </div>
+          )}
           <div className="rounded-2xl bg-espresso-900 px-5 py-4 text-cream-50">
             <div className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/40">
               {store.settings.posMode === 'quick' ? 'Cash accountability is off in Quick mode' : 'Expected cash (from orders & ledger)'}

@@ -3,7 +3,8 @@ import type { Database } from '../types'
 import { verifySecret } from '../lib/hash'
 import { clockInAttendance, clockOutAttendance } from '../lib/payroll'
 import { addLog } from './audit'
-import type { Result } from './types'
+import type { LoginResult } from './types'
+import type { DataProvider } from './providers/DataProvider'
 import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
 
 const readStoredUserId = () => {
@@ -29,10 +30,12 @@ type AuthSliceDependencies = {
   ready: boolean
   loadError: string
   commitDb: (update: (prev: Database) => Database) => Database
+  provider: DataProvider
+  applyProviderSnapshot: (snapshot: Database) => void
 }
 
 export function useAuthSlice(dependencies: AuthSliceDependencies) {
-  const { dbRef, ready, loadError, commitDb } = dependencies
+  const { dbRef, ready, loadError, commitDb, provider, applyProviderSnapshot } = dependencies
   const [userId, setStoredUserId] = useState<string | null>(readStoredUserId)
   const userIdRef = useRef<string | null>(userId)
   const pinFailures = useRef(new Map<string, { count: number; lockedUntil: number }>())
@@ -61,10 +64,29 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
     } catch { /* ignore */ }
   }, [userId])
   const login = useCallback(
-    async (email: string, password: string): Promise<Result> => {
+    async (email: string, password: string, storeCode?: string): Promise<LoginResult> => {
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
       const normalizedEmail = email.trim().toLowerCase()
       if (!normalizedEmail) return { ok: false, error: 'Enter your email address.' }
+      if (provider.mode === 'hub') {
+        const cachedUser = dbRef.current.users.find((u) =>
+          u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
+        )
+        const inferredStoreCode = storeCode ?? dbRef.current.stores.find((store) =>
+          store.id === cachedUser?.storeId,
+        )?.slug
+        const hubResult = await provider.login(inferredStoreCode ?? '', normalizedEmail, password)
+        if (hubResult.ok) {
+          const snapshot = await provider.pullSnapshot()
+          if (snapshot) applyProviderSnapshot(snapshot.database)
+          const user = dbRef.current.users.find((candidate) => candidate.id === hubResult.userId)
+          if (!user?.active) return { ok: false, error: 'The hub account is not present in the synchronized store data.' }
+          userIdRef.current = user.id
+          setSessionUserId(user.id)
+          return { ok: true, user }
+        }
+        if (!hubResult.offline) return { ok: false, error: hubResult.error }
+      }
       const current = dbRef.current
       const found = current.users.find((u) =>
         u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
@@ -93,16 +115,35 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       }))
       userIdRef.current = found.id
       setSessionUserId(found.id)
-      return { ok: true }
+      return { ok: true, user: found }
     },
-    [dbRef, ready, loadError, recordFailure, commitDb, setSessionUserId],
+    [dbRef, ready, loadError, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
   )
 
   const loginPin = useCallback(
-    async (username: string, pin: string): Promise<Result> => {
+    async (username: string, pin: string, storeCode?: string): Promise<LoginResult> => {
       const needle = username.trim().toLowerCase()
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
       if (!needle) return { ok: false, error: 'Enter your username.' }
+      if (provider.mode === 'hub') {
+        const cachedUser = dbRef.current.users.find((user) =>
+          (user.role === 'staff' || user.role === 'manager') && user.username?.toLowerCase() === needle,
+        )
+        const inferredStoreCode = storeCode ?? dbRef.current.stores.find((store) =>
+          store.id === cachedUser?.storeId,
+        )?.slug
+        const hubResult = await provider.login(inferredStoreCode ?? '', needle, pin.trim())
+        if (hubResult.ok) {
+          const snapshot = await provider.pullSnapshot()
+          if (snapshot) applyProviderSnapshot(snapshot.database)
+          const user = dbRef.current.users.find((candidate) => candidate.id === hubResult.userId)
+          if (!user?.active) return { ok: false, error: 'The hub account is not present in the synchronized store data.' }
+          userIdRef.current = user.id
+          setSessionUserId(user.id)
+          return { ok: true, user }
+        }
+        if (!hubResult.offline) return { ok: false, error: hubResult.error }
+      }
       const current = dbRef.current
       const found = current.users.find(
         (user) => (user.role === 'staff' || user.role === 'manager') &&
@@ -166,12 +207,13 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       })
       userIdRef.current = found.id
       setSessionUserId(found.id)
-      return { ok: true }
+      return { ok: true, user: found }
     },
-    [dbRef, ready, loadError, pinFailures, recordFailure, commitDb, setSessionUserId],
+    [dbRef, ready, loadError, pinFailures, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
   )
 
   const logout = useCallback(() => {
+    provider.logout()
     const actor = dbRef.current.users.find((candidate) => candidate.id === userIdRef.current)
     if (actor) {
       commitDb((prev) => {
@@ -187,7 +229,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
     }
     userIdRef.current = null
     setSessionUserId(null)
-  }, [commitDb, dbRef, setSessionUserId])
+  }, [commitDb, dbRef, setSessionUserId, provider])
 
 
   return { userId, userIdRef, setUserId: setSessionUserId, login, loginPin, logout }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import { createReadStream } from 'node:fs'
 import { access, readFile, stat } from 'node:fs/promises'
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -13,11 +14,12 @@ import { HubStorage } from './storage.ts'
 import { HubPrintQueue } from './printers/queue.ts'
 import type { PrintJobRecord, PrinterRecord } from './printers/queue.ts'
 import { discoverRawPrinters } from './printers/lan.ts'
-import { virtualPrinterPreview, startVirtualPrinter } from './printers/virtual-printer.ts'
+import { startVirtualPrinter } from './printers/virtual-printer.ts'
 import { qrSvg } from './qr.ts'
 import { HubWebSocket } from './websocket.ts'
 import { logEvent } from './logger.ts'
 import { MAX_BODY_BYTES, record, requireString, validId, validateStoreDoc } from './validation.ts'
+import { mergeOpenOrderDocument, type SyncDocument } from '../../src/shared/sync.ts'
 import { stationBoardHtml } from './board.ts'
 import { validateOrderDocument } from './orderValidation.ts'
 import { validateLedgerEntry } from './ledgerValidation.ts'
@@ -41,6 +43,11 @@ const PRIVATE_COLLECTIONS: Record<string, string> = {
   ledger: 'ledger',
 }
 const ORDER_COLLECTIONS = new Set(['orders', 'openOrders', 'orderItems', 'payments'])
+
+function canManageSchedules(actor: AuthenticatedActor): boolean {
+  return can(actor, 'manageStaff') ||
+    (actor.role === 'staff' && actor.permissions.supervisor === true)
+}
 
 function localAddress(): string {
   const configured = process.env.HUB_HOST
@@ -187,7 +194,11 @@ export async function createHubServer(): Promise<HubRuntime> {
     return { actor, storeId: actor.storeId }
   }
 
-  async function applySync(actor: AuthenticatedActor, raw: unknown, fromSocket = false): Promise<{ seq: number; duplicate: boolean }> {
+  async function applySync(actor: AuthenticatedActor, raw: unknown, fromSocket = false): Promise<{
+    seq: number
+    duplicate: boolean
+    conflicts: Array<{ collection: string; id: string; label: string }>
+  }> {
     if (actor.deviceToken) throw new Error('Station devices cannot submit general sync operations.')
     if (!record(raw) || !Array.isArray(raw.ops) || raw.ops.length > 2000 ||
       typeof raw.opId !== 'string' || !validId(raw.opId) ||
@@ -196,14 +207,53 @@ export async function createHubServer(): Promise<HubRuntime> {
       throw new Error('Invalid change set.')
     }
     const state = await storage.readStore(actor.storeId)
-    if (state.appliedOpIds.includes(raw.opId)) return { seq: state.seq, duplicate: true }
+    if (state.appliedOpIds.includes(raw.opId)) return { seq: state.seq, duplicate: true, conflicts: [] }
     const validationState = structuredClone(state)
+    const changedDocuments = new Set((await storage.changesSince(actor.storeId, raw.baseSeq as number))
+      .filter((entry) => entry.changeSet.deviceId !== raw.deviceId)
+      .flatMap((entry) => entry.changeSet.ops.map((operation) => `${operation.collection}:${operation.id}`)))
+    const conflicts: Array<{ collection: string; id: string; label: string }> = []
     for (const operation of raw.ops) {
       if (!record(operation) || !['put', 'delete'].includes(String(operation.kind)) ||
         typeof operation.collection !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,40}$/.test(operation.collection) ||
         !validId(operation.id)) throw new Error('Change set contains an invalid operation.')
+      let operationId = operation.id
       const required = PRIVATE_COLLECTIONS[operation.collection]
       if (required && required !== 'ledger') requireCapability(actor, required)
+      if (operation.collection === 'shifts') {
+        if (!canManageSchedules(actor)) {
+          throw Object.assign(new Error('Permission denied: schedule management is required.'), { status: 403 })
+        }
+        const previous = validationState.collections.shifts?.[operation.id]
+        if (operation.kind === 'delete') {
+          if (!record(previous) || previous.storeId !== actor.storeId) {
+            throw Object.assign(new Error('Shift not found in this store.'), { status: 404 })
+          }
+        } else if (record(operation.document)) {
+          const shift = operation.document
+          const staff = typeof shift.userId === 'string'
+            ? validationState.collections.users?.[shift.userId]
+            : undefined
+          if (!staff || staff.storeId !== actor.storeId || staff.role !== 'staff') {
+            throw new Error('Scheduled staff member must belong to this store.')
+          }
+          if (previous && record(previous) &&
+            (shift.userId !== previous.userId || shift.createdBy !== previous.createdBy ||
+              shift.createdAt !== previous.createdAt)) {
+            throw new Error('Shift ownership and creation details cannot be changed.')
+          }
+          if (!previous && shift.createdBy !== actor.userId) {
+            throw new Error('New shifts must record the authenticated manager.')
+          }
+          if (typeof shift.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(shift.date) ||
+            typeof shift.startTime !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(shift.startTime) ||
+            typeof shift.endTime !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(shift.endTime) ||
+            shift.endTime <= shift.startTime ||
+            (shift.note !== undefined && (typeof shift.note !== 'string' || shift.note.length > 500))) {
+            throw new Error('Scheduled shift details are invalid.')
+          }
+        }
+      }
       if (operation.collection === 'ledger') {
         if (operation.kind === 'delete') throw Object.assign(new Error('Ledger entries cannot be deleted.'), { status: 403 })
         if (!record(operation.document)) throw new Error('Ledger entry must be an object.')
@@ -211,13 +261,40 @@ export async function createHubServer(): Promise<HubRuntime> {
       if (ORDER_COLLECTIONS.has(operation.collection) && operation.kind === 'delete') {
         requireCapability(actor, 'voidOrders')
       }
-      if ((operation.collection === 'registerSessions' || operation.collection === 'shifts') && operation.kind === 'put') {
+      if (ORDER_COLLECTIONS.has(operation.collection) && operation.kind === 'put') {
+        requireCapability(actor, 'register')
+      }
+      if (operation.collection === 'registerSessions') {
+        const previous = validationState.collections.registerSessions?.[operation.id]
+        if (operation.kind === 'delete') {
+          throw Object.assign(new Error('Register sessions cannot be deleted.'), { status: 403 })
+        }
         const doc = operation.document
-        const previous = validationState.collections[operation.collection]?.[operation.id]
-        const hasCashCount = record(doc) && (doc.countedCash !== undefined || doc.difference !== undefined)
-        const changingCash = hasCashCount && (!record(previous) ||
-          doc.countedCash !== previous.countedCash || doc.difference !== previous.difference)
-        if (!record(doc) || doc.status === 'closed' || doc.closedAt || changingCash) requireCapability(actor, 'closeShift')
+        if (!record(doc)) throw new Error('Register session must be an object.')
+        const ownerId = (session: Record<string, unknown>) =>
+          typeof session.staffId === 'string' ? session.staffId : session.openedById
+        if (actor.role !== 'admin' && ownerId(doc) !== actor.userId) {
+          throw Object.assign(new Error('You can only change your own register session.'), { status: 403 })
+        }
+        if (record(previous)) {
+          if (actor.role !== 'admin' && ownerId(previous) !== actor.userId) {
+            throw Object.assign(new Error('You can only change your own register session.'), { status: 403 })
+          }
+          for (const field of ['id', 'storeId', 'openedAt', 'openedById', 'openedByName', 'staffId', 'shiftNumber', 'openingCash']) {
+            if (doc[field] !== previous[field]) {
+              throw new Error('Register session opening details cannot be changed.')
+            }
+          }
+          if (previous.status === 'closed' && !isDeepStrictEqual(previous, doc)) {
+            throw Object.assign(new Error('Closed register sessions are immutable.'), { status: 403 })
+          }
+        } else if (actor.role !== 'admin' &&
+          (doc.staffId !== actor.userId || doc.openedById !== actor.userId)) {
+          throw Object.assign(new Error('New register sessions must belong to the authenticated staff member.'), { status: 403 })
+        }
+        const hasCashCount = doc.countedCash !== undefined || doc.difference !== undefined
+        const isClosing = doc.status === 'closed' || doc.closedAt !== undefined || hasCashCount
+        if (isClosing) requireCapability(actor, 'closeShift')
         else requireCapability(actor, 'openShift')
       }
       if (operation.collection === 'orders' && operation.kind === 'put' &&
@@ -225,9 +302,62 @@ export async function createHubServer(): Promise<HubRuntime> {
         requireCapability(actor, 'voidOrders')
       }
       if (operation.kind === 'put') {
-        validateStoreDoc(operation.document, actor.storeId)
+        if (operation.collection === 'stores') {
+          if (!record(operation.document) || operation.document.id !== actor.storeId) {
+            throw new Error('Store document must belong to the authenticated store.')
+          }
+        } else {
+          validateStoreDoc(operation.document, actor.storeId)
+        }
         if (operation.document.id !== operation.id) throw new Error('Operation ID does not match document ID.')
+        const previousDocument = validationState.collections[operation.collection]?.[operation.id]
+        if ((operation.collection === 'products' || operation.collection === 'categories') &&
+          previousDocument && changedDocuments.has(`${operation.collection}:${operation.id}`) &&
+          !isDeepStrictEqual(previousDocument, operation.document)) {
+          const label = typeof operation.document.name === 'string'
+            ? operation.document.name
+            : typeof previousDocument.name === 'string' ? previousDocument.name : operation.id
+          conflicts.push({ collection: operation.collection, id: operation.id, label })
+        }
         if (operation.collection === 'printers') validatePrinter(operation.document, actor.storeId, validationState)
+        if (operation.collection === 'openOrders') {
+          const orderDocument = operation.document
+          if (!record(orderDocument) || typeof orderDocument.id !== 'string') {
+            throw new Error('Open-order document must have an ID.')
+          }
+          const incoming: SyncDocument = { ...orderDocument, id: orderDocument.id }
+          let mergedInput: SyncDocument = incoming
+          const duplicate = incoming.status === 'open'
+            ? Object.values(validationState.collections.openOrders ?? {}).find((candidate) =>
+                candidate.id !== operation.id && candidate.storeId === actor.storeId &&
+                (incoming.tableId
+                  ? candidate.tableId === incoming.tableId
+                  : typeof incoming.tableName === 'string' && typeof candidate.tableName === 'string' &&
+                    candidate.tableName.toLowerCase() === incoming.tableName.toLowerCase()),
+              )
+            : undefined
+          if (duplicate) {
+            operationId = duplicate.id
+            operation.id = operationId
+            mergedInput = {
+              ...incoming,
+              id: operationId,
+              number: duplicate.number,
+              staffId: duplicate.staffId,
+              staffName: duplicate.staffName,
+              shiftId: duplicate.shiftId,
+              tableId: duplicate.tableId,
+              tableName: duplicate.tableName,
+              sectionId: duplicate.sectionId,
+              sectionName: duplicate.sectionName,
+              createdAt: duplicate.createdAt,
+            }
+          }
+          operation.document = mergeOpenOrderDocument(
+            validationState.collections.openOrders?.[operationId],
+            mergedInput,
+          )
+        }
         if ((operation.collection === 'orders' || operation.collection === 'openOrders') && record(operation.document)) {
           operation.document = validateOrderDocument(operation.document, operation.collection, validationState, actor)
         }
@@ -237,7 +367,7 @@ export async function createHubServer(): Promise<HubRuntime> {
         const document = operation.document
         if (!record(document) || typeof document.id !== 'string') throw new Error('Change set document must have an ID.')
         const documents = validationState.collections[operation.collection] ?? (validationState.collections[operation.collection] = {})
-        documents[operation.id] = structuredClone({ ...document, id: document.id })
+        documents[operationId] = structuredClone({ ...document, id: document.id })
       } else {
         delete validationState.collections[operation.collection]?.[operation.id]
       }
@@ -250,7 +380,7 @@ export async function createHubServer(): Promise<HubRuntime> {
     const next = await storage.transact(actor.storeId, changeSet)
     if (!fromSocket) sockets.broadcast(actor.storeId, { type: 'sync', seq: next.seq, opId: raw.opId })
     else sockets.broadcast(actor.storeId, { type: 'sync', seq: next.seq, opId: raw.opId })
-    return { seq: next.seq, duplicate: false }
+    return { seq: next.seq, duplicate: false, conflicts }
   }
 
   async function updateStationStatus(actor: AuthenticatedActor, raw: unknown, broadcast = true): Promise<void> {
@@ -435,6 +565,13 @@ export async function createHubServer(): Promise<HubRuntime> {
         const secret = requireString(body.secret, 'password or PIN', 128)
         return sendJson(response, 200, await auth.login(storeCode, username, secret, ip))
       }
+      if (path === '/api/auth/verify-pin' && request.method === 'POST') {
+        const actor = await actorFor(request)
+        if (actor.stationOnly) throw Object.assign(new Error('Station devices cannot verify staff PINs.'), { status: 403 })
+        const body = await readJson(request)
+        const pin = requireString(body.pin, 'PIN', 12)
+        return sendJson(response, 200, { verified: await auth.verifyPin(actor, pin, ip) })
+      }
       if (path === '/api/auth/logout' && request.method === 'POST') {
         const token = bearer(request)
         if (token) auth.revoke(token)
@@ -456,6 +593,10 @@ export async function createHubServer(): Promise<HubRuntime> {
         const filename = await storage.backupNow([storeId])
         return sendJson(response, 201, { filename: relative(storage.root, filename) })
       }
+      if (path === '/api/backup/health' && request.method === 'GET') {
+        const actor = await actorFor(request)
+        return sendJson(response, 200, { lastBackupAt: await storage.lastBackupAt(actor.storeId) })
+      }
       if (path === '/api/restore' && request.method === 'POST') {
         const body = await readJson(request)
         const { actor } = await authorizedStore(request, body)
@@ -475,12 +616,22 @@ export async function createHubServer(): Promise<HubRuntime> {
         const collections: Record<string, Array<Record<string, unknown>>> = {}
         for (const [name, documents] of Object.entries(state.collections)) {
           const permission = PRIVATE_COLLECTIONS[name]
-          if (permission === 'ledger') {
-            if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
-          } else if (permission && !can(actor, permission)) continue
+          if (name !== 'stores') {
+            if (name === 'shifts' && !canManageSchedules(actor)) continue
+            if (name === 'registerSessions' && !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
+            if (permission === 'ledger') {
+              if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
+            } else if (permission && !can(actor, permission)) continue
+          }
           collections[name] = Object.values(documents).filter((document) => {
-            if (document.storeId !== actor.storeId) return false
+            if (name === 'stores' ? document.id !== actor.storeId : document.storeId !== actor.storeId) return false
+            if (name === 'registerSessions' && actor.role === 'staff' && actor.permissions.supervisor !== true) {
+              const session = document as Record<string, unknown>
+              const ownerId = typeof session.staffId === 'string' ? session.staffId : session.openedById
+              if (ownerId !== actor.userId) return false
+            }
             if (actor.stationOnly) {
+              if (name === 'stores') return true
               return name === 'openOrders' && Array.isArray(document.items) &&
                 (document.items as Array<Record<string, unknown>>).some((item) =>
                   typeof item.stationId === 'string' && actor.stationIds?.includes(item.stationId),
@@ -503,6 +654,14 @@ export async function createHubServer(): Promise<HubRuntime> {
             delete safe.deviceTokenHash
             return safe
           })
+        }
+        const currentUser = state.collections.users?.[actor.userId]
+        if (currentUser && !collections.users?.some((user) => user.id === actor.userId)) {
+          const safe = { ...currentUser }
+          delete safe.password
+          delete safe.pin
+          delete safe.deviceTokenHash
+          collections.users = [...(collections.users ?? []), safe]
         }
         return sendJson(response, 200, { storeId: actor.storeId, seq: state.seq, collections })
       }
@@ -556,6 +715,7 @@ export async function createHubServer(): Promise<HubRuntime> {
           copies: typeof body.copies === 'number' ? Math.min(10, Math.max(1, Math.trunc(body.copies))) : 1,
           createdById: actor.userId,
           openDrawer: body.openDrawer === true,
+          idempotencyKey: typeof body.opId === 'string' ? requireString(body.opId, 'print idempotency key', 128) : undefined,
         })
         return sendJson(response, 202, { job })
       }
@@ -574,6 +734,14 @@ export async function createHubServer(): Promise<HubRuntime> {
         const state = await storage.readStore(actor.storeId)
         const jobs = Object.values(state.collections.printJobs ?? {}) as unknown as PrintJobRecord[]
         return sendJson(response, 200, { jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 500) })
+      }
+      if (path === '/api/printers/status' && request.method === 'GET') {
+        const actor = await actorFor(request)
+        const state = await storage.readStore(actor.storeId)
+        return sendJson(response, 200, {
+          printers: await printQueue.statuses(actor.storeId, state),
+          offlineSince: printQueue.offlineSince(actor.storeId),
+        })
       }
       if (path === '/api/print/retry' && request.method === 'POST') {
         const body = await readJson(request)
@@ -636,12 +804,6 @@ export async function createHubServer(): Promise<HubRuntime> {
         await printQueue.reportCloudPrint(storeId, body.jobId, body.success, typeof body.message === 'string' ? body.message : undefined)
         return sendJson(response, 200, { ok: true })
       }
-      if (path === '/api/virtual/preview' && request.method === 'GET') {
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': contentSecurityPolicy(), 'X-Content-Type-Options': 'nosniff' })
-        response.end(await virtualPrinterPreview())
-        return
-      }
-
       if (path.startsWith('/api/')) throw Object.assign(new Error('API endpoint not found.'), { status: 404 })
       if (request.method !== 'GET') throw Object.assign(new Error('Method not allowed.'), { status: 405 })
       await serveApp(response, path)

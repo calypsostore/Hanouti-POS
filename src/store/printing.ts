@@ -5,9 +5,10 @@ import { uid } from '../lib/utils'
 import { addLog } from './audit'
 import type { AppContextValue, EnqueuePrintInput, PrintJobResult, PrinterInput, Result } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
-import { sendToPrintTransport } from '../lib/printQueue'
+import { hasPrintCapability, sendToPrintTransport } from '../lib/printQueue'
 import { readDevicePrintPreference } from '../lib/printPreferences'
 import { resolvePrintPrinter } from '../lib/printRouting'
+import { automaticPrintRetryLimit } from '../lib/automation'
 
 const isPrintJobType = (type: PrintJobType) =>
   ['receipt', 'kitchen', 'bar', 'report', 'label', 'test'].includes(type)
@@ -27,7 +28,7 @@ const isValidPrintPayload = (payload: unknown): payload is EnqueuePrintInput['pa
     (!('size' in line) || line.size === undefined || line.size === 'normal' || line.size === 'double'),
   )
 
-export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapability }: StoreSliceDependencies) {
+export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapability, provider }: StoreSliceDependencies) {
   const addPrinter = useCallback<AppContextValue['addPrinter']>((storeId, input: PrinterInput): Result => {
     const actorResult = requireCapability(storeId, 'manageSettings')
     if (!actorResult.ok) return actorResult
@@ -171,50 +172,102 @@ export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapabil
     if (actorResult.actor.id !== job.createdById && !can(actorResult.actor, 'manageSettings')) {
       return { ok: false, error: 'Only the print-job owner or a settings manager can retry this job.' }
     }
-    const sending = { ...job, status: 'sending' as const, attempts: job.attempts + 1, lastError: undefined }
-    commitDb((previous) => ({
-      ...previous,
-      printJobs: previous.printJobs.map((entry) => entry.id === job.id ? sending : entry),
-    }))
-    try {
-      let result = await sendToPrintTransport(sending, printer, readDevicePrintPreference())
-      let finished: PrintJob = result.ok
-        ? { ...sending, status: 'printed' as const }
-        : { ...sending, status: 'failed' as const, lastError: result.error }
-      if (!result.ok && printer.fallbackPrinterId) {
+    if (provider.mode === 'hub' && printer.connection.startsWith('hub-')) {
+      const queued = { ...job, status: 'queued' as const, lastError: undefined }
+      commitDb((previous) => ({
+        ...previous,
+        printJobs: previous.printJobs.map((entry) => entry.id === job.id ? queued : entry),
+      }))
+      const result = await provider.queuePrint(queued)
+      return result.ok
+        ? { ok: true, job: queued }
+        : { ok: false, error: result.error }
+    }
+    const automation = dbRef.current.stores.find((store) => store.id === job.storeId)?.settings.automation
+    const retryLimit = automaticPrintRetryLimit(automation)
+    let attempts = job.attempts
+    let fallbackAttempted = false
+    let finalError = 'The printer transport failed.'
+    let fallbackName: string | undefined
+    for (let retry = 0; retry < retryLimit; retry += 1) {
+      attempts += 1
+      const sending: PrintJob = {
+        ...job, status: 'sending', attempts, lastError: undefined,
+      }
+      commitDb((previous) => ({
+        ...previous,
+        printJobs: previous.printJobs.map((entry) => entry.id === job.id ? sending : entry),
+      }))
+      try {
+        const result = await sendToPrintTransport(sending, printer, readDevicePrintPreference())
+        if (result.ok) {
+          const printed = { ...sending, status: 'printed' as const, lastError: undefined }
+          commitDb((previous) => ({
+            ...previous,
+            printJobs: previous.printJobs.map((entry) => entry.id === job.id ? printed : entry),
+          }))
+          return { ok: true, job: printed }
+        }
+        finalError = result.error
+      } catch (error) {
+        finalError = error instanceof Error ? error.message : 'The printer transport failed.'
+      }
+      if (!fallbackAttempted && automation?.fallbackPrintJobs !== false && printer.fallbackPrinterId) {
         const fallback = dbRef.current.printers.find((entry) =>
           entry.id === printer.fallbackPrinterId && entry.storeId === job.storeId && entry.enabled,
         )
         if (fallback) {
-          const fallbackResult = await sendToPrintTransport(sending, fallback, readDevicePrintPreference())
-          if (fallbackResult.ok) {
-            result = fallbackResult
-            finished = {
-              ...sending,
-              status: 'printed',
-              attempts: sending.attempts + 1,
-              lastError: `Primary printer failed; printed via ${fallback.name}.`,
+          fallbackAttempted = true
+          fallbackName = fallback.name
+          attempts += 1
+          try {
+            const fallbackResult = await sendToPrintTransport(
+              { ...sending, attempts },
+              fallback,
+              readDevicePrintPreference(),
+            )
+            if (fallbackResult.ok) {
+              const printed = {
+                ...sending,
+                status: 'printed' as const,
+                attempts,
+                lastError: `Primary printer failed; printed via ${fallback.name}.`,
+              }
+              commitDb((previous) => ({
+                ...previous,
+                printJobs: previous.printJobs.map((entry) => entry.id === job.id ? printed : entry),
+              }))
+              return { ok: true, job: printed }
             }
+            finalError = `${finalError} Fallback ${fallback.name} failed: ${fallbackResult.error}`
+          } catch (error) {
+            finalError = `${finalError} Fallback ${fallback.name} failed: ${
+              error instanceof Error ? error.message : 'The printer transport failed.'
+            }`
           }
         }
       }
-      commitDb((previous) => ({
-        ...previous,
-        printJobs: previous.printJobs.map((entry) => entry.id === job.id ? finished : entry),
-      }))
-      return result.ok
-        ? { ok: true, job: finished }
-        : { ok: false, error: result.error }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'The printer transport failed.'
-      const failed = { ...sending, status: 'failed' as const, lastError: message.slice(0, 500) }
-      commitDb((previous) => ({
-        ...previous,
-        printJobs: previous.printJobs.map((entry) => entry.id === job.id ? failed : entry),
-      }))
-      return { ok: false, error: failed.lastError ?? message }
+      if (retry + 1 < retryLimit) {
+        const queued = { ...sending, status: 'queued' as const, attempts, lastError: finalError.slice(0, 500) }
+        commitDb((previous) => ({
+          ...previous,
+          printJobs: previous.printJobs.map((entry) => entry.id === job.id ? queued : entry),
+        }))
+        await new Promise((resolve) => window.setTimeout(resolve, Math.min(5000, 500 * (2 ** retry))))
+      }
     }
-  }, [commitDb, dbRef, requireActor])
+    const failed: PrintJob = {
+      ...job,
+      status: 'failed',
+      attempts,
+      lastError: `${finalError}${fallbackName ? ` (fallback printer tried: ${fallbackName})` : ''}`.slice(0, 500),
+    }
+    commitDb((previous) => ({
+      ...previous,
+      printJobs: previous.printJobs.map((entry) => entry.id === job.id ? failed : entry),
+    }))
+    return { ok: false, error: failed.lastError ?? finalError }
+  }, [commitDb, dbRef, provider, requireActor])
 
   const enqueuePrint = useCallback<AppContextValue['enqueuePrint']>(async (
     input: EnqueuePrintInput,
@@ -263,6 +316,49 @@ export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapabil
     return executeJob(job)
   }, [dbRef, executeJob])
 
+  const printPendingHere = useCallback<AppContextValue['printPendingHere']>(async (id) => {
+    const job = dbRef.current.printJobs.find((entry) => entry.id === id)
+    if (!job || job.status !== 'queued') return { ok: false, error: 'Queued print job not found.' }
+    const actorResult = requireActor(job.storeId)
+    if (!actorResult.ok) return actorResult
+    if (actorResult.actor.id !== job.createdById && !can(actorResult.actor, 'manageSettings')) {
+      return { ok: false, error: 'Only the print-job owner or a settings manager can print this job here.' }
+    }
+    if (provider.mode !== 'hub' || !provider.beginLocalPrintFallback(job.id)) {
+      return { ok: false, error: 'This print job may already have reached the hub; retry it there to avoid a duplicate.' }
+    }
+    const localPrinter = dbRef.current.printers.find((printer) =>
+      printer.storeId === job.storeId && printer.enabled &&
+      printer.connection === 'browser-webserial' && hasPrintCapability(printer),
+    )
+    if (!localPrinter) {
+      await provider.finishLocalPrintFallback(job.id, false)
+      return { ok: false, error: 'No available WebSerial printer is configured on this device.' }
+    }
+    try {
+      const result = await sendToPrintTransport(
+        { ...job, printerId: localPrinter.id },
+        localPrinter,
+        'this-device',
+      )
+      await provider.finishLocalPrintFallback(job.id, result.ok)
+      if (!result.ok) return { ok: false, error: result.error }
+      const printed = {
+        ...job,
+        status: 'printed' as const,
+        lastError: `Printed here via ${localPrinter.name} while the hub was offline.`,
+      }
+      commitDb((previous) => ({
+        ...previous,
+        printJobs: previous.printJobs.map((entry) => entry.id === job.id ? printed : entry),
+      }))
+      return { ok: true, job: printed }
+    } catch (error) {
+      await provider.finishLocalPrintFallback(job.id, false)
+      return { ok: false, error: error instanceof Error ? error.message : 'Local printer failed.' }
+    }
+  }, [commitDb, dbRef, provider, requireActor])
+
   const cancelPrintJob = useCallback<AppContextValue['cancelPrintJob']>((id): Result => {
     const job = dbRef.current.printJobs.find((entry) => entry.id === id)
     if (!job) return { ok: false, error: 'Print job not found.' }
@@ -287,6 +383,7 @@ export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapabil
     setPrintRoute,
     enqueuePrint,
     retryPrintJob,
+    printPendingHere,
     cancelPrintJob,
   }
 }

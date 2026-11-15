@@ -1,7 +1,8 @@
-import type { DevicePrintPreference } from '../types'
+import type { DevicePrintPreference, ReceiptPrintPolicy } from '../types'
 
 const KEY = '7anouti.print-device-preference.v1'
 const OPTIONS: DevicePrintPreference[] = ['hub', 'this-device', 'browser']
+const receiptPolicyKey = (storeId: string) => `7anouti.receipt-policy.${storeId}.v1`
 
 export const readDevicePrintPreference = (): DevicePrintPreference => {
   try {
@@ -16,4 +17,20 @@ export const readDevicePrintPreference = (): DevicePrintPreference => {
 
 export const saveDevicePrintPreference = (preference: DevicePrintPreference): void => {
   localStorage.setItem(KEY, preference)
+}
+
+export const readDeviceReceiptPolicy = (
+  storeId: string,
+  fallback: ReceiptPrintPolicy,
+): ReceiptPrintPolicy => {
+  try {
+    const stored = localStorage.getItem(receiptPolicyKey(storeId))
+    return stored === 'auto' || stored === 'ask' || stored === 'never' ? stored : fallback
+  } catch {
+    return fallback
+  }
+}
+
+export const saveDeviceReceiptPolicy = (storeId: string, policy: ReceiptPrintPolicy): void => {
+  localStorage.setItem(receiptPolicyKey(storeId), policy)
 }

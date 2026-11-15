@@ -84,7 +84,8 @@ export const linesToEscpos = (
     push(0x1b, 0x61, line.align === 'center' ? 1 : line.align === 'right' ? 2 : 0)
     push(0x1b, 0x45, line.bold ? 1 : 0)
     push(0x1d, 0x21, line.size === 'double' ? 0x11 : 0x00)
-    const text = Array.from(line.text).slice(0, columns).join('')
+    const textColumns = line.size === 'double' ? Math.floor(columns / 2) : columns
+    const text = Array.from(line.text).slice(0, textColumns).join('')
     output.push(...encodeEscposText(`${text}\n`, codepage))
   }
   push(0x1d, 0x21, 0x00, 0x1b, 0x45, 0x00, 0x1b, 0x64, 0x04)

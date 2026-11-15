@@ -4,10 +4,11 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
+import { validAutomationSettings } from '../lib/automation'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { CreateStoreInput } from './types'
@@ -45,6 +46,23 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   receiptPrintPolicy: settings.receiptPrintPolicy,
   stationTicketPrintPolicy: settings.stationTicketPrintPolicy,
   reportPrintPolicy: settings.reportPrintPolicy,
+  automation: {
+    drawerKickOnCash: settings.automation.drawerKickOnCash,
+    autoLockMinutes: settings.automation.autoLockMinutes,
+    autoLogoutMinutes: settings.automation.autoLogoutMinutes,
+    shiftReminders: settings.automation.shiftReminders,
+    shiftReminderHours: settings.automation.shiftReminderHours,
+    warnAboutOpenTablesAtShiftClose: settings.automation.warnAboutOpenTablesAtShiftClose,
+    lowStockAlerts: settings.automation.lowStockAlerts,
+    hideOutOfStock: settings.automation.hideOutOfStock,
+    retryPrintJobs: settings.automation.retryPrintJobs,
+    fallbackPrintJobs: settings.automation.fallbackPrintJobs,
+    printerRetryLimit: settings.automation.printerRetryLimit,
+    autoReconnectPrinters: settings.automation.autoReconnectPrinters,
+    printerOfflineAlerts: settings.automation.printerOfflineAlerts,
+    printerOfflineAlertMinutes: settings.automation.printerOfflineAlertMinutes,
+    backupHealthAlerts: settings.automation.backupHealthAlerts,
+  },
 })
 
 const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => ({
@@ -172,6 +190,11 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (patch.requireShiftForOrders !== undefined &&
       typeof patch.requireShiftForOrders !== 'boolean') {
       return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
+    }
+    if (patch.automation) {
+      if (!validAutomationSettings(patch.automation)) {
+        return { ok: false, error: 'Check the automation settings and allowed values.' }
+      }
     }
     if (patch.ticketSendPolicy !== undefined &&
       !['done_or_idle', 'instant', 'delayed', 'done_only'].includes(patch.ticketSendPolicy)) {
@@ -407,6 +430,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         receiptPrintPolicy: 'ask',
         stationTicketPrintPolicy: 'automatic',
         reportPrintPolicy: 'manual',
+        automation: { ...DEFAULT_AUTOMATION_SETTINGS },
       },
     }
     const stations = defaultStationsForStore(storeId)

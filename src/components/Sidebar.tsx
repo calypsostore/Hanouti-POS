@@ -5,6 +5,7 @@ import {
   ChefHat,
   LayoutDashboard,
   LogOut,
+  Menu,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,6 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import type { DashboardTone } from '../lib/palette'
 import { cn, compactMoney } from '../lib/utils'
@@ -32,6 +34,20 @@ import { can } from '../lib/permissions'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; tone: DashboardTone; end?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
+
+const PRIMARY_NAV_PATHS = new Set([
+  '/admin',
+  '/staff',
+  '/super',
+  '/pos',
+  '/kitchen',
+  '/admin/orders',
+  '/admin/staff',
+])
+
+const COLLAPSED_NAV_ITEM_HEIGHT = 36
+const COLLAPSED_MENU_BUTTON_HEIGHT = 40
+const COLLAPSED_NAV_GAP = 2
 
 export function Sidebar({
   collapsed,
@@ -46,6 +62,29 @@ export function Sidebar({
 }) {
   const { db, user, store, logout } = useApp()
   const navigate = useNavigate()
+  const collapsedNavRef = useRef<HTMLElement | null>(null)
+  const [collapsedMenuOpen, setCollapsedMenuOpen] = useState(false)
+  const [collapsedNavItemCount, setCollapsedNavItemCount] = useState(5)
+  const hasUser = Boolean(user)
+
+  useEffect(() => {
+    if (!hasUser) return
+    const nav = collapsedNavRef.current
+    if (!nav) return
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      const availableHeight = entry.contentRect.height
+      const itemCount = Math.max(0, Math.floor(
+        (availableHeight - COLLAPSED_MENU_BUTTON_HEIGHT - COLLAPSED_NAV_GAP)
+        / (COLLAPSED_NAV_ITEM_HEIGHT + COLLAPSED_NAV_GAP),
+      ))
+      setCollapsedNavItemCount(itemCount)
+    })
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [hasUser])
+
   if (!user) return null
 
   const isSuper = user.role === 'super'
@@ -129,38 +168,103 @@ export function Sidebar({
     : groups
 
   const outstanding = store ? getOutstandingBalance(db, store.id) : 0
+  const allItems = visibleGroups.flatMap((group) => group.items)
+  const prioritizedItems = [
+    ...allItems.filter((item) => PRIMARY_NAV_PATHS.has(item.to)),
+    ...allItems.filter((item) => !PRIMARY_NAV_PATHS.has(item.to)),
+  ]
+  const primaryItems = prioritizedItems.slice(0, collapsedNavItemCount)
+  const primaryPaths = new Set(primaryItems.map((item) => item.to))
+  const menuGroups = visibleGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !primaryPaths.has(item.to)),
+  })).filter((group) => group.items.length > 0)
   const sidebarWidth = collapsed && !mobile ? 'w-[78px]' : 'w-[258px]'
+  const renderGroups = (groups: NavGroup[], inPopover = false) => groups.map((group) => (
+    <section key={group.label} className={inPopover ? 'min-w-0' : undefined}>
+      {(!collapsed || mobile || inPopover) && (
+        <h2 className={cn(
+          'mb-1 px-2 font-bold tracking-[0.14em]',
+          inPopover ? 'text-[9px] text-muted' : 'text-[8px] text-white/40',
+        )}>{group.label}</h2>
+      )}
+      <div className={cn('space-y-0.5', inPopover && 'min-w-0')}>
+        {group.items.map(({ to, label, icon: Icon, tone, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            title={collapsed && !mobile && !inPopover ? label : undefined}
+            onClick={() => {
+              if (inPopover) setCollapsedMenuOpen(false)
+              onNavigate?.()
+            }}
+            className={({ isActive }) => cn(
+              'sidebar-link group flex items-center rounded-lg font-semibold focus-visible:ring-2 focus-visible:ring-brand-amber',
+              inPopover ? 'min-h-7 gap-1.5 px-1.5 text-[10px]' : 'min-h-10 gap-2 px-2 py-1.5 text-[11px]',
+              collapsed && !mobile && !inPopover && 'justify-center px-1',
+              isActive ? 'bg-brand-amber text-brand-navy shadow-sm' : inPopover
+                ? 'text-ink hover:bg-cream-100 dark:text-white/80 dark:hover:bg-espresso-700'
+                : 'text-white/75 hover:bg-white/[0.08] hover:text-white',
+            )}
+            aria-label={collapsed && !mobile && !inPopover ? label : undefined}
+          >
+            {({ isActive }) => <>
+              <span className={cn(
+                'flex shrink-0 items-center justify-center rounded-md',
+                inPopover ? 'h-5 w-5' : 'h-7 w-7',
+                inPopover
+                  ? isActive ? 'bg-brand-navy/10' : 'bg-cream-100 dark:bg-espresso-700'
+                  : isActive ? 'bg-brand-navy/10' : 'bg-white/10',
+              )}>
+                <Icon className={cn(
+                  'h-3.5 w-3.5',
+                  isActive ? 'text-brand-navy' : tone === 'amber' ? 'text-brand-amber' : inPopover ? 'text-muted dark:text-white/80' : 'text-white/80',
+                )} />
+              </span>
+              {(inPopover || !collapsed || mobile) && <span className="min-w-0 flex-1 truncate">{label}</span>}
+              {label === 'Regulars & tabs' && outstanding > 0 && (inPopover || !collapsed || mobile) && (
+                <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', isActive ? 'bg-brand-navy/10' : 'bg-cream-100 dark:bg-espresso-700')}>
+                  {compactMoney(outstanding)}
+                </span>
+              )}
+            </>}
+          </NavLink>
+        ))}
+      </div>
+    </section>
+  ))
   return (
-    <div className={cn('grain relative flex h-full flex-col overflow-hidden bg-brand-navy text-white', sidebarWidth)}>
-      <div className={cn('relative flex h-[76px] shrink-0 items-center border-b border-white/10', collapsed && !mobile ? 'justify-center px-2' : 'justify-between px-4')}>
+    <div className={cn('glass-sidebar grain relative flex h-full flex-col overflow-hidden text-white transition-[width,box-shadow] duration-300 ease-out', sidebarWidth)}>
+      <div className={cn('relative flex h-16 shrink-0 items-center border-b border-white/10 bg-white/[0.025]', collapsed && !mobile ? 'justify-center px-2' : 'justify-between px-3')}>
         {collapsed && !mobile
           ? <BrandLogo size="sm" variant="dark" markOnly />
-          : <BrandLogo size="sm" variant="dark" className="scale-[0.82] origin-left" />}
+          : <BrandLogo size="sm" variant="dark" className="scale-75 origin-left" />}
         <button
           type="button"
           onClick={onToggle}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={cn('rounded-lg p-2 text-white/65 transition hover:bg-white/10 hover:text-white', collapsed && !mobile && 'absolute -right-1 bottom-1')}
+          className={cn('rounded-lg p-2 text-white/65 transition duration-200 hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95', collapsed && !mobile && 'absolute -right-1 bottom-1')}
         >
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
       </div>
 
-      <div className={cn('relative mx-3 mt-3 rounded-xl border border-white/10 bg-white/[0.06] p-3', collapsed && !mobile && 'mx-2 px-2')}>
-        <div className={cn('flex items-center gap-2.5', collapsed && !mobile && 'justify-center')}>
+      <div className={cn('sidebar-glass-panel relative mx-2.5 mt-2.5 rounded-2xl p-2 transition duration-200 hover:border-white/20', collapsed && !mobile && 'mx-2 px-2')}>
+        <div className={cn('flex items-center gap-2', collapsed && !mobile && 'justify-center')}>
           {isSuper
-            ? <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10"><ShieldCheck className="h-4.5 w-4.5 text-brand-amber" /></span>
+            ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10"><ShieldCheck className="h-4 w-4 text-brand-amber" /></span>
             : store?.logo
-              ? <img src={store.logo} alt="" className="h-9 w-9 shrink-0 rounded-xl object-cover" />
-              : store && <AppIcon name={store.icon} color={store.iconColor} size={17} className="h-9 w-9 rounded-xl" />}
+              ? <img src={store.logo} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+              : store && <AppIcon name={store.icon} color={store.iconColor} size={16} className="sidebar-store-icon h-8 w-8 rounded-lg" />}
           {(!collapsed || mobile) && (
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-bold">{isSuper ? 'Platform console' : store?.name}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-white/55">
+              <div className="truncate text-[11px] font-bold">{isSuper ? 'Platform console' : store?.name}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-[9px] text-white/55">
                 {isSuper ? 'All stores' : <>
                   <span className="capitalize">{store?.plan}</span>
-                  {store?.settings.posMode === 'quick' ? <><Zap className="h-3 w-3" /> Quick sale</> : <><ReceiptText className="h-3 w-3" /> Full cashier</>}
+                  {store?.settings.posMode === 'quick' ? <><Zap className="h-2.5 w-2.5" /> Quick sale</> : <><ReceiptText className="h-2.5 w-2.5" /> Full cashier</>}
                 </>}
               </div>
             </div>
@@ -168,46 +272,74 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-2.5 py-4 thin-scrollbar">
-        {visibleGroups.map((group) => (
-          <section key={group.label}>
-            {(!collapsed || mobile) && <h2 className="mb-1.5 px-2.5 text-[9px] font-bold tracking-[0.16em] text-white/40">{group.label}</h2>}
-            <div className="space-y-1">
-              {group.items.map(({ to, label, icon: Icon, tone, end }) => (
+      <nav className={cn(
+        'relative min-h-0 flex-1 px-2.5 py-3',
+        collapsed && !mobile ? 'overflow-visible' : 'space-y-2.5 overflow-y-auto thin-scrollbar',
+      )} ref={collapsedNavRef}>
+        {collapsed && !mobile
+          ? <div className="space-y-0.5">
+              {primaryItems.map(({ to, label, icon: Icon, tone, end }, index) => (
                 <NavLink
                   key={to}
                   to={to}
                   end={end}
-                  title={collapsed && !mobile ? label : undefined}
-                  onClick={onNavigate}
+                  title={label}
+                  aria-label={label}
+                  onClick={() => setCollapsedMenuOpen(false)}
                   className={({ isActive }) => cn(
-                    'group flex min-h-10 items-center gap-2.5 rounded-xl px-2 py-1.5 text-[12px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-brand-amber',
-                    collapsed && !mobile && 'justify-center px-1',
+                    'sidebar-link group flex min-h-9 w-full items-center justify-center rounded-lg px-1 focus-visible:ring-2 focus-visible:ring-brand-amber',
                     isActive ? 'bg-brand-amber text-brand-navy shadow-sm' : 'text-white/75 hover:bg-white/[0.08] hover:text-white',
                   )}
-                  aria-label={collapsed && !mobile ? label : undefined}
+                  style={{ animationDelay: `${index * 24}ms` }}
                 >
                   {({ isActive }) => <>
-                    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', isActive ? 'bg-brand-navy/10' : 'bg-white/10')}>
-                      <Icon className={cn('h-4 w-4', isActive ? 'text-brand-navy' : tone === 'amber' ? 'text-brand-amber' : 'text-white/80')} />
+                    <span className={cn('sidebar-icon-tile flex h-7 w-7 shrink-0 items-center justify-center rounded-md', isActive ? 'bg-brand-navy/10' : 'bg-white/10')}>
+                      <Icon className={cn('h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110', isActive ? 'text-brand-navy' : tone === 'amber' ? 'text-brand-amber' : 'text-white/80')} />
                     </span>
-                    {(!collapsed || mobile) && <span className="min-w-0 flex-1 truncate">{label}</span>}
-                    {label === 'Regulars & tabs' && outstanding > 0 && (!collapsed || mobile) && (
-                      <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', isActive ? 'bg-brand-navy/10' : 'bg-white/10')}>
-                        {compactMoney(outstanding)}
-                      </span>
-                    )}
                   </>}
                 </NavLink>
               ))}
+              <button
+                type="button"
+                onClick={() => setCollapsedMenuOpen((open) => !open)}
+                aria-label={collapsedMenuOpen ? 'Hide more navigation options' : 'Show more navigation options'}
+                aria-expanded={collapsedMenuOpen}
+                aria-controls="collapsed-sidebar-menu"
+                title="Show more navigation options"
+                className="sidebar-glass-panel group mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-white/80 shadow-sm transition duration-200 hover:scale-105 hover:bg-white/[0.15] hover:text-white active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-amber"
+              >
+                <Menu className="h-4 w-4 transition-transform duration-200 group-hover:rotate-6" />
+              </button>
             </div>
-          </section>
-        ))}
+          : renderGroups(visibleGroups)}
+        {collapsed && !mobile && collapsedMenuOpen && <>
+          <button
+            type="button"
+            onClick={() => setCollapsedMenuOpen(false)}
+            aria-label="Close navigation options"
+            className="fixed inset-y-0 left-[78px] right-0 z-40 animate-[fadeIn_.18s_ease-out] cursor-default bg-brand-navy/15 backdrop-blur-[2px]"
+          />
+          <div
+            id="collapsed-sidebar-menu"
+            className="sidebar-glass-menu fixed left-[86px] top-16 z-50 grid w-fit max-w-[calc(100vw-6rem)] grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))] content-start gap-x-3 gap-y-2 overflow-y-auto rounded-2xl p-2 text-ink animate-[slideLeft_.2s_cubic-bezier(0.16,1,0.3,1)] thin-scrollbar"
+          >
+            {renderGroups(menuGroups, true)}
+            <button
+              type="button"
+              onClick={() => { setCollapsedMenuOpen(false); logout(); navigate('/login') }}
+              aria-label="Log out"
+              className="col-span-full flex min-h-8 items-center gap-2 rounded-lg border-t border-line px-2 text-[11px] font-semibold text-muted transition-colors hover:bg-cream-100 hover:text-ink dark:border-white/10 dark:text-white/70 dark:hover:bg-espresso-700 dark:hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
+              Log out
+            </button>
+          </div>
+        </>}
       </nav>
 
-      <footer className="relative border-t border-white/10 p-3">
+      <footer className="relative border-t border-white/10 bg-white/[0.025] p-2.5">
         {(!collapsed || mobile) && !isSuper && (
-          <div className="mb-2 flex items-center justify-between rounded-lg bg-white/[0.06] px-2.5 py-2 text-[10px]">
+          <div className="mb-1.5 flex items-center justify-between rounded-lg bg-white/[0.06] px-2 py-1.5 text-[9px]">
             <span className="text-white/60">Plan</span>
             <Badge tone={store?.status === 'trial' ? 'warning' : 'neutral'} className="capitalize">{store?.plan}</Badge>
           </div>
@@ -218,13 +350,13 @@ export function Sidebar({
             <div className="truncate text-[11px] font-bold">{user.name}</div>
             <div className="text-[9.5px] capitalize text-white/55">{user.role}</div>
           </div>}
-          <button
+          {(!collapsed || mobile) && <button
             type="button"
             onClick={() => { logout(); navigate('/login') }}
             title="Log out"
             aria-label="Log out"
             className="rounded-lg p-2 text-white/65 transition hover:bg-white/10 hover:text-white"
-          ><LogOut className="h-4 w-4" /></button>
+          ><LogOut className="h-4 w-4" /></button>}
         </div>
       </footer>
     </div>

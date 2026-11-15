@@ -10,6 +10,8 @@ import { Button, Modal } from '../../components/ui'
 import { fmtTime } from '../../lib/utils'
 import { preparationTicketsEnabled } from '../../lib/defaults'
 import { resolvePrintPrinter } from '../../lib/printRouting'
+import { shouldAutoPrintReceipt } from '../../lib/automation'
+import { readDeviceReceiptPolicy } from '../../lib/printPreferences'
 
 export function ReceiptModal({
   order,
@@ -28,7 +30,8 @@ export function ReceiptModal({
   useEffect(() => {
     if (!order || !store) return
     if (autoPrinted.current.has(order.id)) return
-    if (store.settings.receiptPrintPolicy !== 'auto') return
+    const receiptPolicy = readDeviceReceiptPolicy(store.id, store.settings.receiptPrintPolicy)
+    if (!shouldAutoPrintReceipt(receiptPolicy)) return
     autoPrinted.current.add(order.id)
     const lines = buildReceiptLines(order, store, { customerName })
     const targetPrinter = resolvePrintPrinter(db, store.id, 'receipt')
@@ -46,7 +49,8 @@ export function ReceiptModal({
       type: 'receipt',
       printerId: targetPrinter.id,
       payload: lines,
-      openDrawer: order.paymentMethod === 'cash' && targetPrinter.openDrawerOnCash,
+      openDrawer: store.settings.automation.drawerKickOnCash &&
+        order.paymentMethod === 'cash' && targetPrinter.openDrawerOnCash,
     }).then((result) => {
       if (result.ok) push('Receipt sent to printer', 'success')
       else push(result.error, 'error')
@@ -69,7 +73,7 @@ export function ReceiptModal({
       bytes: linesToEscpos(lines, cfg.width),
       kind,
       openDrawer: kind === 'receipt' && order.paymentMethod === 'cash' &&
-        targetPrinter?.openDrawerOnCash === true,
+        store.settings.automation.drawerKickOnCash && targetPrinter?.openDrawerOnCash === true,
     })
   }
 
@@ -86,7 +90,7 @@ export function ReceiptModal({
             <Button variant="secondary" className="flex-1" onClick={onClose}>
               New sale
             </Button>
-            {store.settings.receiptPrintPolicy !== 'never' && (
+            {readDeviceReceiptPolicy(store.id, store.settings.receiptPrintPolicy) !== 'never' && (
               <Button className="flex-1" onClick={() => openPrintDialog('receipt')}>
                 <Printer className="h-4 w-4" /> Print
               </Button>

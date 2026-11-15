@@ -89,6 +89,30 @@ export class HubAuth {
     return { token, expiresAt: new Date(expiresAt).toISOString(), actor }
   }
 
+  async verifyPin(actor: AuthenticatedActor, pin: string, ip: string): Promise<boolean> {
+    const throttleKey = `pin:${actor.storeId}:${actor.userId}:${ip}`
+    const failure = this.failures[throttleKey]
+    if (failure?.lockedUntil > Date.now()) {
+      throw Object.assign(new Error('Too many failed PIN attempts. Try again later.'), { status: 429 })
+    }
+    const state = await this.storage.readStore(actor.storeId)
+    const user = state.collections.users?.[actor.userId] as HubUser | undefined
+    const valid = !!user && user.active && user.storeId === actor.storeId &&
+      /^\d{4,12}$/.test(pin) && verifySecret(pin, user.pin)
+    if (!valid) {
+      const next = (failure?.count ?? 0) + 1
+      this.failures[throttleKey] = {
+        count: next >= MAX_FAILURES ? 0 : next,
+        lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+      }
+      await this.persistFailures()
+      return false
+    }
+    delete this.failures[throttleKey]
+    await this.persistFailures()
+    return true
+  }
+
   async setupOwner(body: Record<string, unknown>): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
     if (this.setupInProgress) throw Object.assign(new Error('First-run owner setup is already in progress.'), { status: 409 })
     this.setupInProgress = true
@@ -105,11 +129,14 @@ export class HubAuth {
     const storeId = randomBytes(12).toString('hex')
     const now = new Date().toISOString()
     const store = {
-      id: storeId, name: storeName, slug: storeCode, ownerName: username, createdAt: now, active: true,
+      id: storeId, name: storeName, slug: storeCode, ownerName: username, ownerEmail: '', phone: '',
+      address: '', city: '', icon: 'Store', iconColor: 'amber', plan: 'starter', status: 'trial',
+      businessType: 'cafe', setupComplete: false, createdAt: now,
       settings: { taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false, features: { weightItems: false } },
     }
     const owner: HubUser = {
-      id: randomBytes(12).toString('hex'), storeId, username, name: username, role: 'admin', active: true,
+      id: randomBytes(12).toString('hex'), storeId, username, email: username.includes('@') ? username : `${username}@local.invalid`,
+      name: username, role: 'admin', active: true, createdAt: now, salaryType: 'none', salaryAmount: 0,
       password: hashSecret(password), pin: hashSecret(pin), permissions: {},
     }
     await this.storage.replaceStore(storeId, {
