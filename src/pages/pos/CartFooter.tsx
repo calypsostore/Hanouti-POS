@@ -14,13 +14,9 @@ export function CartFooter({
   customerId,
   onCheckout,
   onAddToTab,
+  onDone,
   count,
   isOpenOrder,
-  canSaveOpenOrder,
-  hasUnsentItems,
-  kitchenEnabled,
-  onSaveOpenOrder,
-  onSendKitchen,
   onOpenFloor,
 }: {
   totals: { subtotal: number; tax: number; service: number; total: number }
@@ -34,16 +30,12 @@ export function CartFooter({
   customerId?: string
   onCheckout: () => void
   onAddToTab: () => void
+  onDone: () => void
   count: number
   isOpenOrder?: boolean
-  canSaveOpenOrder?: boolean
-  hasUnsentItems?: boolean
-  kitchenEnabled?: boolean
-  onSaveOpenOrder?: () => void
-  onSendKitchen?: () => void
   onOpenFloor?: () => void
 }) {
-  const showTabButton = allowCredit && !!customerId && !(quick && isOpenOrder)
+  const showTabButton = allowCredit && !!customerId && !isOpenOrder
 
   return (
     <div className={cn(
@@ -89,16 +81,6 @@ export function CartFooter({
 
       {isOpenOrder && (
         <div className="grid shrink-0 gap-2 py-2">
-          {kitchenEnabled && (
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" className="w-full" disabled={!canSaveOpenOrder} onClick={onSaveOpenOrder}>
-                Save items
-              </Button>
-              <Button variant="secondary" className="w-full" disabled={!hasUnsentItems} onClick={onSendKitchen}>
-                Send to kitchen
-              </Button>
-            </div>
-          )}
           <Button variant="ghost" className="w-full" onClick={onOpenFloor}>Back to tables</Button>
         </div>
       )}
@@ -109,7 +91,7 @@ export function CartFooter({
           <span className="text-[18px] font-extrabold tracking-tight text-ink tabular">{money(totals.total)}</span>
         </div>
 
-        <div className={cn('mt-2', showTabButton ? 'grid grid-cols-2 gap-2' : '')}>
+        <div className={cn('mt-2', (showTabButton || (isOpenOrder && !quick)) ? 'grid grid-cols-2 gap-2' : '')}>
           <Button
             size="md"
             className={cn(
@@ -117,16 +99,21 @@ export function CartFooter({
               showTabButton && 'px-2 text-[12px] leading-tight',
             )}
             style={{ background: 'var(--semantic-green-gradient)', color: 'white' }}
-            disabled={!count}
-            onClick={onCheckout}
+            disabled={!count && !isOpenOrder}
+            onClick={isOpenOrder ? onDone : onCheckout}
           >
-            {quick && isOpenOrder
+            {isOpenOrder
               ? <><CheckCircle2 className="h-4 w-4" /> Done</>
               : quick
-              ? <><CheckCircle2 className="h-4 w-4" /> {isOpenOrder ? 'Pay table' : 'Complete order'} · {money(totals.total)}</>
-              : <><Wallet className="h-4 w-4" /> {isOpenOrder ? 'Pay table' : 'Checkout'} · {money(totals.total)}</>}
+              ? <><CheckCircle2 className="h-4 w-4" /> Complete order · {money(totals.total)}</>
+              : <><Wallet className="h-4 w-4" /> Checkout · {money(totals.total)}</>}
           </Button>
 
+          {isOpenOrder && !quick && (
+            <Button variant="secondary" size="md" className="w-full" disabled={!count} onClick={onCheckout}>
+              <Wallet className="h-4 w-4" /> Pay table · {money(totals.total)}
+            </Button>
+          )}
           {showTabButton && (
             <Button
               variant="secondary"

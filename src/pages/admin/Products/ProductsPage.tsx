@@ -10,7 +10,10 @@ import { CategoryEditor, ProductEditor } from './ProductEditors'
 import ProductsSummary from './ProductsSummary'
 
 export default function ProductsPage() {
-  const { db, store, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct } =
+  const {
+    db, store, addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct,
+    bulkAssignProductStation, bulkAssignCategoryStation,
+  } =
     useApp()
   const { push } = useToast()
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -88,6 +91,25 @@ export default function ProductsPage() {
           if (!result.ok) push(result.error, 'error')
         }}
         onNewProduct={() => setProductEditor({ open: true })}
+        stations={stations}
+        onBulkAssignProducts={(ids, stationId) => {
+          const result = bulkAssignProductStation(store.id, ids, stationId)
+          if (!result.ok) {
+            push(result.error, 'error')
+            return false
+          }
+          push(`Assigned ${ids.length} product${ids.length === 1 ? '' : 's'}`)
+          return true
+        }}
+        onBulkAssignCategories={(ids, stationId) => {
+          const result = bulkAssignCategoryStation(store.id, ids, stationId)
+          if (!result.ok) {
+            push(result.error, 'error')
+            return false
+          }
+          push(`Assigned ${ids.length} categor${ids.length === 1 ? 'y' : 'ies'}`)
+          return true
+        }}
       />
 
       {productEditor.open && (

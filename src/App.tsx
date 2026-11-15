@@ -6,6 +6,7 @@ import { AppShell } from './components/Layout'
 import Login from './pages/Login'
 import POS from './pages/POS'
 import TableFloor from './pages/pos/TableFloor'
+import StationBoard from './pages/pos/StationBoard'
 import AdminOverview from './pages/admin/Overview'
 import StaffDashboard from './pages/admin/overview/StaffDashboard'
 import Orders from './pages/admin/Orders'
@@ -147,6 +148,34 @@ export default function App() {
                   <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
                       <TableFloor />
+                    </StoreSetupGate>
+                  </RoleGate>
+                </Protected>
+              }
+            />
+            <Route
+              path="/kitchen"
+              element={
+                <Protected>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
+                    <StoreSetupGate>
+                      <CapabilityGate capability="viewStation">
+                        <StationBoard />
+                      </CapabilityGate>
+                    </StoreSetupGate>
+                  </RoleGate>
+                </Protected>
+              }
+            />
+            <Route
+              path="/station/:stationId"
+              element={
+                <Protected>
+                  <RoleGate roles={['admin', 'manager', 'staff']}>
+                    <StoreSetupGate>
+                      <CapabilityGate capability="viewStation">
+                        <StationBoard />
+                      </CapabilityGate>
                     </StoreSetupGate>
                   </RoleGate>
                 </Protected>

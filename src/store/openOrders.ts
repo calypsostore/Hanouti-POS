@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { OpenOrder, Order } from '../types'
+import type { OpenOrder, Order, OrderItem, OrderItemStatus } from '../types'
 import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
@@ -9,6 +9,8 @@ import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
 import { openShiftForStaff } from '../lib/registerShifts'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
+import { resolveOpenOrderItems } from '../lib/openOrderItems'
+import { canTransitionStationItem } from '../lib/orderItemLifecycle'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -49,7 +51,7 @@ export function useOpenOrdersSlice(
   dependencies: StoreSliceDependencies,
   createOrder: AppContextValue['createOrder'],
 ) {
-  const { dbRef, commitDb, requireActor } = dependencies
+  const { dbRef, commitDb, requireActor, requireCapability } = dependencies
 
   const openTableOrder = useCallback<AppContextValue['openTableOrder']>((storeId, tableId, guests, requestedTableName) => {
     const actorResult = requireActor(storeId)
@@ -82,9 +84,13 @@ export function useOpenOrdersSlice(
     if (guestsError) return { ok: false, error: guestsError }
     const actor = actorResult.actor
     const now = new Date().toISOString()
+    const number = [...current.orders, ...current.openOrders]
+      .filter((item) => item.storeId === storeId)
+      .reduce((max, item) => Math.max(max, item.number), 1000) + 1
     const order: OpenOrder = {
       id: uid('open'),
       storeId,
+      number,
       shiftId: shift?.id,
       tableHistory: [{
         id: uid('evt'),
@@ -136,6 +142,7 @@ export function useOpenOrdersSlice(
       const actorResult = requireActor(order.storeId)
       if (!actorResult.ok) return actorResult
       const store = current.stores.find((item) => item.id === order.storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
       const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
       if (store?.settings.requireShiftForOrders && !shift) {
         return { ok: false, error: 'Open your shift before adding items to table orders.' }
@@ -171,8 +178,8 @@ export function useOpenOrdersSlice(
     [commitDb, dbRef, requireActor],
   )
 
-  const sendToKitchen = useCallback<AppContextValue['sendToKitchen']>(
-    (orderId, items = [], discount, note) => {
+  const sendToStations = useCallback<AppContextValue['sendToStations']>(
+    (orderId) => {
       const current = dbRef.current
       const order = current.openOrders.find((item) => item.id === orderId)
       if (!order) return { ok: false, error: 'Open table order not found.' }
@@ -181,17 +188,41 @@ export function useOpenOrdersSlice(
       const store = current.stores.find((item) => item.id === order.storeId)
       const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
       if (store?.settings.requireShiftForOrders && !shift) {
-        return { ok: false, error: 'Open your shift before sending table orders to the kitchen.' }
+        return { ok: false, error: 'Open your shift before sending table items to stations.' }
       }
-      if (!Array.isArray(items)) return { ok: false, error: 'The order items are invalid.' }
-      const result = buildUpdatedOpenOrder(order, items, discount, note, actorResult.actor, current)
-      if (!result.ok) return result
-      const unsent = result.order.items.filter((item) => !item.sentAt)
-      if (!unsent.length) return { ok: false, error: 'There are no new items to send to the kitchen.' }
+      if (!store) return { ok: false, error: 'Store not found.' }
+      const unsent = order.items.flatMap((item) => {
+        if (item.status !== 'draft') return []
+        const product = current.products.find((candidate) =>
+          candidate.id === item.productId && candidate.storeId === order.storeId,
+        )
+        const category = product
+          ? current.categories.find((candidate) =>
+              candidate.id === product.categoryId && candidate.storeId === order.storeId,
+            )
+          : undefined
+        const stationId = item.stationId ?? (product?.stationId === null
+          ? undefined
+          : product?.stationId ?? category?.stationId)
+        return stationId && current.stations.some((station) => station.id === stationId && station.storeId === order.storeId)
+          ? [{ ...item, stationId }]
+          : []
+      })
+      if (!unsent.length) return { ok: true, order, items: [] }
       const sentAt = new Date().toISOString()
+      const sentIds = new Set(unsent.map((item) => item.lineId))
       const updated: OpenOrder = {
-        ...result.order,
-        items: result.order.items.map((item) => item.sentAt ? item : { ...item, sentAt }),
+        ...order,
+        items: order.items.map((item) => sentIds.has(item.lineId)
+          ? {
+              ...item,
+              stationId: unsent.find((sent) => sent.lineId === item.lineId)?.stationId,
+              sentAt,
+              updatedAt: sentAt,
+              status: 'sent',
+            }
+          : item),
+        updatedAt: sentAt,
       }
       commitDb((prev) => addLog({
         ...prev,
@@ -206,14 +237,159 @@ export function useOpenOrdersSlice(
         action: 'edited',
         entity: 'order',
         entityId: order.id,
-        summary: `Sent ${unsent.length} item${unsent.length === 1 ? '' : 's'} from ${order.tableName} to the kitchen`,
-        before: { unsentItems: order.items.filter((item) => !item.sentAt).length },
+        summary: `Sent ${unsent.length} item${unsent.length === 1 ? '' : 's'} from ${order.tableName} to stations`,
+        before: { unsentItems: order.items.filter((item) => item.status === 'draft').length },
         after: { sentItems: unsent.length, sentAt },
       }))
-      return { ok: true, order: updated, items: unsent }
+      return {
+        ok: true,
+        order: updated,
+        items: updated.items.filter((item) => sentIds.has(item.lineId)),
+      }
     },
     [commitDb, dbRef, requireActor],
   )
+
+  const updateOpenOrderItem = useCallback<AppContextValue['updateOpenOrderItem']>((orderId, lineId, patch) => {
+    const current = dbRef.current
+    const order = current.openOrders.find((item) => item.id === orderId)
+    if (!order) return { ok: false, error: 'Open table order not found.' }
+    const actorResult = requireActor(order.storeId)
+    if (!actorResult.ok) return actorResult
+    const item = order.items.find((candidate) => candidate.lineId === lineId)
+    if (!item) return { ok: false, error: 'Table item not found.' }
+    if (item.status !== 'draft') return { ok: false, error: 'Only draft items can be edited.' }
+    if (patch.note !== undefined && (typeof patch.note !== 'string' || patch.note.trim().length > 240)) {
+      return { ok: false, error: 'Item notes must be 240 characters or fewer.' }
+    }
+    if (patch.qty !== undefined && (!Number.isFinite(patch.qty) || patch.qty < 0)) {
+      return { ok: false, error: 'Enter a valid item quantity.' }
+    }
+    const store = current.stores.find((candidate) => candidate.id === order.storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    const editedAt = new Date().toISOString()
+    let updatedItem: OrderItem | undefined = item
+    if (patch.qty === 0) {
+      updatedItem = undefined
+    } else if (patch.qty !== undefined || patch.note !== undefined) {
+      const resolved = resolveOpenOrderItems(current.products, store, [{
+        ...item,
+        qty: patch.qty ?? item.qty,
+        note: patch.note ?? item.note,
+      }])
+      if (!resolved.ok) return resolved
+      updatedItem = {
+        ...resolved.items[0],
+        lineId,
+        stationId: item.stationId,
+        status: 'draft',
+        addedAt: item.addedAt,
+        updatedAt: editedAt,
+        addedById: item.addedById,
+        addedByName: item.addedByName,
+      }
+    }
+    const items = order.items.flatMap((candidate) =>
+      candidate.lineId === lineId ? updatedItem ? [updatedItem] : [] : [candidate],
+    )
+    const totals = computeTotals(items.filter((candidate) => candidate.status !== 'void'), store.settings, order.discount)
+    const updated = { ...order, items, ...totals, updatedAt: editedAt }
+    commitDb((prev) => ({
+      ...prev,
+      openOrders: prev.openOrders.map((candidate) => candidate.id === orderId ? updated : candidate),
+      orders: order.recordedOrderId
+        ? prev.orders.map((recorded) => recorded.id === order.recordedOrderId
+            ? recordedOrderFromOpenOrder(updated, recorded, recorded.number)
+            : recorded)
+        : prev.orders,
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
+  const setOpenOrderItemStatus = useCallback<AppContextValue['setOpenOrderItemStatus']>((orderId, lineId, status: OrderItemStatus) => {
+    const order = dbRef.current.openOrders.find((candidate) => candidate.id === orderId)
+    if (!order) return { ok: false, error: 'Open table order not found.' }
+    const actorResult = requireCapability(order.storeId, 'viewStation')
+    if (!actorResult.ok) return actorResult
+    if (!['sent', 'preparing', 'ready', 'served'].includes(status)) {
+      return { ok: false, error: 'Choose a valid station status.' }
+    }
+    const item = order.items.find((candidate) => candidate.lineId === lineId)
+    if (!item || !item.status || item.status === 'draft' || item.status === 'void' || !item.stationId) {
+      return { ok: false, error: 'This item is not on a station ticket.' }
+    }
+    if (!canTransitionStationItem(item.status, status)) {
+      return { ok: false, error: `Cannot move a ${item.status} item to ${status}.` }
+    }
+    const updatedAt = new Date().toISOString()
+    const updated: OpenOrder = {
+      ...order,
+      items: order.items.map((candidate) => candidate.lineId === lineId
+        ? {
+            ...candidate,
+            status,
+            updatedAt,
+            ...(status === 'sent' ? { sentAt: updatedAt } : {}),
+          }
+        : candidate),
+      updatedAt,
+    }
+    commitDb((prev) => ({
+      ...prev,
+      openOrders: prev.openOrders.map((candidate) => candidate.id === orderId ? updated : candidate),
+      orders: order.recordedOrderId
+        ? prev.orders.map((recorded) => recorded.id === order.recordedOrderId
+            ? recordedOrderFromOpenOrder(updated, recorded, recorded.number)
+            : recorded)
+        : prev.orders,
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  const voidSentOrderItem = useCallback<AppContextValue['voidSentOrderItem']>((orderId, lineId, reason) => {
+    const order = dbRef.current.openOrders.find((candidate) => candidate.id === orderId)
+    if (!order) return { ok: false, error: 'Open table order not found.' }
+    const actorResult = requireCapability(order.storeId, 'voidOrders')
+    if (!actorResult.ok) return actorResult
+    const item = order.items.find((candidate) => candidate.lineId === lineId)
+    if (!item || item.status === 'draft' || item.status === 'void') {
+      return { ok: false, error: 'Only a sent item can be voided here.' }
+    }
+    const normalizedReason = reason.trim().slice(0, 240)
+    if (!normalizedReason) return { ok: false, error: 'Enter a reason for voiding this sent item.' }
+    const voidedItem: OrderItem = {
+      ...item,
+      status: 'void',
+      voidReason: normalizedReason,
+      updatedAt: new Date().toISOString(),
+    }
+    const store = dbRef.current.stores.find((candidate) => candidate.id === order.storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    const updated: OpenOrder = {
+      ...order,
+      items: order.items.map((candidate) => candidate.lineId === lineId ? voidedItem : candidate),
+      ...computeTotals(order.items.filter((candidate) => candidate.lineId !== lineId && candidate.status !== 'void'), store.settings, order.discount),
+      updatedAt: new Date().toISOString(),
+    }
+    commitDb((prev) => addLog({
+      ...prev,
+      openOrders: prev.openOrders.map((candidate) => candidate.id === orderId ? updated : candidate),
+      orders: order.recordedOrderId
+        ? prev.orders.map((recorded) => recorded.id === order.recordedOrderId
+            ? recordedOrderFromOpenOrder(updated, recorded, recorded.number)
+            : recorded)
+        : prev.orders,
+    }, actorResult.actor, {
+      storeId: order.storeId,
+      action: 'voided',
+      entity: 'order',
+      entityId: orderId,
+      summary: `Voided sent ${item.name} at ${order.tableName}`,
+      before: { itemId: lineId, status: item.status ?? 'draft' },
+      after: { itemId: lineId, status: 'void', reason: normalizedReason },
+    }))
+    return { ok: true, order: updated, item: voidedItem }
+  }, [commitDb, dbRef, requireCapability])
 
   const payOpenOrder = useCallback<AppContextValue['payOpenOrder']>(
     (orderId, paymentMethod, customerId) => {
@@ -222,7 +398,7 @@ export function useOpenOrdersSlice(
       const actorResult = requireActor(order.storeId)
       if (!actorResult.ok) return actorResult
       const paid = createOrder({
-        items: order.items,
+        items: order.items.filter((item) => item.status !== 'void'),
         channel: 'dine-in',
         tableId: order.tableId,
         tableName: order.tableName,
@@ -288,7 +464,7 @@ export function useOpenOrdersSlice(
     if (!order) return { ok: false, error: 'Open table order not found.' }
     const actorResult = requireActor(order.storeId)
     if (!actorResult.ok) return actorResult
-    if (!order.items.length) return { ok: false, error: 'Add items before recording this table order.' }
+    if (!order.items.some((item) => item.status !== 'void')) return { ok: false, error: 'Add items before recording this table order.' }
     const store = current.stores.find((item) => item.id === order.storeId)
     if (!store?.settings.features.tables) return { ok: false, error: 'Tables are disabled for this store.' }
     if (order.tableId) {
@@ -310,9 +486,7 @@ export function useOpenOrdersSlice(
     if (order.recordedOrderId && !previous) {
       return { ok: false, error: 'The recorded table order could not be found. Save the table order again.' }
     }
-    const number = previous?.number ?? current.orders
-      .filter((item) => item.storeId === order.storeId)
-      .reduce((max, item) => Math.max(max, item.number), 1000) + 1
+    const number = previous?.number ?? order.number
     const recorded = recordedOrderFromOpenOrder(order, previous, number, shift?.id ?? order.shiftId)
     commitDb((prev) => addLog({
       ...prev,
@@ -406,7 +580,7 @@ export function useOpenOrdersSlice(
       ...source.items.map((item) => ({ ...item, lineId: uid('line') })),
     ]
     const discount = round(target.discount + source.discount)
-    const undiscounted = computeTotals(items, store.settings)
+    const undiscounted = computeTotals(items.filter((item) => item.status !== 'void'), store.settings)
     if (discount > undiscounted.total) return { ok: false, error: 'Combined discounts exceed the new order total.' }
     const recordedOrderId = target.recordedOrderId ?? source.recordedOrderId
     const updated: OpenOrder = {
@@ -425,7 +599,7 @@ export function useOpenOrdersSlice(
         },
       ],
       items,
-      ...computeTotals(items, store.settings, discount),
+      ...computeTotals(items.filter((item) => item.status !== 'void'), store.settings, discount),
       discount,
       guests: target.guests !== undefined && source.guests !== undefined &&
         target.guests + source.guests <= 50 ? target.guests + source.guests : target.guests,
@@ -506,7 +680,10 @@ export function useOpenOrdersSlice(
     openTableOrder,
     recordOpenOrder,
     addItemsToOpenOrder,
-    sendToKitchen,
+    sendToStations,
+    updateOpenOrderItem,
+    setOpenOrderItemStatus,
+    voidSentOrderItem,
     payOpenOrder,
     moveOrderToTable,
     mergeTableOrders,

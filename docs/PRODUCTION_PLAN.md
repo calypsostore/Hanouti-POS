@@ -5,10 +5,11 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-14 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-15 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
-table rounds, table-aware orders and compact POS cart layout**. Per-staff
-register shifts, handover and cash accountability remain in progress.
+table rounds, table-aware orders, compact POS cart layout, automatic table
+orders and station tickets**. Per-staff register shifts, handover and cash
+accountability remain in progress.
 
 ## Code organization update (2026-11-12)
 
@@ -47,9 +48,9 @@ The admin, staff, and platform-owner dashboards now share a responsive
 dashboard component set and the app shell is split into a collapsible sidebar,
 top bar, and mobile navigation. Dashboard totals reuse the existing report and
 ledger data; month profit is explicitly an estimate based on current product
-costs and recorded expenses. This is a presentation update only: the current
-database still has no open-order/tracking status model, last-login history, or
-billing workflow. Planned staff shifts are modeled separately from live register
+costs and recorded expenses. Open table rounds now store per-item station
+routing and lifecycle status; last-login history and billing workflows remain
+unimplemented. Planned staff shifts are modeled separately from live register
 or order-tracking data. Those dashboard
 sections are omitted, marked unavailable, or limited to the data already
 stored; no demo values are presented as production data.
@@ -230,24 +231,41 @@ stored; no demo values are presented as production data.
   tamper-resistant; production authorization, inventory and receipt numbering
   still require the Phase 2 backend described below.
 
-### Phase 2 — Open table orders ✅ demo implementation
+### Phase 2 — Open table orders and station tickets ✅ browser-local demo implementation
 
 - Dine-in tables can hold persistent open orders separate from completed sales.
-  Staff can add items in multiple rounds, send only unsent lines to the kitchen,
-  move or merge table orders, and pay at the end. Cancellation requires an
-  active admin PIN.
+  Cart items are debounced into the active order and persisted with the app's
+  IndexedDB snapshot. Done sends pending station-routed lines and returns to the
+  floor; cashier mode also offers Pay table, and Quick mode records unpaid
+  table orders without payment. There are no separate Save items or Send to
+  kitchen cart buttons.
+- Settings → Stations manages station CRUD, icon/color, order and screen
+  availability. Kitchen and Bar are the defaults. Product/category bulk
+  assignment and business-template routing are supported; unassigned products
+  are not sent to stations.
+- Settings → Service chooses Done-or-idle, instant, delayed, or Done-only send
+  policy. Items move through draft, sent, preparing, ready, served, and void.
+  Draft lines can be edited; voiding a sent line requires a reason and the
+  void-order permission, and produces a CANCELLED preview ticket.
+- Pure station-ticket builders split by station and include table context,
+  order number, modifiers and notes. Later sends are marked ADDITION. Kitchen
+  and station routes provide New / Preparing / Ready boards, bump/recall,
+  timers, new-ticket sound, Rush on reprint, and print-preview reprints. Access
+  requires a staff PIN session with `viewStation`.
+- Per-line IDs merge appended items across browser tabs; edits to the same line
+  use the latest timestamp. Served status is persisted, and ready items owned
+  by the current staff member appear in that staff member's notification list.
 - Open orders do not change stock, sales, customer tabs, or register totals
   until payment. Register close and table deactivation/removal are blocked
   while an open order remains. Open-order actions are included in the
   browser-local activity log. Quick-mode table completion creates a `recorded`
   unpaid order snapshot for the Orders page; later rounds update that snapshot,
   while payment replaces it with the paid order and cancellation removes it.
-- Table-order controls stay visible in the cart footer on narrow screens;
-  notes and totals may scroll independently instead of hiding the save, kitchen,
-  and floor actions.
-- Schema `7anouti.db.v16` defaults open orders to an empty list when migrating
-  older records. This remains a demo workflow, not a production-safe
-  multi-terminal kitchen queue.
+- Database schema `7anouti.db.v27` normalizes stations, item statuses,
+  ticket policy settings, product-level no-station overrides, and legacy open
+  order numbers. This remains a browser-local workflow, not a production-safe
+  multi-terminal queue; browser UI smoke did not verify real hardware printing
+  or concurrent multi-device use.
 
 ### Requested feature phases 3–9 ⏳ partially implemented
 
@@ -277,7 +295,7 @@ wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Unchanged (Phase 7) |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Data lives in IndexedDB under `7anouti.db.v21`, migrated from the previous
+Data lives in IndexedDB under `7anouti.db.v27`, migrated from the previous
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. The session identifier remains
 in localStorage. **This is a demo backend, not production storage** — it exists
 so the UX can be reviewed without infrastructure, and every mutation is

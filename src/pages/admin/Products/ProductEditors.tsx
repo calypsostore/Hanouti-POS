@@ -24,7 +24,9 @@ export function ProductEditor({
   const [iconColor, setIconColor] = useState(product?.iconColor ?? 'amber')
   const [image, setImage] = useState(product?.image)
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? categories[0]?.id ?? '')
-  const [stationId, setStationId] = useState(product?.stationId ?? '')
+  const [stationId, setStationId] = useState<string | null | undefined>(product?.stationId)
+  const inheritedStationId = categories.find((category) => category.id === categoryId)?.stationId
+  const selectedStationId = stationId === undefined ? inheritedStationId ?? 'inherit' : stationId ?? ''
   const [price, setPrice] = useState(String(product?.price ?? ''))
   const [cost, setCost] = useState(String(product?.cost ?? ''))
   const [trackStock, setTrackStock] = useState(product?.trackStock ?? false)
@@ -67,7 +69,7 @@ export function ProductEditor({
                   iconColor,
                   image,
                   categoryId,
-                  stationId: stationId || undefined,
+                  stationId: stationId === undefined ? undefined : stationId || null,
                   price: priceNum,
                   cost: costNum,
                   trackStock,
@@ -99,7 +101,9 @@ export function ProductEditor({
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Cappuccino" autoFocus />
           </Field>
           <Field label="Category" className="sm:col-span-2">
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <Select value={categoryId} onChange={(e) => {
+              setCategoryId(e.target.value)
+            }}>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -109,7 +113,10 @@ export function ProductEditor({
           </Field>
           {stations.length > 0 && (
             <Field label="Station" className="sm:col-span-2">
-              <Select value={stationId} onChange={(e) => setStationId(e.target.value)}>
+              <Select value={selectedStationId} onChange={(e) => setStationId(
+                e.target.value === 'inherit' ? undefined : e.target.value || null,
+              )}>
+                <option value="inherit">Use category default</option>
                 <option value="">No station</option>
                 {stations.map((station) => (
                   <option key={station.id} value={station.id}>

@@ -12,6 +12,7 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'voidOrders', label: 'Void orders', description: 'Approve order voids with a manager PIN.' },
   { key: 'manageStaff', label: 'Manage staff', description: 'Edit staff access, details, and permissions.' },
   { key: 'manageSettings', label: 'Manage store settings', description: 'Edit store settings and dining tables.' },
+  { key: 'viewStation', label: 'View station screens', description: 'Access kitchen and bar station boards after PIN sign-in.' },
   { key: 'managePayroll', label: 'Manage payroll', description: 'Edit attendance, advances, and payroll.' },
   { key: 'openShift', label: 'Open shifts', description: 'Start a personal cash-register shift.' },
   { key: 'closeShift', label: 'Close shifts', description: 'Close personal shifts and print Z reports.' },
@@ -47,6 +48,9 @@ export default function StaffPermissionsEditor({
           </>
         )}
         <Toggle checked={permissions.supervisor} onChange={(value) => toggle('supervisor', value)} label="Shift supervisor" description="Can view team sales and register sessions and close another user's session." />
+        {role === 'staff' && (
+          <Toggle checked={permissions.viewStation === true} onChange={(value) => toggle('viewStation', value)} label="View station screens" description="Access kitchen and bar station boards after PIN sign-in." />
+        )}
         {role === 'staff' && (
           <Toggle
             checked={permissions.recordPurchases === true}

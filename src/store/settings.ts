@@ -1,11 +1,12 @@
 import { useCallback } from 'react'
-import type { AuditJsonValue, Database, Expense, Store, StoreSettings, User } from '../types'
+import type { AuditJsonValue, Category, Database, Expense, Store, StoreSettings, User } from '../types'
 import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
 import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
+import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
@@ -37,6 +38,10 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   colorMode: settings.colorMode,
   printer: { ...settings.printer },
   features: { ...settings.features },
+  ticketSendPolicy: settings.ticketSendPolicy,
+  ticketDelaySeconds: settings.ticketDelaySeconds,
+  ticketIdleSeconds: settings.ticketIdleSeconds,
+  stationTimerMinutes: settings.stationTimerMinutes,
 })
 
 const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => ({
@@ -165,6 +170,19 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       typeof patch.requireShiftForOrders !== 'boolean') {
       return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
     }
+    if (patch.ticketSendPolicy !== undefined &&
+      !['done_or_idle', 'instant', 'delayed', 'done_only'].includes(patch.ticketSendPolicy)) {
+      return { ok: false, error: 'Choose a valid station ticket send policy.' }
+    }
+    for (const [label, value] of [
+      ['ticket delay', patch.ticketDelaySeconds],
+      ['idle delay', patch.ticketIdleSeconds],
+      ['station timer', patch.stationTimerMinutes],
+    ] as const) {
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 180)) {
+        return { ok: false, error: `Enter a valid ${label} between 1 and 180.` }
+      }
+    }
     if (patch.features) {
       const featureValues = Object.values(patch.features)
       if (featureValues.length !== 5 || !featureValues.every((enabled) => typeof enabled === 'boolean')) {
@@ -212,12 +230,19 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const template = businessTemplate(businessType)
     commitDb((prev) => {
       const hasProducts = prev.products.some((product) => product.storeId === storeId)
+      const storeStations = prev.stations.some((station) => station.storeId === storeId)
+        ? prev.stations.filter((station) => station.storeId === storeId)
+        : defaultStationsForStore(storeId)
+      const stationIdByName = new Map(storeStations.map((station) => [station.name, station.id]))
       const createdCategories = hasProducts
         ? []
-        : template.categories.map((category, sort) => ({
-            ...category,
+        : template.categories.map((category, sort): Category => ({
+            name: category.name,
+            icon: category.icon,
+            iconColor: category.iconColor,
             id: uid('cat'),
             storeId,
+            stationId: category.station ? stationIdByName.get(category.station) : undefined,
             sort,
           }))
       const categories = hasProducts
@@ -241,6 +266,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       } : undefined
       const next: Database = {
         ...prev,
+        stations: prev.stations.some((station) => station.storeId === storeId)
+          ? prev.stations
+          : [...prev.stations, ...storeStations],
         categories,
         stores: updatedStore
           ? prev.stores.map((candidate) => candidate.id === storeId ? updatedStore : candidate)
@@ -369,12 +397,18 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         printer: { ...DEFAULT_PRINTER },
         features: template.features,
         payroll: { ...DEFAULT_PAYROLL_SETTINGS },
+        ticketSendPolicy: 'done_or_idle',
+        ticketDelaySeconds: 10,
+        ticketIdleSeconds: 20,
+        stationTimerMinutes: 15,
       },
     }
+    const stations = defaultStationsForStore(storeId)
     commitDb((prev) => addLog({
       ...prev,
       stores: [...prev.stores, store],
       users: [...prev.users, admin],
+      stations: [...prev.stations, ...stations],
     }, currentActor.actor, {
       storeId,
       action: 'created',

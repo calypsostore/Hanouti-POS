@@ -56,6 +56,7 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   supervisor: role !== 'staff',
   openShift: role !== 'super',
   closeShift: role !== 'super',
+  viewStation: role === 'manager',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
 
@@ -109,6 +110,7 @@ export const normalizeUser = (u: User): User => {
       managePayroll: capability('managePayroll'),
       manageTables: capability('manageTables'),
       manageSections: capability('manageSections'),
+      viewStation: capability('viewStation'),
       openShift: capability('openShift'),
       closeShift: capability('closeShift'),
     },

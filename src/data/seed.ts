@@ -5,7 +5,6 @@ import type {
   Database,
   DiningTable,
   Expense,
-  IconColor,
   IconName,
   InventoryItem,
   LedgerEntry,
@@ -31,6 +30,7 @@ import { DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
+import { defaultStationsForStore } from '../lib/stations'
 
 export const PLAN_INFO: Record<Plan, { label: string; price: number; blurb: string }> = {
   starter: { label: 'Starter', price: 29, blurb: 'Single counter, up to 3 staff' },
@@ -60,6 +60,10 @@ const defaultSettings = (
   printer: { ...DEFAULT_PRINTER },
   features: businessTemplate(businessType).features,
   payroll: { ...DEFAULT_PAYROLL_SETTINGS },
+  ticketSendPolicy: 'done_or_idle',
+  ticketDelaySeconds: 10,
+  ticketIdleSeconds: 20,
+  stationTimerMinutes: 15,
   ...over,
 })
 
@@ -669,31 +673,18 @@ export function buildSeed(): Database {
 
   for (const store of stores) {
     const template = businessTemplate(store.businessType)
-    const stationDefaults: Array<{ name: string; icon: IconName; color: IconColor; screen: boolean; active: boolean }> = [
-      { name: 'Counter', icon: 'Coffee', color: 'amber', screen: false, active: true },
-      { name: 'Kitchen', icon: 'Utensils', color: 'rose', screen: true, active: true },
-      { name: 'Bar', icon: 'CupSoda', color: 'blue', screen: true, active: true },
-    ]
-    const storeStations = stationDefaults.map((station, index) => {
-      const item: Station = {
-        id: `sta_${store.id}_${index}`,
-        storeId: store.id,
-        name: station.name,
-        icon: station.icon,
-        color: station.color,
-        screen: station.screen,
-        active: station.active,
-        sort: index,
-      }
-      stations.push(item)
-      return item
-    })
+    const storeStations = defaultStationsForStore(store.id)
+    stations.push(...storeStations)
     const cats = template.categories.map((c, i) => {
       const cat: Category = {
-        ...c,
+        name: c.name,
+        icon: c.icon,
+        iconColor: c.iconColor,
         id: `cat_${store.id}_${i}`,
         storeId: store.id,
-        stationId: storeStations[i % storeStations.length]?.id,
+        stationId: c.station
+          ? storeStations.find((station) => station.name === c.station)?.id
+          : undefined,
         sort: i,
       }
       categories.push(cat)
@@ -708,7 +699,7 @@ export function buildSeed(): Database {
         id: `prd_${store.id}_${i}`,
         storeId: store.id,
         categoryId: cats[catIdx].id,
-        stationId: cats[catIdx].stationId,
+        stationId: /water/i.test(name) ? null : undefined,
         name,
         icon,
         iconColor: cats[catIdx].iconColor,

@@ -68,6 +68,7 @@ export function CartPanel({
   allowCredit,
   onCheckout,
   onAddToTab,
+  onDone,
   count,
   isOpenOrder,
   tableName,
@@ -75,11 +76,8 @@ export function CartPanel({
   ownerStaffName,
   pendingCount,
   persistedLineIds,
-  canSaveOpenOrder,
-  hasUnsentItems,
-  kitchenEnabled,
-  onSaveOpenOrder,
-  onSendKitchen,
+  canVoidSentItems,
+  onVoidSentItem,
   onOpenFloor,
 }: {
   embedded?: boolean
@@ -118,6 +116,7 @@ export function CartPanel({
   allowCredit: boolean
   onCheckout: () => void
   onAddToTab: () => void
+  onDone: () => void
   count: number
   isOpenOrder?: boolean
   tableName?: string
@@ -125,11 +124,8 @@ export function CartPanel({
   ownerStaffName?: string
   pendingCount?: number
   persistedLineIds?: string[]
-  canSaveOpenOrder?: boolean
-  hasUnsentItems?: boolean
-  kitchenEnabled?: boolean
-  onSaveOpenOrder?: () => void
-  onSendKitchen?: () => void
+  canVoidSentItems: boolean
+  onVoidSentItem: (lineId: string) => void
   onOpenFloor?: () => void
 }) {
   const newItemCount = pendingCount ?? cart.length
@@ -237,6 +233,8 @@ export function CartPanel({
             persistedLineIds={persistedLineIds}
             changeQty={changeQty}
             setLineQty={setLineQty}
+            canVoidSentItems={canVoidSentItems}
+            onVoidSentItem={onVoidSentItem}
           />
         )}
       </div>
@@ -253,13 +251,9 @@ export function CartPanel({
         customerId={customerId}
         onCheckout={onCheckout}
         onAddToTab={onAddToTab}
+        onDone={onDone}
         count={count}
         isOpenOrder={isOpenOrder}
-        canSaveOpenOrder={canSaveOpenOrder}
-        hasUnsentItems={hasUnsentItems}
-        kitchenEnabled={kitchenEnabled}
-        onSaveOpenOrder={onSaveOpenOrder}
-        onSendKitchen={onSendKitchen}
         onOpenFloor={onOpenFloor}
       />
     </div>

@@ -16,8 +16,10 @@ import RegisterTab from './RegisterTab'
 import ReceiptTab from './ReceiptTab'
 import TablesTab from './TablesTab'
 import DataTab from './DataTab'
+import StationsTab from './StationsTab'
+import ServiceTab from './ServiceTab'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'data'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
@@ -25,7 +27,12 @@ export default function SettingsPage() {
   const { db, store, updateStore, updateSettings, updateStaff, user } = useApp()
   const [searchParams] = useSearchParams()
   const { push } = useToast()
-  const [tab, setTab] = useState<Tab>(() => searchParams.get('tab') === 'tables' ? 'tables' : 'profile')
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab')
+    return requested === 'tables' || requested === 'stations' || requested === 'service'
+      ? requested
+      : 'profile'
+  })
   const [form, setForm] = useState<StoreProfile>({
     name: store?.name ?? '',
     icon: store?.icon ?? 'Coffee',
@@ -57,6 +64,10 @@ export default function SettingsPage() {
         printer: { ...DEFAULT_PRINTER },
         features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
         payroll: { ...DEFAULT_PAYROLL_SETTINGS },
+        ticketSendPolicy: 'done_or_idle',
+        ticketDelaySeconds: 10,
+        ticketIdleSeconds: 20,
+        stationTimerMinutes: 15,
       },
   )
   const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)
@@ -136,6 +147,8 @@ export default function SettingsPage() {
             { value: 'register', label: 'Register & checkout' },
             { value: 'receipt', label: 'Receipt' },
             { value: 'tables' as const, label: 'Tables' },
+            { value: 'stations' as const, label: 'Stations' },
+            { value: 'service' as const, label: 'Service' },
             ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
           ]}
         />
@@ -183,6 +196,8 @@ export default function SettingsPage() {
         />
       )}
       {tab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
+      {tab === 'stations' && <StationsTab storeId={store.id} />}
+      {tab === 'service' && <ServiceTab settings={settings} set={set} />}
       {tab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal

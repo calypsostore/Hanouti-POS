@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { AuditJsonValue, Category, Product } from '../types'
+import type { AuditJsonValue, Category, Product, Station } from '../types'
 import { uid } from '../lib/utils'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
@@ -73,6 +73,14 @@ const productSnapshot = (product: Product): Record<string, AuditJsonValue> => ({
     stock: variant.stock,
     trackStock: variant.trackStock,
   })),
+})
+
+const stationSnapshot = (station: Station): Record<string, AuditJsonValue> => ({
+  name: station.name,
+  icon: station.icon,
+  color: station.color,
+  screen: station.screen,
+  sort: station.sort,
 })
 
 export function useCatalogSlice(dependencies: StoreSliceDependencies) {
@@ -262,6 +270,158 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     return { ok: true }
   }, [commitDb, requireCapability])
 
+  const addStation = useCallback<AppContextValue['addStation']>((storeId, data) => {
+    const actorResult = requireCapability(storeId, 'manageSettings')
+    if (!actorResult.ok) return actorResult
+    const name = data.name.trim()
+    if (!name || name.length > 80) return { ok: false, error: 'Enter a station name up to 80 characters.' }
+    if (dbRef.current.stations.some((station) => station.storeId === storeId && station.name.toLowerCase() === name.toLowerCase())) {
+      return { ok: false, error: 'A station with that name already exists.' }
+    }
+    const station: Station = {
+      id: uid('sta'),
+      storeId,
+      name,
+      icon: data.icon,
+      color: data.color,
+      screen: data.screen,
+      active: true,
+      sort: dbRef.current.stations.filter((item) => item.storeId === storeId).length,
+    }
+    commitDb((prev) => addLog({
+      ...prev,
+      stations: [...prev.stations, station],
+    }, actorResult.actor, {
+      storeId,
+      action: 'created',
+      entity: 'station',
+      entityId: station.id,
+      summary: `Created station ${station.name}`,
+      after: stationSnapshot(station),
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
 
-  return { addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct }
+  const updateStation = useCallback<AppContextValue['updateStation']>((id, patch) => {
+    const station = dbRef.current.stations.find((item) => item.id === id)
+    if (!station) return { ok: false, error: 'Station not found.' }
+    const actorResult = requireCapability(station.storeId, 'manageSettings')
+    if (!actorResult.ok) return actorResult
+    if (patch.storeId !== undefined && patch.storeId !== station.storeId) {
+      return { ok: false, error: 'A station cannot be moved to another store.' }
+    }
+    if (patch.name !== undefined) {
+      const name = patch.name.trim()
+      if (!name || name.length > 80) return { ok: false, error: 'Enter a station name up to 80 characters.' }
+      if (dbRef.current.stations.some((item) =>
+        item.storeId === station.storeId && item.id !== id && item.name.toLowerCase() === name.toLowerCase(),
+      )) return { ok: false, error: 'A station with that name already exists.' }
+    }
+    const safePatch: Partial<Station> = { ...patch }
+    delete safePatch.id
+    delete safePatch.storeId
+    delete safePatch.sort
+    const updated = { ...station, ...safePatch, name: safePatch.name?.trim() ?? station.name }
+    const changes = changedAuditFields(stationSnapshot(station), stationSnapshot(updated))
+    commitDb((prev) => addLog({
+      ...prev,
+      stations: prev.stations.map((item) => item.id === id ? updated : item),
+    }, actorResult.actor, {
+      storeId: station.storeId,
+      action: 'edited',
+      entity: 'station',
+      entityId: id,
+      summary: `Edited station ${station.name}${changes.fields.length ? ` (${changes.fields.join(', ')})` : ''}`,
+      before: changes.before,
+      after: changes.after,
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  const deleteStation = useCallback<AppContextValue['deleteStation']>((id) => {
+    const station = dbRef.current.stations.find((item) => item.id === id)
+    if (!station) return { ok: false, error: 'Station not found.' }
+    const actorResult = requireCapability(station.storeId, 'manageSettings')
+    if (!actorResult.ok) return actorResult
+    if (dbRef.current.categories.some((category) => category.storeId === station.storeId && category.stationId === id) ||
+      dbRef.current.products.some((product) => product.storeId === station.storeId && product.stationId === id)) {
+      return { ok: false, error: 'Move categories and products to another station before deleting this station.' }
+    }
+    commitDb((prev) => addLog({
+      ...prev,
+      stations: prev.stations.filter((item) => item.id !== id),
+    }, actorResult.actor, {
+      storeId: station.storeId,
+      action: 'deleted',
+      entity: 'station',
+      entityId: id,
+      summary: `Deleted station ${station.name}`,
+      before: stationSnapshot(station),
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  const reorderStations = useCallback<AppContextValue['reorderStations']>((storeId, ids) => {
+    const actorResult = requireCapability(storeId, 'manageSettings')
+    if (!actorResult.ok) return actorResult
+    const current = dbRef.current.stations.filter((station) => station.storeId === storeId)
+    if (ids.length !== current.length || new Set(ids).size !== ids.length ||
+      ids.some((id) => !current.some((station) => station.id === id))) {
+      return { ok: false, error: 'The station order is invalid.' }
+    }
+    const sortById = new Map(ids.map((id, sort) => [id, sort]))
+    commitDb((prev) => ({
+      ...prev,
+      stations: prev.stations.map((station) => station.storeId === storeId
+        ? { ...station, sort: sortById.get(station.id) ?? station.sort }
+        : station),
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  const bulkAssignProductStation = useCallback<AppContextValue['bulkAssignProductStation']>((storeId, productIds, stationId) => {
+    const actorResult = requireCapability(storeId, 'manageProducts')
+    if (!actorResult.ok) return actorResult
+    if (!productIds.length || new Set(productIds).size !== productIds.length ||
+      productIds.some((id) => !dbRef.current.products.some((product) => product.id === id && product.storeId === storeId))) {
+      return { ok: false, error: 'Choose products from this store.' }
+    }
+    if (stationId && !dbRef.current.stations.some((station) => station.id === stationId && station.storeId === storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
+    }
+    const selected = new Set(productIds)
+    commitDb((prev) => ({
+      ...prev,
+      products: prev.products.map((product) => selected.has(product.id)
+        ? { ...product, stationId: stationId || null }
+        : product),
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  const bulkAssignCategoryStation = useCallback<AppContextValue['bulkAssignCategoryStation']>((storeId, categoryIds, stationId) => {
+    const actorResult = requireCapability(storeId, 'manageProducts')
+    if (!actorResult.ok) return actorResult
+    if (!categoryIds.length || new Set(categoryIds).size !== categoryIds.length ||
+      categoryIds.some((id) => !dbRef.current.categories.some((category) => category.id === id && category.storeId === storeId))) {
+      return { ok: false, error: 'Choose categories from this store.' }
+    }
+    if (stationId && !dbRef.current.stations.some((station) => station.id === stationId && station.storeId === storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
+    }
+    const selected = new Set(categoryIds)
+    commitDb((prev) => ({
+      ...prev,
+      categories: prev.categories.map((category) => selected.has(category.id)
+        ? { ...category, stationId: stationId || undefined }
+        : category),
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireCapability])
+
+  return {
+    addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct,
+    addStation, updateStation, deleteStation, reorderStations,
+    bulkAssignProductStation, bulkAssignCategoryStation,
+  }
 }

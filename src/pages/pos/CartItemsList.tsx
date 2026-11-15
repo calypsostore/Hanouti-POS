@@ -1,4 +1,5 @@
-import { Minus, Plus } from 'lucide-react'
+import { Ban, Minus, Plus } from 'lucide-react'
+import { Button } from '../../components/ui'
 import type { OrderItem } from '../../types'
 import { Input } from '../../components/ui'
 import { money } from '../../lib/utils'
@@ -9,11 +10,15 @@ export function CartItemsList({
   persistedLineIds,
   changeQty,
   setLineQty,
+  canVoidSentItems = false,
+  onVoidSentItem,
 }: {
   items: OrderItem[]
   persistedLineIds?: string[]
   changeQty: (id: string, delta: number) => void
   setLineQty: (id: string, qty: number) => void
+  canVoidSentItems?: boolean
+  onVoidSentItem?: (lineId: string) => void
 }) {
   return (
     <ul className="space-y-1">
@@ -39,7 +44,7 @@ export function CartItemsList({
               <div className="text-[10.5px] text-muted tabular">{money(item.price)} each</div>
               {persisted && (
                 <div className="text-[9.5px] font-semibold text-muted">
-                  {item.sentAt ? 'Sent to kitchen' : 'Saved'}
+                  {item.status === 'ready' ? 'Ready' : item.status === 'served' ? 'Served' : item.status === 'preparing' ? 'Preparing' : item.status === 'void' ? 'Voided' : item.status === 'draft' ? 'Draft · saved' : 'Sent to station'}
                 </div>
               )}
             </div>
@@ -52,13 +57,13 @@ export function CartItemsList({
                 onChange={(event) => setLineQty(item.lineId ?? item.productId, Number(event.target.value))}
                 className="h-7 w-[76px] px-1 text-center text-[11px] tabular"
                 aria-label={`Quantity in ${item.saleUnit ?? 'piece'}`}
-                disabled={persisted}
+                disabled={persisted && item.status !== 'draft'}
               />
             ) : (
               <div className="flex items-center gap-1 rounded-lg border border-line bg-white p-0.5">
                 <button
                   onClick={() => changeQty(item.lineId ?? item.productId, -1)}
-                  disabled={persisted}
+                  disabled={persisted && item.status !== 'draft'}
                   className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink"
                 >
                   <Minus className="h-3 w-3" />
@@ -66,7 +71,7 @@ export function CartItemsList({
                 <span className="w-4 text-center text-[11.5px] font-bold tabular">{item.qty}</span>
                 <button
                   onClick={() => changeQty(item.lineId ?? item.productId, 1)}
-                  disabled={persisted}
+                  disabled={persisted && item.status !== 'draft'}
                   className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink"
                 >
                   <Plus className="h-3 w-3" />
@@ -76,6 +81,17 @@ export function CartItemsList({
             <div className="w-[62px] text-right text-[12px] font-bold tabular">
               {money(round(item.price * item.qty))}
             </div>
+            {persisted && item.status !== 'draft' && item.status !== 'void' && canVoidSentItems && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Void sent ${item.name}`}
+                title="Void sent item"
+                onClick={() => item.lineId && onVoidSentItem?.(item.lineId)}
+              >
+                <Ban className="h-4 w-4 text-red-600" />
+              </Button>
+            )}
           </li>
         )
       })}

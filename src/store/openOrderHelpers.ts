@@ -33,16 +33,33 @@ export const buildUpdatedOpenOrder = (
   const resolved = resolveOpenOrderItems(current.products, store, requestedItems)
   if (!resolved.ok) return resolved
   const addedAt = new Date().toISOString()
-  const items = [
-    ...order.items,
-    ...resolved.items.map((item) => ({
+  const seenLineIds = new Set(order.items.map((item) => item.lineId).filter((id): id is string => !!id))
+  const resolvedAdditions = resolved.items.flatMap((item, index) => {
+    const requested = requestedItems[index]
+    const lineId = requested.lineId || uid('line')
+    if (seenLineIds.has(lineId)) return []
+    seenLineIds.add(lineId)
+    const product = current.products.find((candidate) =>
+      candidate.id === item.productId && candidate.storeId === order.storeId,
+    )
+    const category = product
+      ? current.categories.find((candidate) =>
+          candidate.id === product.categoryId && candidate.storeId === order.storeId,
+        )
+      : undefined
+    return [{
       ...item,
-      lineId: uid('line'),
+      lineId,
+      stationId: product?.stationId === null ? undefined : product?.stationId ?? category?.stationId,
+      status: 'draft' as const,
+      addedAt,
+      updatedAt: addedAt,
       addedById: actor.id,
       addedByName: actor.name,
-    })),
-  ]
-  const tableHistory = resolved.items.length
+    }]
+  })
+  const items = [...order.items, ...resolvedAdditions]
+  const tableHistory = resolvedAdditions.length
     ? [
         ...(order.tableHistory ?? []),
         {
@@ -51,7 +68,7 @@ export const buildUpdatedOpenOrder = (
           actorId: actor.id,
           actorName: actor.name,
           at: addedAt,
-          details: `${resolved.items.length} item line${resolved.items.length === 1 ? '' : 's'}`,
+          details: `${resolvedAdditions.length} item line${resolvedAdditions.length === 1 ? '' : 's'}`,
         },
       ]
     : order.tableHistory
@@ -63,14 +80,15 @@ export const buildUpdatedOpenOrder = (
     actor.role !== 'admin' && !actor.permissions.discount) {
     return { ok: false, error: 'You do not have permission to apply discounts.' }
   }
-  const undiscounted = computeTotals(items, store.settings)
+  const billableItems = items.filter((item) => item.status !== 'void')
+  const undiscounted = computeTotals(billableItems, store.settings)
   if (nextDiscount > undiscounted.total) {
     return { ok: false, error: 'Discount cannot exceed the order total.' }
   }
   if (note !== undefined && (typeof note !== 'string' || note.trim().length > 500)) {
     return { ok: false, error: 'Order notes must be 500 characters or fewer.' }
   }
-  const totals = computeTotals(items, store.settings, nextDiscount)
+  const totals = computeTotals(billableItems, store.settings, nextDiscount)
   return {
     ok: true,
     order: {

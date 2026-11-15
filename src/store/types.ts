@@ -1,7 +1,7 @@
 import type {
   AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
-  Order, OrderChannel, OrderItem, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
-  Store, StoreSettings, StoreStatus, TableSection, User,
+  Order, OrderChannel, OrderItem, OrderItemStatus, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
+  Station, Store, StoreSettings, StoreStatus, TableSection, User,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -127,6 +127,9 @@ export type RecordedOrderResult =
 export type KitchenSendResult =
   | { ok: true; order: OpenOrder; items: OrderItem[] }
   | { ok: false; error: string }
+export type SentItemVoidResult =
+  | { ok: true; order: OpenOrder; item: OrderItem }
+  | { ok: false; error: string }
 
 export type PaidOpenOrderResult =
   | { ok: true; order: Order }
@@ -162,12 +165,10 @@ export interface AppContextValue {
     discount?: number,
     note?: string,
   ) => OpenOrderActionResult
-  sendToKitchen: (
-    orderId: string,
-    items?: OrderItem[],
-    discount?: number,
-    note?: string,
-  ) => KitchenSendResult
+  sendToStations: (orderId: string) => KitchenSendResult
+  updateOpenOrderItem: (orderId: string, lineId: string, patch: { qty?: number; note?: string }) => Result
+  setOpenOrderItemStatus: (orderId: string, lineId: string, status: OrderItemStatus) => Result
+  voidSentOrderItem: (orderId: string, lineId: string, reason: string) => SentItemVoidResult
   payOpenOrder: (
     orderId: string,
     paymentMethod: PaymentMethod,
@@ -186,6 +187,12 @@ export interface AppContextValue {
   addProduct: (storeId: string, data: Omit<Product, 'id' | 'storeId'>) => Result
   updateProduct: (id: string, patch: Partial<Product>) => Result
   deleteProduct: (id: string) => Result
+  addStation: (storeId: string, data: Pick<Station, 'name' | 'icon' | 'color' | 'screen'>) => Result
+  updateStation: (id: string, patch: Partial<Station>) => Result
+  deleteStation: (id: string) => Result
+  reorderStations: (storeId: string, ids: string[]) => Result
+  bulkAssignProductStation: (storeId: string, productIds: string[], stationId?: string) => Result
+  bulkAssignCategoryStation: (storeId: string, categoryIds: string[], stationId?: string) => Result
   addInventoryItem: (storeId: string, data: InventoryItemInput) => Result
   updateInventoryItem: (id: string, patch: InventoryItemPatch) => Result
   recordOpeningStock: (itemId: string, quantity: number, reason?: string) => Result

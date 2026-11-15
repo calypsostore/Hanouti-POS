@@ -61,7 +61,9 @@ export function ReceiptModal({
 
   if (!order || !store) return null
   const cfg = store.settings.printer
-  const kitchenWanted = cfg.enabled && order.channel === 'dine-in' && preparationTicketsEnabled(store.settings)
+  const isTableOrder = order.items.some((item) => item.status !== undefined || item.sentAt !== undefined)
+  const kitchenWanted = cfg.enabled && order.channel === 'dine-in' &&
+    preparationTicketsEnabled(store.settings) && !isTableOrder
 
   const openPrintDialog = (kind: 'receipt' | 'kitchen') => {
     const lines = kind === 'kitchen' ? buildKitchenLines(order, store) : buildReceiptLines(order, store, { customerName })

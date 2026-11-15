@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Bell,
   CreditCard,
+  ChefHat,
   Menu,
   PackageX,
   Settings,
@@ -58,7 +59,13 @@ export function TopBar({
 
   const isSuper = user.role === 'super'
   const notices = store && can(user, 'viewReports') ? getDashboardNotices(db, store) : []
-  const noticeCount = notices.reduce((total, notice) => total + notice.count, 0)
+  const readyOrders = store
+    ? db.openOrders.filter((order) => order.storeId === store.id && order.staffId === user.id &&
+        order.items.some((item) => item.status === 'ready'))
+    : []
+  const readyCount = readyOrders.reduce((total, order) =>
+    total + order.items.filter((item) => item.status === 'ready').reduce((sum, item) => sum + item.qty, 0), 0)
+  const noticeCount = notices.reduce((total, notice) => total + notice.count, 0) + readyCount
   const title = titles[location.pathname] ?? BRAND_NAME
   const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
@@ -101,7 +108,7 @@ export function TopBar({
           <span>{fmtDate(now.toISOString())}</span><span>{fmtTime(now.toISOString())}</span>
         </div>
         <ThemeToggle accent={store?.settings.accent} defaultMode={store?.settings.colorMode} />
-        {can(user, 'viewReports') && (
+        {(can(user, 'viewReports') || readyOrders.length > 0) && (
           <div className="relative">
             <button type="button" onClick={() => setNoticesOpen(!noticesOpen)} className="relative rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800" aria-label="Notifications" aria-expanded={noticesOpen}>
               <Bell className="h-4 w-4" />
@@ -113,7 +120,14 @@ export function TopBar({
                   <span className="text-xs font-bold">Notifications</span>
                   <button type="button" onClick={() => setNoticesOpen(false)} aria-label="Close notifications"><X className="h-3.5 w-3.5 text-muted" /></button>
                 </div>
-                {notices.length === 0 ? <p className="px-2 py-4 text-xs text-muted">You&apos;re all caught up.</p> : notices.map((notice) => {
+                {readyOrders.map((order) => {
+                  const count = order.items.filter((item) => item.status === 'ready').reduce((sum, item) => sum + item.qty, 0)
+                  return <Link key={order.id} to={`/pos?channel=dine-in&focus=table&orderId=${encodeURIComponent(order.id)}`} onClick={() => setNoticesOpen(false)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-xs hover:bg-cream-100 dark:hover:bg-espresso-700">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground"><ChefHat className="h-4 w-4" /></span>
+                    <span className="min-w-0 flex-1">{order.tableName} · items ready</span><Badge tone="success">{count}</Badge>
+                  </Link>
+                })}
+                {notices.length === 0 && readyOrders.length === 0 ? <p className="px-2 py-4 text-xs text-muted">You&apos;re all caught up.</p> : notices.map((notice) => {
                   const Icon = notice.id === 'stock' ? PackageX : notice.id === 'tabs' ? CreditCard : Clock3
                   return <Link key={notice.id} to={notice.href} onClick={() => setNoticesOpen(false)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-xs hover:bg-cream-100 dark:hover:bg-espresso-700">
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground"><Icon className="h-4 w-4" /></span>

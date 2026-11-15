@@ -19,6 +19,11 @@
   Keep React and UI dependencies out of this layer. `registerItems.ts` owns
   the pure session-window aggregation for sold, recorded and voided register
   items; it does not add recorded orders to financial totals.
+- Station routing and ticket formatting are pure helpers in
+  `src/lib/stations.ts` and `src/lib/tickets.ts`. Open-order item merge and
+  lifecycle rules live in `src/lib/openOrderItemsMerge.ts` and
+  `src/lib/orderItemLifecycle.ts`; the runtime applies the merge helper while
+  reconciling IndexedDB and BroadcastChannel snapshots.
 - `src/components/RegisterItemsTable.tsx` is the shared grouped register-item
   table used by the live X view, report preview, Z close dialog and Z history.
 - `src/store/AppStore.tsx` composes the provider and exports `useApp()`.
@@ -46,6 +51,11 @@
   migrates legacy zones and supplies guest-count defaults. Table mutations live
   in `src/store/tables.ts`; section/table setup lives in
   `src/pages/admin/Settings/`.
+- Table orders persist drafts in IndexedDB and route newly sent lines by
+  `stationId`. The `/kitchen` and `/station/:stationId` routes render the
+  station board in `src/pages/pos/StationBoard.tsx`; `viewStation` protects
+  those routes and station status mutations. Database schema is currently
+  `7anouti.db.v27`.
 
 ## Adding a page
 

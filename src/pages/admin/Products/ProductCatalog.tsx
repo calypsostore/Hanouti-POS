@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { Boxes, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import type { Category, Product } from '../../../types'
-import { Badge, Button, Card, EmptyState, Input } from '../../../components/ui'
+import { Badge, Button, Card, EmptyState, Input, Select } from '../../../components/ui'
 import { cn, money } from '../../../lib/utils'
 import { getProductImage } from '../../../lib/productDisplay'
 import { AppIcon } from '../../../components/AppIcon'
@@ -21,6 +22,9 @@ export default function ProductCatalog({
   onDeleteProduct,
   onToggleProduct,
   onNewProduct,
+  stations,
+  onBulkAssignProducts,
+  onBulkAssignCategories,
 }: {
   categories: Category[]
   products: Product[]
@@ -37,7 +41,17 @@ export default function ProductCatalog({
   onDeleteProduct: (product: Product) => void
   onToggleProduct: (product: Product) => void
   onNewProduct: () => void
+  stations: Array<{ id: string; name: string }>
+  onBulkAssignProducts: (ids: string[], stationId?: string) => boolean
+  onBulkAssignCategories: (ids: string[], stationId?: string) => boolean
 }) {
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [productStationId, setProductStationId] = useState('')
+  const [categoryStationId, setCategoryStationId] = useState('')
+  const toggle = (ids: string[], id: string, setIds: (ids: string[]) => void) =>
+    setIds(ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id])
+
   return (
     <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
       <Card className="h-fit p-2">
@@ -54,6 +68,18 @@ export default function ProductCatalog({
           </span>
         </button>
         <div className="mt-1 space-y-0.5">
+          {selectedCategories.length > 0 && (
+            <div className="space-y-2 border-b border-line/60 p-2">
+              <p className="text-[11px] font-semibold">{selectedCategories.length} categories selected</p>
+              <Select value={categoryStationId} onChange={(event) => setCategoryStationId(event.target.value)}>
+                <option value="">No station</option>
+                {stations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}
+              </Select>
+              <Button size="sm" className="w-full" onClick={() => {
+                if (onBulkAssignCategories(selectedCategories, categoryStationId || undefined)) setSelectedCategories([])
+              }}>Assign station</Button>
+            </div>
+          )}
           {categories.map((category) => {
             const count = products.filter((p) => p.categoryId === category.id).length
             const active = categoryFilter === category.id
@@ -65,6 +91,13 @@ export default function ProductCatalog({
                   active ? 'bg-cream-200' : 'hover:bg-cream-100',
                 )}
               >
+                <input
+                  type="checkbox"
+                  aria-label={`Select category ${category.name}`}
+                  checked={selectedCategories.includes(category.id)}
+                  onChange={() => toggle(selectedCategories, category.id, setSelectedCategories)}
+                  className="ml-1 accent-brand-amber"
+                />
                 <button
                   onClick={() => onCategoryFilter(category.id)}
                   className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-[12.5px] font-medium"
@@ -100,6 +133,20 @@ export default function ProductCatalog({
 
       <Card>
         <div className="border-b border-line/70 p-4">
+          {selectedProducts.length > 0 && (
+            <div className="mb-3 grid gap-2 rounded-xl bg-cream-100 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div>
+                <p className="mb-1.5 text-xs font-semibold">{selectedProducts.length} products selected</p>
+                <Select value={productStationId} onChange={(event) => setProductStationId(event.target.value)}>
+                  <option value="">No station</option>
+                  {stations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}
+                </Select>
+              </div>
+              <Button size="sm" onClick={() => {
+                if (onBulkAssignProducts(selectedProducts, productStationId || undefined)) setSelectedProducts([])
+              }}>Assign station</Button>
+            </div>
+          )}
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
             <Input
@@ -130,6 +177,17 @@ export default function ProductCatalog({
               <table className="w-full text-left">
                 <thead className="glass-subtle sticky top-0 z-10">
                   <tr className="border-b border-line/70 text-[10.5px] uppercase tracking-wider text-muted">
+                    <th className="w-10 px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible products"
+                        checked={filtered.length > 0 && filtered.every((product) => selectedProducts.includes(product.id))}
+                        onChange={(event) => setSelectedProducts(event.target.checked
+                          ? [...new Set([...selectedProducts, ...filtered.map((product) => product.id)])]
+                          : selectedProducts.filter((id) => !filtered.some((product) => product.id === id)))}
+                        className="accent-brand-amber"
+                      />
+                    </th>
                     <th className="px-4 py-2.5 font-semibold">Product</th>
                     <th className="px-4 py-2.5 font-semibold">Category</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Price</th>
@@ -147,6 +205,15 @@ export default function ProductCatalog({
                     const image = getProductImage(product)
                     return (
                       <tr key={product.id} className="border-b border-line/50 text-[12.5px]">
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select product ${product.name}`}
+                            checked={selectedProducts.includes(product.id)}
+                            onChange={() => toggle(selectedProducts, product.id, setSelectedProducts)}
+                            className="accent-brand-amber"
+                          />
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2.5">
                             {image
@@ -216,22 +283,34 @@ export default function ProductCatalog({
               {filtered.map((product) => {
                 const image = getProductImage(product)
                 return (
-                <button
+                <div
                   key={product.id}
-                  onClick={() => onEditProduct(product)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                  className="flex w-full items-center gap-3 px-4 py-3"
                 >
-                  {image
-                    ? <img src={image} alt="" className="h-9 w-9 rounded-xl object-cover" />
-                    : <AppIcon name={product.icon} color={product.iconColor} size={17} className="h-9 w-9 rounded-xl" />}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-semibold">{product.name}</div>
-                    <div className="text-[10.5px] text-muted">
-                      {categoryName(product.categoryId)} · {product.trackStock ? `${product.stock} in stock` : 'untracked'}
+                  <input
+                    type="checkbox"
+                    aria-label={`Select product ${product.name}`}
+                    checked={selectedProducts.includes(product.id)}
+                    onChange={() => toggle(selectedProducts, product.id, setSelectedProducts)}
+                    className="accent-brand-amber"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onEditProduct(product)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    {image
+                      ? <img src={image} alt="" className="h-9 w-9 rounded-xl object-cover" />
+                      : <AppIcon name={product.icon} color={product.iconColor} size={17} className="h-9 w-9 rounded-xl" />}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-semibold">{product.name}</div>
+                      <div className="text-[10.5px] text-muted">
+                        {categoryName(product.categoryId)} · {product.trackStock ? `${product.stock} in stock` : 'untracked'}
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-[12.5px] font-bold tabular">{money(product.price)}</span>
-                </button>
+                    <span className="text-[12.5px] font-bold tabular">{money(product.price)}</span>
+                  </button>
+                </div>
                 )
               })}
             </div>

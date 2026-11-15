@@ -8,6 +8,7 @@ import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
 import { normalizeDb } from './database'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
+import { mergeOpenOrderSnapshots } from '../lib/openOrderMerge'
 import type { Capability } from '../types'
 import type { ActorResult } from './types'
 
@@ -57,9 +58,10 @@ export function useDatabase(): DatabaseRuntime {
         if (!raw) throw new Error('The saved database was missing after a cross-tab update.')
         const normalized = normalizeDb(JSON.parse(raw), dbRef.current)
         if (!normalized) throw new Error('The saved database from another tab was invalid.')
-        dbRef.current = normalized
-        remoteSnapshotRef.current = normalized
-        setDbState(normalized)
+        const merged = mergeOpenOrderSnapshots(normalized, dbRef.current)
+        dbRef.current = merged
+        remoteSnapshotRef.current = merged
+        setDbState(merged)
       }).catch((error: unknown) => reportStorageError('applying a cross-tab database update', error))
     }
     return () => {
@@ -141,14 +143,26 @@ export function useDatabase(): DatabaseRuntime {
     }
     remoteSnapshotRef.current = null
     const timeout = window.setTimeout(() => {
+      const current = dbRef.current
       let serialized: string
       try {
-        serialized = JSON.stringify(db)
+        serialized = JSON.stringify(current)
       } catch (error) {
         reportStorageError('serializing the database', error)
         return
       }
-      void writeIndexedValue(DB_KEY, serialized).then(
+      void readIndexedValue(DB_KEY).then((raw) => {
+        if (!raw) return current
+        const persisted = normalizeDb(JSON.parse(raw), current)
+        return persisted ? mergeOpenOrderSnapshots(current, persisted) : current
+      }).then((snapshot) => {
+        serialized = JSON.stringify(snapshot)
+        if (snapshot !== dbRef.current) {
+          dbRef.current = snapshot
+          setDbState(snapshot)
+        }
+        return writeIndexedValue(DB_KEY, serialized)
+      }).then(
         () => {
           clearLocalDatabaseCopies()
           channelRef.current?.postMessage('database-updated')

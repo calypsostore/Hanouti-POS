@@ -5,7 +5,7 @@ import { computeTotals } from '../../lib/pricing'
 import { PrintModal, type PrintJob } from '../../components/PrintPreview'
 import { restorePrinter } from '../../lib/printer'
 import { balanceFor } from '../../lib/selectors'
-import type { Order, OrderChannel } from '../../types'
+import type { Order, OrderChannel, OrderItem } from '../../types'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
 import { CustomerPicker } from './CustomerPicker'
@@ -17,11 +17,38 @@ import { ProductOptionsModal } from './ProductOptionsModal'
 import { createPOSActions } from './posActions'
 import { useProductCart } from './useProductCart'
 import { openShiftForStaff } from '../../lib/registerShifts'
-import { preparationTicketsEnabled } from '../../lib/defaults'
+import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
+import { linesToEscpos } from '../../lib/escpos'
+import { Button, Field, Modal, Textarea } from '../../components/ui'
+import type { OpenOrder, Station, Store } from '../../types'
+import type { TicketKind } from '../../lib/tickets'
+
+const stationTicketJob = (
+  order: OpenOrder,
+  items: OrderItem[],
+  stations: Station[],
+  store: Store,
+  kind: TicketKind = 'NEW',
+): PrintJob | null => {
+  const tickets = buildStationTickets(order, items, stations, kind)
+  if (!tickets.length) return null
+  const lines = tickets.flatMap((ticket, index) => [
+    ...(index ? [{ text: '' }, { text: '----------------' }] : []),
+    ...buildStationTicketLines(ticket),
+  ])
+  return {
+    title: `${kind === 'NEW' ? 'Preparation' : kind.toLowerCase()} tickets`,
+    subtitle: `${tickets.length} station ticket${tickets.length === 1 ? '' : 's'} · ${order.tableName}`,
+    lines,
+    bytes: linesToEscpos(lines, store.settings.printer.width),
+    kind: 'kitchen',
+  }
+}
 
 export default function POS() {
   const {
-    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToKitchen, payOpenOrder, recordOpenOrder,
+    user, store, db, logout, createOrder, addItemsToOpenOrder, sendToStations, updateOpenOrderItem,
+    voidSentOrderItem, payOpenOrder, recordOpenOrder,
   } = useApp()
   const navigate = useNavigate()
   const { push } = useToast()
@@ -59,6 +86,8 @@ export default function POS() {
   )
   const [receipt, setReceipt] = useState<Order | null>(null)
   const [kitchenJob, setKitchenJob] = useState<PrintJob | null>(null)
+  const [voidTarget, setVoidTarget] = useState<string>()
+  const [voidReason, setVoidReason] = useState('')
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -82,6 +111,57 @@ export default function POS() {
       navigate('/pos?channel=dine-in&focus=table', { replace: true })
     }
   }, [db.openOrders.length, navigate, openOrder, openOrderId, push, receipt])
+
+  useEffect(() => {
+    if (!openOrder || !store) return
+    const discountValue = openDiscount ?? openOrder.discount
+    const noteValue = openNote ?? openOrder.note ?? ''
+    const changed = cart.length > 0 || discountValue !== openOrder.discount || noteValue !== (openOrder.note ?? '')
+    if (!changed) return
+    const lineIds = new Set(cart.map((item) => item.lineId).filter((id): id is string => !!id))
+    const timeout = window.setTimeout(() => {
+      const result = addItemsToOpenOrder(openOrder.id, cart, discountValue, noteValue)
+      if (!result.ok) {
+        push(result.error, 'error')
+        return
+      }
+      if (lineIds.size) setCart((items) => items.filter((item) => !lineIds.has(item.lineId ?? '')))
+      setOpenDiscount(undefined)
+      setOpenNote(undefined)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [addItemsToOpenOrder, cart, openDiscount, openNote, openOrder, push, setCart, store])
+
+  useEffect(() => {
+    if (!openOrder || !store || store.settings.ticketSendPolicy === 'done_only') return
+    const pending = openOrder.items.filter((item) => item.status === 'draft' && item.stationId)
+    if (!pending.length) return
+    const latestAddedAt = Math.max(...pending.map((item) => Date.parse(item.addedAt ?? openOrder.updatedAt)))
+    const delaySeconds = store.settings.ticketSendPolicy === 'instant'
+      ? 0
+      : store.settings.ticketSendPolicy === 'delayed'
+        ? store.settings.ticketDelaySeconds
+        : store.settings.ticketIdleSeconds
+    const remaining = Math.max(0, latestAddedAt + delaySeconds * 1000 - Date.now())
+    const timeout = window.setTimeout(() => {
+      const result = sendToStations(openOrder.id)
+      if (!result.ok) {
+        push(result.error, 'error')
+        return
+      }
+      const job = stationTicketJob(
+        result.order,
+        result.items,
+        db.stations.filter((station) => station.storeId === store.id),
+        store,
+        openOrder.items.some((item) => item.sentAt || (item.status !== 'draft' && item.status !== 'void'))
+          ? 'ADDITION'
+          : 'NEW',
+      )
+      if (job) setKitchenJob(job)
+    }, remaining)
+    return () => window.clearTimeout(timeout)
+  }, [db.stations, openOrder, push, sendToStations, store])
 
   if (!user || !store) return null
 
@@ -111,21 +191,57 @@ export default function POS() {
     tables.find((table) => table.id === activeTableId)?.sectionId
   const activeSectionName = sections.find((section) => section.id === activeSectionId)?.name ??
     openOrder?.sectionName
-  const totals = computeTotals(displayCart, store.settings, activeDiscount)
-  const count = displayCart.reduce((a, i) => a + i.qty, 0)
+  const billableCart = displayCart.filter((item) => item.status !== 'void')
+  const totals = computeTotals(billableCart, store.settings, activeDiscount)
+  const count = billableCart.reduce((a, i) => a + i.qty, 0)
   const pendingCount = cart.reduce((sum, item) => sum + item.qty, 0)
   const canSaveOpenOrder = !!openOrder && (
     cart.length > 0 ||
     activeDiscount !== openOrder.discount ||
     activeNote !== (openOrder.note ?? '')
   )
-  const hasUnsentItems = displayCart.some((item) => !item.sentAt)
-  const kitchenEnabled = preparationTicketsEnabled(store.settings)
   const quick = store.settings.posMode === 'quick'
   const registerOpen = !!openShiftForStaff(db, store.id, user.id)
   const canOpenRegister = can(user, 'openShift')
   const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
+  const stations = db.stations.filter((station) => station.storeId === store.id)
+
+  const changeOpenItemQty = (lineId: string, delta: number) => {
+    const order = openOrder
+    const savedItem = order?.items.find((item) => item.lineId === lineId)
+    if (!order || !savedItem) {
+      changeQty(lineId, delta)
+      return
+    }
+    if (savedItem.status !== 'draft') return
+    const result = updateOpenOrderItem(order.id, lineId, { qty: Math.max(0, savedItem.qty + delta) })
+    if (!result.ok) push(result.error, 'error')
+  }
+  const setOpenItemQty = (lineId: string, qty: number) => {
+    const order = openOrder
+    const savedItem = order?.items.find((item) => item.lineId === lineId)
+    if (!order || !savedItem) {
+      setLineQty(lineId, qty)
+      return
+    }
+    if (savedItem.status !== 'draft') return
+    const result = updateOpenOrderItem(order.id, lineId, { qty })
+    if (!result.ok) push(result.error, 'error')
+  }
+  const confirmVoidSentItem = () => {
+    if (!openOrder || !voidTarget) return
+    const result = voidSentOrderItem(openOrder.id, voidTarget, voidReason)
+    if (!result.ok) {
+      push(result.error, 'error')
+      return
+    }
+    const job = stationTicketJob(result.order, [result.item], stations, store, 'CANCELLED')
+    if (job) setKitchenJob(job)
+    push('Sent item voided; a cancellation ticket is ready to print.', 'success')
+    setVoidTarget(undefined)
+    setVoidReason('')
+  }
 
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.trim().toLowerCase()),
@@ -139,6 +255,7 @@ export default function POS() {
 
   const actions = createPOSActions({
     store,
+    stations,
     channel,
     tableId,
     tableName: activeTableName,
@@ -156,7 +273,7 @@ export default function POS() {
     canUseCredit,
     createOrder,
     addItemsToOpenOrder,
-    sendToKitchen,
+    sendToStations,
     payOpenOrder,
     recordOpenOrder,
     push,
@@ -178,7 +295,7 @@ export default function POS() {
     navigateToFloor: () => navigate('/pos/floor'),
   })
   const {
-    clearCart, completeSale, checkout, addToTab, saveOpenChanges, sendKitchenItems,
+    clearCart, completeSale, checkout, addToTab, doneOpenOrder,
   } = actions
 
   const changeChannel = (next: OrderChannel) => {
@@ -235,8 +352,8 @@ export default function POS() {
     onPickCustomer: () => setCustomerOpen(true),
     onClearCustomer: () => setCustomerId(undefined),
     onClear: clearCart,
-    changeQty,
-    setLineQty,
+    changeQty: changeOpenItemQty,
+    setLineQty: setOpenItemQty,
     totals,
     discount: activeDiscount,
     setDiscount: openOrder ? setOpenDiscount : setDiscount,
@@ -254,11 +371,12 @@ export default function POS() {
     ownerStaffName: openOrder?.staffName ?? user.name,
     pendingCount,
     persistedLineIds: openOrder?.items.map((item) => item.lineId ?? ''),
-    canSaveOpenOrder,
-    hasUnsentItems,
-    kitchenEnabled,
-    onSaveOpenOrder: saveOpenChanges,
-    onSendKitchen: sendKitchenItems,
+    canVoidSentItems: can(user, 'voidOrders'),
+    onVoidSentItem: (lineId: string) => {
+      setVoidTarget(lineId)
+      setVoidReason('')
+    },
+    onDone: doneOpenOrder,
     onOpenFloor: () => navigate('/pos/floor'),
   }
 
@@ -323,6 +441,24 @@ export default function POS() {
         onConfirm={completeSale}
         orderNo={null}
       />
+
+      <Modal
+        open={!!voidTarget}
+        onClose={() => setVoidTarget(undefined)}
+        title="Void sent item?"
+        subtitle="A cancellation ticket will be created for the station."
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setVoidTarget(undefined)}>Keep item</Button>
+            <Button variant="danger" disabled={!voidReason.trim()} onClick={confirmVoidSentItem}>Void sent item</Button>
+          </div>
+        }
+      >
+        <Field label="Reason">
+          <Textarea value={voidReason} onChange={(event) => setVoidReason(event.target.value)} maxLength={240} autoFocus />
+        </Field>
+      </Modal>
 
       {/* Receipt */}
       <ReceiptModal

@@ -1,12 +1,14 @@
 import type { OpenOrder, Order, OrderChannel, OrderItem, PaymentMethod, Store } from '../../types'
+import type { Station } from '../../types'
 import type { AppContextValue } from '../../store/types'
 import type { PrintJob } from '../../components/PrintPreview'
-import { buildOpenKitchenLines, linesToEscpos } from '../../lib/escpos'
-import { preparationTicketsEnabled } from '../../lib/defaults'
+import { linesToEscpos } from '../../lib/escpos'
 import { money } from '../../lib/utils'
+import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 
 type Props = {
   store: Store
+  stations: Station[]
   channel: OrderChannel
   tableId?: string
   tableName?: string
@@ -24,7 +26,7 @@ type Props = {
   canUseCredit: boolean
   createOrder: AppContextValue['createOrder']
   addItemsToOpenOrder: AppContextValue['addItemsToOpenOrder']
-  sendToKitchen: AppContextValue['sendToKitchen']
+  sendToStations: AppContextValue['sendToStations']
   payOpenOrder: AppContextValue['payOpenOrder']
   recordOpenOrder: AppContextValue['recordOpenOrder']
   push: (message: string, type: 'success' | 'error') => void
@@ -64,6 +66,30 @@ export const createPOSActions = (props: Props) => {
   const clearCart = () => {
     props.setCart([])
     if (!props.openOrder) props.setDiscount(0)
+  }
+
+  const sendPendingItems = (orderId: string, hadPreviouslySentItems: boolean) => {
+    const result = props.sendToStations(orderId)
+    if (!result.ok) {
+      props.push(result.error, 'error')
+      return false
+    }
+    const kind = hadPreviouslySentItems ? 'ADDITION' : 'NEW'
+    const tickets = buildStationTickets(result.order, result.items, props.stations, kind)
+    if (tickets.length) {
+      const lines = tickets.flatMap((ticket, index) => [
+        ...(index ? [{ text: '' }, { text: '----------------' }] : []),
+        ...buildStationTicketLines(ticket),
+      ])
+      props.setKitchenJob({
+        title: kind === 'ADDITION' ? 'Addition tickets' : 'Preparation tickets',
+        subtitle: `${tickets.length} station ticket${tickets.length === 1 ? '' : 's'} · ${result.order.tableName}`,
+        lines,
+        bytes: linesToEscpos(lines, props.store.settings.printer.width),
+        kind: 'kitchen',
+      })
+    }
+    return true
   }
 
   const completeSale = (method: PaymentMethod) => {
@@ -120,6 +146,10 @@ export const createPOSActions = (props: Props) => {
         props.setOpenDiscount(undefined)
         props.setOpenNote(undefined)
       }
+      const hadPreviouslySentItems = props.openOrder.items.some((item) =>
+        item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
+      )
+      if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
       const paid = props.payOpenOrder(props.openOrder.id, method, props.customerId)
       if (!paid.ok) {
         props.push(paid.error, 'error')
@@ -185,53 +215,45 @@ export const createPOSActions = (props: Props) => {
     completeSale('credit')
   }
 
-  const saveOpenChanges = () => {
-    if (!props.openOrder || !props.canSaveOpenOrder) return
-    const result = props.addItemsToOpenOrder(
-      props.openOrder.id,
-      props.cart,
-      props.activeDiscount,
-      props.activeNote,
-    )
-    if (!result.ok) {
-      props.push(result.error, 'error')
-      return
-    }
-    props.setCart([])
-    props.setOpenDiscount(undefined)
-    props.setOpenNote(undefined)
-    props.push('Table order saved.', 'success')
-  }
-
-  const sendKitchenItems = () => {
+  const doneOpenOrder = () => {
     if (!props.openOrder) return
-    if (!preparationTicketsEnabled(props.store.settings)) {
-      props.push('Preparation tickets are disabled for this store.', 'error')
+    if (!props.count) {
+      resetSale()
+      props.navigateToFloor()
       return
     }
-    const result = props.sendToKitchen(
-      props.openOrder.id,
-      props.cart,
-      props.activeDiscount,
-      props.activeNote,
+    if (props.canSaveOpenOrder) {
+      const saved = props.addItemsToOpenOrder(
+        props.openOrder.id,
+        props.cart,
+        props.activeDiscount,
+        props.activeNote,
+      )
+      if (!saved.ok) {
+        props.push(saved.error, 'error')
+        return
+      }
+      props.setCart([])
+      props.setOpenDiscount(undefined)
+      props.setOpenNote(undefined)
+    }
+    const hadPreviouslySentItems = props.openOrder.items.some((item) =>
+      item.sentAt || (item.status !== 'draft' && item.status !== 'void'),
     )
-    if (!result.ok) {
-      props.push(result.error, 'error')
-      return
+    if (!sendPendingItems(props.openOrder.id, hadPreviouslySentItems)) return
+    if (props.quick) {
+      const recorded = props.recordOpenOrder(props.openOrder.id)
+      if (!recorded.ok) {
+        props.push(recorded.error, 'error')
+        return
+      }
+      props.push(`Table order #${recorded.order.number} recorded · no payment taken`, 'success')
+    } else {
+      props.push('Table order saved and sent to stations.', 'success')
     }
-    props.setCart([])
-    props.setOpenDiscount(undefined)
-    props.setOpenNote(undefined)
-    const lines = buildOpenKitchenLines(result.order, result.items, props.store)
-    props.setKitchenJob({
-      title: 'Kitchen ticket',
-      subtitle: `${result.items.length} new item${result.items.length === 1 ? '' : 's'} · ${result.order.tableName}`,
-      lines,
-      bytes: linesToEscpos(lines, props.store.settings.printer.width),
-      kind: 'kitchen',
-    })
-    props.push(`${result.items.length} new item${result.items.length === 1 ? '' : 's'} sent to the kitchen.`, 'success')
+    resetSale()
+    props.navigateToFloor()
   }
 
-  return { clearCart, completeSale, checkout, addToTab, saveOpenChanges, sendKitchenItems }
+  return { clearCart, completeSale, checkout, addToTab, doneOpenOrder }
 }

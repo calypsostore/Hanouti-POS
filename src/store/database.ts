@@ -4,7 +4,7 @@ import type {
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
   ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
   SaleUnit, Shift, Station, StockMovement,
-  Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
+  OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
 import { normalizePayrollSettings, normalizePrinter, normalizeUser } from '../lib/defaults'
@@ -14,11 +14,12 @@ import { readIndexedValue } from '../lib/storage'
 import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
+import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v26'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v27'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -230,7 +231,7 @@ const auditActions: AuditAction[] = [
 const auditEntities: AuditEntity[] = [
   'order', 'product', 'category', 'customer', 'staff', 'expense',
   'register', 'settings', 'auth', 'payroll', 'shift', 'table', 'inventory',
-  'purchase', 'supplier',
+  'purchase', 'supplier', 'station',
 ]
 const auditRoles: AuditRole[] = ['super', 'admin', 'manager', 'staff', 'unknown']
 const normalizeAuditValue = (value: unknown, depth = 0): AuditJsonValue | undefined => {
@@ -379,6 +380,20 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           colorMode: s.settings.colorMode === 'dark' || s.settings.colorMode === 'light' || s.settings.colorMode === 'system'
             ? s.settings.colorMode
             : 'system' as const,
+          ticketSendPolicy: s.settings.ticketSendPolicy === 'instant' ||
+            s.settings.ticketSendPolicy === 'delayed' ||
+            s.settings.ticketSendPolicy === 'done_only'
+            ? s.settings.ticketSendPolicy as StoreSettings['ticketSendPolicy']
+            : 'done_or_idle',
+          ticketDelaySeconds: isFiniteNumber(s.settings.ticketDelaySeconds)
+            ? Math.max(0, Math.min(300, Math.round(s.settings.ticketDelaySeconds)))
+            : 10,
+          ticketIdleSeconds: isFiniteNumber(s.settings.ticketIdleSeconds)
+            ? Math.max(1, Math.min(300, Math.round(s.settings.ticketIdleSeconds)))
+            : 20,
+          stationTimerMinutes: isFiniteNumber(s.settings.stationTimerMinutes)
+            ? Math.max(1, Math.min(180, Math.round(s.settings.stationTimerMinutes)))
+            : 15,
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
@@ -468,6 +483,20 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
       addedById: typeof item.addedById === 'string' ? item.addedById : order.staffId,
       addedByName: typeof item.addedByName === 'string' ? item.addedByName : order.staffName,
+      stationId: typeof item.stationId === 'string' ? item.stationId : undefined,
+      status: ['draft', 'sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))
+        ? item.status as OrderItem['status']
+        : item.sentAt ? 'sent' as const : 'draft' as const,
+      addedAt: typeof item.addedAt === 'string' && Number.isFinite(Date.parse(item.addedAt))
+        ? item.addedAt
+        : undefined,
+      updatedAt: typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
+        ? item.updatedAt
+        : undefined,
+      sentAt: typeof item.sentAt === 'string' && Number.isFinite(Date.parse(item.sentAt))
+        ? item.sentAt
+        : undefined,
+      voidReason: typeof item.voidReason === 'string' ? item.voidReason.slice(0, 240) : undefined,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note : '',
       variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
@@ -673,8 +702,12 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     typeof item.staffId === 'string' && typeof item.staffName === 'string' &&
     typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) &&
     typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt)),
-  ).map((order) => ({
+  ).map((order, index) => ({
     ...order,
+    number: Number.isSafeInteger(order.number) && Number(order.number) > 0
+      ? Number(order.number)
+      : orders.find((recorded) => recorded.id === order.recordedOrderId)?.number ??
+        orders.filter((recorded) => recorded.storeId === order.storeId).reduce((max, recorded) => Math.max(max, recorded.number), 1000) + index + 1,
     tableId: typeof order.tableId === 'string' ? order.tableId : undefined,
     shiftId: typeof order.shiftId === 'string' ? order.shiftId : undefined,
     sectionId: typeof order.sectionId === 'string' ? order.sectionId : undefined,
@@ -693,6 +726,16 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       lineId: typeof item.lineId === 'string' ? item.lineId : `${order.id}:${index}`,
       addedById: typeof item.addedById === 'string' ? item.addedById : order.staffId,
       addedByName: typeof item.addedByName === 'string' ? item.addedByName : order.staffName,
+      stationId: typeof item.stationId === 'string' ? item.stationId : undefined,
+      status: ['draft', 'sent', 'preparing', 'ready', 'served', 'void'].includes(String(item.status))
+        ? item.status as OrderItem['status']
+        : item.sentAt ? 'sent' as const : 'draft' as const,
+      addedAt: typeof item.addedAt === 'string' && Number.isFinite(Date.parse(item.addedAt))
+        ? item.addedAt
+        : undefined,
+      updatedAt: typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
+        ? item.updatedAt
+        : undefined,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note.slice(0, 240) : '',
       variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
@@ -702,6 +745,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       sentAt: typeof item.sentAt === 'string' && Number.isFinite(Date.parse(item.sentAt))
         ? item.sentAt
         : undefined,
+      voidReason: typeof item.voidReason === 'string' ? item.voidReason.slice(0, 240) : undefined,
     })),
   })).filter((order) => {
     const tableKey = order.tableId
@@ -900,10 +944,11 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     ) ? payment.shiftId : sessionForTimestamp(payment.storeId, payment.createdAt)?.id,
   }))
 
-  const stations = collection<Station>('stations', (item): item is Station =>
+  const rawStations = Array.isArray(value.stations) ? collection<Station>('stations', (item): item is Station =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
     typeof item.active === 'boolean' && isFiniteNumber(item.sort),
-  ).map((station) => ({
+  ) : stores.flatMap((store) => defaultStationsForStore(store.id))
+  const stations = rawStations.map((station) => ({
     ...withoutLegacyEmoji(station),
     name: station.name.trim().slice(0, 80),
     icon: isIconName(station.icon) ? station.icon : 'Utensils',
@@ -912,8 +957,47 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     screen: station.screen === true,
     active: station.active,
     sort: isFiniteNumber(station.sort) ? station.sort : 0,
-  })).filter((station) => stores.some((store) => store.id === station.storeId) && station.name.length > 0)
-  const validStationIds = new Set(stations.map((station) => station.id))
+  })).filter((station, index, list) =>
+    stores.some((store) => store.id === station.storeId) && station.name.length > 0 &&
+    station.name.toLowerCase() !== 'counter' &&
+    list.findIndex((other) => other.id === station.id ||
+      (other.storeId === station.storeId && other.name.toLowerCase() === station.name.toLowerCase())) === index,
+  )
+  const defaultStationForName = (storeId: string, name: string) => {
+    const stationName = defaultStationNameForCategory(name)
+    return stations.find((station) => station.storeId === storeId && station.name === stationName)?.id
+  }
+  const defaultStationForProduct = (product: Pick<Product, 'storeId' | 'categoryId'>) => {
+    if (!Array.isArray(value.categories)) return undefined
+    const category = value.categories.find((candidate) =>
+      isRecord(candidate) && candidate.id === product.categoryId && candidate.storeId === product.storeId,
+    )
+    return isRecord(category) && typeof category.name === 'string'
+      ? validStationFor(product.storeId, typeof category.stationId === 'string' ? category.stationId : undefined) ??
+        defaultStationForName(product.storeId, category.name)
+      : undefined
+  }
+  const stationForOpenOrderItem = (order: OpenOrder, item: OrderItem) => {
+    const assigned = validStationFor(order.storeId, item.stationId)
+    if (assigned) return assigned
+    if (!Array.isArray(value.products)) return undefined
+    const product = value.products.find((candidate) =>
+      isRecord(candidate) && candidate.id === item.productId && candidate.storeId === order.storeId,
+    )
+    if (!isRecord(product) || typeof product.name !== 'string' || typeof product.categoryId !== 'string') return undefined
+    const explicitStationId = product.stationId === null
+      ? null
+      : validStationFor(order.storeId, typeof product.stationId === 'string' ? product.stationId : undefined)
+    return resolveProductStationId(
+      product.name,
+      explicitStationId,
+      defaultStationForProduct({ storeId: order.storeId, categoryId: product.categoryId }),
+    ) ?? undefined
+  }
+  const validStationFor = (storeId: string, stationId: string | undefined) =>
+    stationId && stations.some((station) => station.id === stationId && station.storeId === storeId)
+      ? stationId
+      : undefined
   return {
     stores,
     users,
@@ -924,9 +1008,10 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       ...withoutLegacyEmoji(category),
       icon: isIconName(category.icon) ? category.icon : iconFromLegacyEmoji(legacyEmoji(category), 'Store'),
       iconColor: isIconColor(category.iconColor) ? category.iconColor : 'amber',
-      stationId: typeof category.stationId === 'string' && validStationIds.has(category.stationId)
+      stationId: typeof category.stationId === 'string' &&
+        stations.some((station) => station.id === category.stationId && station.storeId === category.storeId)
         ? category.stationId
-        : undefined,
+        : defaultStationForName(category.storeId, category.name),
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
     sections: allSections,
@@ -936,7 +1021,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     suppliers,
     purchases,
     purchasePayments: attributedPurchasePayments,
-    openOrders: attributedOpenOrders,
+    openOrders: attributedOpenOrders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        stationId: stationForOpenOrderItem(order, item),
+      })),
+    })),
     products: collection<Product>('products', (item): item is Product =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.categoryId === 'string' &&
       typeof item.name === 'string' && isFiniteNumber(item.price) && isFiniteNumber(item.cost) &&
@@ -945,9 +1036,16 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       ...withoutLegacyEmoji(product),
       icon: isIconName(product.icon) ? product.icon : iconFromLegacyEmoji(legacyEmoji(product), 'Store'),
       iconColor: isIconColor(product.iconColor) ? product.iconColor : 'amber',
-      stationId: typeof product.stationId === 'string' && validStationIds.has(product.stationId)
-        ? product.stationId
-        : undefined,
+      stationId: resolveProductStationId(
+        product.name,
+        product.stationId === null
+          ? null
+          : typeof product.stationId === 'string' &&
+              stations.some((station) => station.id === product.stationId && station.storeId === product.storeId)
+            ? product.stationId
+            : undefined,
+        defaultStationForProduct(product),
+      ),
       image: typeof product.image === 'string' && product.image.length <= 307200 ? product.image : undefined,
       trackStock: Boolean(product.trackStock),
       active: product.active !== false,
@@ -970,7 +1068,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       notes: typeof customer.notes === 'string' ? customer.notes : '',
       createdAt: typeof customer.createdAt === 'string' ? customer.createdAt : new Date(0).toISOString(),
     })),
-    orders: attributedOrders,
+    orders: attributedOrders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        stationId: validStationFor(order.storeId, item.stationId),
+      })),
+    })),
     ledger: attributedLedger,
     expenses: attributedExpenses,
     attendance,
@@ -989,7 +1093,7 @@ const databaseCollectionKeys: Array<keyof Database> = [
 ]
 
 export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
-  const optionalCollections: Array<keyof Database> = ['suppliers', 'purchases', 'purchasePayments']
+  const optionalCollections: Array<keyof Database> = ['stations', 'suppliers', 'purchases', 'purchasePayments']
   if (!isRecord(value) || !databaseCollectionKeys.every((key) =>
     optionalCollections.includes(key) || Array.isArray(value[key]),
   )) return null
@@ -1087,7 +1191,18 @@ export const loadDb = async (
           : store,
       )
     : source.stores
-  const migrated = { ...source, stores, users }
+  const stations = loadedFromPreviousKey
+      ? [
+          ...source.stations,
+          ...source.stores
+            .flatMap((store) => defaultStationsForStore(store.id).filter((station) =>
+              !source.stations.some((existing) =>
+                existing.storeId === store.id && existing.name.toLowerCase() === station.name.toLowerCase(),
+              ),
+            )),
+        ]
+      : source.stations
+  const migrated = { ...source, stores, stations, users }
   if (loadedFromIndexedDb) clearLocalDatabaseCopies()
   return { database: migrated, hasPersistedData }
 }

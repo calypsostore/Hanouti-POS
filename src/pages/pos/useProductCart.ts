@@ -49,6 +49,12 @@ export function useProductCart(
         ...prev,
         {
           lineId: uid('line'),
+          stationId: product.stationId === null
+            ? undefined
+            : product.stationId ?? db.categories.find((category) =>
+                category.id === product.categoryId && category.storeId === product.storeId,
+              )?.stationId,
+          status: 'draft',
           productId: product.id,
           name: product.name,
           price,

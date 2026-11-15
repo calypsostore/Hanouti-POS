@@ -13,6 +13,7 @@ export type Capability =
   | 'managePayroll'
   | 'manageTables'
   | 'manageSections'
+  | 'viewStation'
   | 'openShift'
   | 'closeShift'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
@@ -49,6 +50,7 @@ export type AuditEntity =
   | 'shift'
   | 'table'
   | 'section'
+  | 'station'
   | 'inventory'
   | 'purchase'
   | 'supplier'
@@ -102,6 +104,8 @@ export type PrintMode = 'auto' | 'manual'
 export type PrinterConnection = 'webserial' | 'browser'
 export type BusinessType = 'cafe' | 'restaurant' | 'bakery' | 'snack' | 'retail' | 'salon'
 export type SaleUnit = 'kg' | 'g' | 'piece'
+export type TicketSendPolicy = 'done_or_idle' | 'instant' | 'delayed' | 'done_only'
+export type OrderItemStatus = 'draft' | 'sent' | 'preparing' | 'ready' | 'served' | 'void'
 export type IconColor = 'green' | 'blue' | 'amber' | 'rose' | 'violet' | 'teal' | 'slate' | 'orange'
 export const ICON_NAMES = [
   'Coffee', 'CupSoda', 'Cake', 'Croissant', 'Cookie', 'IceCream', 'Sandwich',
@@ -156,6 +160,10 @@ export interface StoreSettings {
   printer: PrinterSettings
   features: StoreFeatures
   payroll: PayrollSettings
+  ticketSendPolicy: TicketSendPolicy
+  ticketDelaySeconds: number
+  ticketIdleSeconds: number
+  stationTimerMinutes: number
 }
 
 export interface Store {
@@ -214,6 +222,7 @@ export interface User {
     managePayroll?: boolean
     manageTables?: boolean
     manageSections?: boolean
+    viewStation?: boolean
     openShift?: boolean
     closeShift?: boolean
   }
@@ -359,7 +368,7 @@ export interface Product {
   id: string
   storeId: string
   categoryId: string
-  stationId?: string
+  stationId?: string | null // null overrides category routing and leaves the product unsent.
   name: string
   icon: IconName
   iconColor: IconColor
@@ -415,9 +424,14 @@ export interface Customer {
 
 export interface OrderItem {
   lineId?: string
+  stationId?: string
   sentAt?: string
+  status?: OrderItemStatus
+  addedAt?: string
+  updatedAt?: string
   addedById?: string
   addedByName?: string
+  voidReason?: string
   productId: string
   name: string
   price: number
@@ -484,6 +498,7 @@ export interface Order {
 export interface OpenOrder {
   id: string
   storeId: string
+  number: number
   shiftId?: string
   tableId?: string
   tableName: string

@@ -2,21 +2,21 @@
 
 Validated in this session:
 - `npm run build` passed
-- `npm run lint` passed (with existing repo warnings only)
-- `node --experimental-strip-types --test tests/register-items.test.mjs tests/table-service.test.mjs` passed
-- Kitchen-prep legacy flag merge and UI guard were implemented for the POS flow
+- `npm run lint` passed with warnings
+- `node --experimental-strip-types --test tests/*.test.mjs` passed (17 tests)
+- Browser smoke checked Settings → Stations, Settings → Service, and `/kitchen`
 
 ## M1 Automatic table orders and stations
-- [x] 1. Station entity defaults and admin flow — seeded store stations and product/category assignment flow are now in place.
-- [x] 2. `stationId` on categories and products with bulk assign and business-template defaults — station assignment is supported in the catalog model, seed data, and admin editors.
-- [x] 3. One setting "Preparation tickets" merged from legacy kitchen flags; migration guard added in `src/store/database.ts`
-- [x] 4. Remove manual save/send buttons when kitchen prep is off; open-order flow gated in POS UI
-- [ ] 5. Auto-send policy, item statuses, and void-sent-item flow
-- [ ] 6. Ticket builder and splitting logic with ADDITION/CANCELLED logic
-- [ ] 7. Merge-safe edits by item id and add-by-id semantics
-- [ ] 8. IndexedDB persistence, served action, Ready notifications
-- [ ] 9. Kitchen/Bar display page and station-screen auth
-- [ ] 10. Migration, seed, docs, tests for ticket splitting/routing
+- [x] 1. Station management — per-store Kitchen/Bar defaults; add, rename, icon/color, order, screen toggle, and safe deletion.
+- [x] 2. Catalog routing — category/product routing, bulk assignment, template defaults, drink/food seed routes, and explicit no-station product overrides.
+- [x] 3. Legacy preparation-ticket settings normalize safely; new station send policy is independent of receipt printing.
+- [x] 4. POS cart has no Save items / Send to kitchen controls; table changes autosave and Done sends pending routed items.
+- [x] 5. Send policy, per-item lifecycle states, draft editing, permissioned sent-item void with reason, and CANCELLED preview.
+- [x] 6. Pure station ticket builder splits by station, formats ADDITION/CANCELLED/REPRINT, Rush, modifiers, notes and order context; tests added.
+- [x] 7. Open-order edits target line IDs; IndexedDB/BroadcastChannel reconciliation merges appends and latest per-line edits.
+- [x] 8. Open orders persist through the existing IndexedDB store, station items can be Served, and ready items notify their owner in TopBar.
+- [x] 9. `/kitchen` and `/station/:stationId` boards include PIN-session permission gating, New/Preparing/Ready, timers, sound, bump/recall, filter and reprint.
+- [x] 10. Migration, seed, docs, and tests for ticket splitting/routing
 
 ## M2 Print architecture in the app
 - [ ] 11. Printer entity and device settings page
@@ -58,7 +58,10 @@ Validated in this session:
 - [ ] 39. Final scenario report: S1-S9 PASS/FAIL/UNVERIFIED
 
 ## Notes
-- The repository is not yet at full M1-M6 completion.
-- The previously implemented kitchen-prep guard is the only area validated here.
-- Any real-printer testing remains untested on hardware.
-- Browser-based Playwright multi-context verification for the larger ticketing and hub scenarios is still unverified in this session.
+- M1 is implemented as browser-local demo behavior; this does not complete the
+  later M2-M6 roadmap.
+- Browser smoke did not exercise table-order reload, multi-tab reconciliation,
+  ticket lifecycle actions, or phone/tablet layouts end to end.
+- Real-printer testing remains unverified on hardware.
+- Multi-device synchronization is not implemented; BroadcastChannel only
+  reconciles tabs within the same browser profile.
