@@ -53,7 +53,7 @@ export default function SettingsPage() {
         staffPickSectionsOnShift: false,
         requireShiftForOrders: true,
         accent: '7anouti',
-        colorMode: 'light',
+        colorMode: 'system',
         printer: { ...DEFAULT_PRINTER },
         features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
         payroll: { ...DEFAULT_PAYROLL_SETTINGS },

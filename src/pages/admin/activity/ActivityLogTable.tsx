@@ -163,7 +163,7 @@ export default function ActivityLogTable({
                       <td className="whitespace-nowrap px-4 py-3 text-muted">{formatAuditDateTime(log.createdAt)}</td>
                       <td className="px-4 py-3">
                         {staffIdSet.has(log.userId)
-                          ? <Link to={`/admin/staff/${encodeURIComponent(log.userId)}`} className="font-semibold text-ink hover:text-brand-navy hover:underline">{log.userName}</Link>
+                          ? <Link to={`/admin/staff/${encodeURIComponent(log.userId)}`} className="font-semibold text-ink hover:text-accent-foreground hover:underline">{log.userName}</Link>
                           : <div className="font-semibold text-ink">{log.userName}</div>}
                         <div className="mt-1">
                           <Badge tone={log.role === 'admin' ? 'dark' : log.role === 'manager' ? 'accent' : 'neutral'}>
@@ -180,7 +180,7 @@ export default function ActivityLogTable({
                           type="button"
                           aria-expanded={expanded === log.id}
                           onClick={() => setExpanded(expanded === log.id ? null : log.id)}
-                          className="flex items-start gap-1.5 text-left font-medium text-ink hover:text-brand-navy"
+                          className="flex items-start gap-1.5 text-left font-medium text-ink hover:text-accent-foreground"
                         >
                           <span>{log.summary}</span>
                           <ChevronDown className={`mt-0.5 h-3.5 w-3.5 shrink-0 transition ${expanded === log.id ? 'rotate-180' : ''}`} />

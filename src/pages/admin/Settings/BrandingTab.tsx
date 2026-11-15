@@ -1,8 +1,8 @@
-import { Check, Image, Moon, Palette, Sun } from 'lucide-react'
+import { Check, Image, Monitor, Moon, Palette, Sun } from 'lucide-react'
 import type { Store, StoreSettings } from '../../../types'
 import { Card } from '../../../components/ui'
 import { ImageUpload } from '../../../components/ImageUpload'
-import { accentPalettes } from '../../../lib/theme'
+import { accentPalettes, applyColorMode, saveColorMode } from '../../../lib/theme'
 import { cn } from '../../../lib/utils'
 
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
@@ -72,17 +72,23 @@ export default function BrandingTab({
         <div className="mb-1 flex items-center gap-2">
           {settings.colorMode === 'dark'
             ? <Moon className="h-4 w-4 text-accent-foreground" />
-            : <Sun className="h-4 w-4 text-accent-foreground" />}
+            : settings.colorMode === 'light'
+              ? <Sun className="h-4 w-4 text-accent-foreground" />
+              : <Monitor className="h-4 w-4 text-accent-foreground" />}
           <h3 className="text-[15px] font-semibold tracking-tight">Default appearance</h3>
         </div>
         <p className="mb-4 text-[12px] text-muted">Choose the default theme for this store.</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(['light', 'dark'] as const).map((mode) => (
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(['system', 'light', 'dark'] as const).map((mode) => (
             <button
               key={mode}
               type="button"
               aria-pressed={settings.colorMode === mode}
-              onClick={() => set('colorMode', mode)}
+              onClick={() => {
+                saveColorMode(mode)
+                applyColorMode(mode)
+                set('colorMode', mode)
+              }}
               className={cn(
                 'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold capitalize transition',
                 settings.colorMode === mode
@@ -90,7 +96,7 @@ export default function BrandingTab({
                   : 'border-line bg-white text-ink hover:bg-cream-100',
               )}
             >
-              {mode === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {mode === 'system' ? <Monitor className="h-4 w-4" /> : mode === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               {mode}
             </button>
           ))}

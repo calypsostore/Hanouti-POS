@@ -44,7 +44,7 @@ export function ReportDetails({
                   <tr key={product.name} className="border-b border-line/50 text-[12.5px]">
                     <td className="px-5 py-2.5">
                       <div className="flex items-center gap-2.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-brand-navy">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-accent-foreground">
                           {product.name.slice(0, 1).toUpperCase()}
                         </span>
                         <span className="font-medium text-ink">{product.name}</span>

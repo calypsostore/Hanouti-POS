@@ -31,7 +31,7 @@ export function ActivityCard() {
         <div className="space-y-3">
           {events.map((event) => (
             <div key={event.id} className="flex items-start gap-2.5">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-brand-navy">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground">
                 {event.isNotice ? <AlertTriangle className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}
               </span>
               <div className="min-w-0 flex-1">
@@ -43,7 +43,7 @@ export function ActivityCard() {
           ))}
         </div>
       )}
-      <Link to="/admin/logs" className="mt-4 inline-flex text-[11px] font-semibold text-brand-navy hover:underline">
+      <Link to="/admin/logs" className="mt-4 inline-flex text-[11px] font-semibold text-accent-foreground hover:underline">
         View activity log
       </Link>
     </SectionCard>

@@ -17,7 +17,7 @@ export function InfoCard({ user, store, profileHref }: { user: User; store: Stor
       </div>
       <div className="mt-4 space-y-2 border-t border-line pt-3 text-[11.5px]">
         <div className="flex items-center gap-2 text-muted">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-tint text-brand-navy">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground">
             <UserRound className="h-3.5 w-3.5" />
           </span>
           <span className="truncate font-medium text-ink">{store.name}</span>

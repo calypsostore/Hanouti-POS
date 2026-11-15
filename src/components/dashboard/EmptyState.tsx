@@ -18,7 +18,7 @@ export function EmptyState({
     : <button type="button" onClick={action.onClick} className="mt-4 rounded-xl bg-brand-amber px-4 py-2 text-[12px] font-bold text-brand-navy hover:bg-brand-amber-hover">{action.label}</button>)
   return (
     <div className="flex flex-col items-center px-5 py-10 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-tint text-brand-navy">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-tint text-accent-foreground">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <h3 className="mt-3 text-sm font-bold text-ink">{title}</h3>

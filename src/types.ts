@@ -152,7 +152,7 @@ export interface StoreSettings {
   staffPickSectionsOnShift: boolean
   requireShiftForOrders: boolean
   accent: string
-  colorMode: 'light' | 'dark'
+  colorMode: 'system' | 'light' | 'dark'
   printer: PrinterSettings
   features: StoreFeatures
   payroll: PayrollSettings

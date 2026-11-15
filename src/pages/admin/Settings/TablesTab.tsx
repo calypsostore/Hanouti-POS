@@ -199,7 +199,7 @@ export default function TablesTab({
               const section = sections.find((candidate) => candidate.id === table.sectionId)
               return (
                 <Card key={table.id} className="flex items-center gap-3 p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-tint text-brand-navy"><Users className="h-5 w-5" /></div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-tint text-accent-foreground"><Users className="h-5 w-5" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-bold">{table.name}</div>
                     <div className="text-[11px] text-muted">{section?.name ?? 'No section'} · {table.seats} seats</div>

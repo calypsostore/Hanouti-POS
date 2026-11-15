@@ -15,7 +15,7 @@ export function BestSellersCard({ data }: { data: AdminDashboardData }) {
           {data.topProducts.map((product, index) => (
             <div key={product.id} className="flex items-center gap-2.5">
               <span className="w-4 text-[10px] font-bold text-muted">{String(index + 1).padStart(2, '0')}</span>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-xs font-extrabold text-brand-navy">{product.name.slice(0, 1).toUpperCase()}</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-xs font-extrabold text-accent-foreground">{product.name.slice(0, 1).toUpperCase()}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-[11.5px] font-bold">{product.name}</span>

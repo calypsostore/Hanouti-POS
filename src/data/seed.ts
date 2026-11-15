@@ -54,7 +54,7 @@ const defaultSettings = (
   staffPickSectionsOnShift: false,
   requireShiftForOrders: (over.posMode ?? businessTemplate(businessType).posMode) === 'cashier',
   accent: '7anouti',
-  colorMode: 'light',
+  colorMode: 'system',
   printer: { ...DEFAULT_PRINTER },
   features: businessTemplate(businessType).features,
   payroll: { ...DEFAULT_PAYROLL_SETTINGS },

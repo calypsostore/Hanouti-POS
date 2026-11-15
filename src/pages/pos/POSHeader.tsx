@@ -43,7 +43,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
           {(user.role === 'admin' || user.role === 'manager' || user.role === 'staff') && (
             <Link
               to={user.role === 'admin' || user.role === 'manager' ? '/admin' : '/staff'}
-              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+              className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:inline-flex"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
             </Link>
@@ -53,7 +53,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               to="/pos/floor"
               aria-label="Floor"
               title="Floor"
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:px-3"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:px-3"
             >
               <Utensils className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Floor</span>
             </Link>
@@ -62,7 +62,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
             <>
               <Link
                 to="/admin/customers"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:px-3"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:px-3"
                 title="Regulars & tabs"
               >
                 <Users className="h-3.5 w-3.5" />
@@ -70,7 +70,7 @@ export function POSHeader({ store, user, now, registerOpen, canOpenRegister, onL
               </Link>
               <Link
                 to="/admin/orders"
-                className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 sm:inline-flex"
+                className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:inline-flex"
               >
                 <ReceiptText className="h-3.5 w-3.5" /> Orders
               </Link>

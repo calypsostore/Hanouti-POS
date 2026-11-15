@@ -57,7 +57,7 @@ export default function SetupWizard() {
                   : 'border-line hover:border-accent-foreground/40',
               )}
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-tint text-brand-navy">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-tint text-accent-foreground">
                 <option.icon className="h-5 w-5" />
               </span>
               <span className="mt-2 block text-sm font-bold text-ink">{option.label}</span>

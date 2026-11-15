@@ -27,9 +27,9 @@ export function RegisterCard({ db, store, now }: { db: Database; store: Store; n
             <div className="text-[9px] font-bold uppercase text-muted">Opening cash</div>
             <div className="mt-1 text-[13px] font-extrabold tabular">{money(session.openingCash)}</div>
           </div>
-          <div className="rounded-xl bg-brand-tint p-2.5">
+          <div className="rounded-xl bg-brand-tint p-2.5 text-accent-foreground">
             <div className="text-[9px] font-bold uppercase text-muted">Expected cash</div>
-            <div className="mt-1 text-[13px] font-extrabold text-brand-navy tabular">{money(snapshot.expectedCash)}</div>
+            <div className="mt-1 text-[13px] font-extrabold text-accent-foreground tabular">{money(snapshot.expectedCash)}</div>
           </div>
         </div>
       )}

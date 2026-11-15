@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
-import { applyAccent, applyColorMode } from '../lib/theme'
+import { applyAccent, applyColorMode, readColorMode } from '../lib/theme'
 import type { Store, User } from '../types'
 import { useAuthSlice } from './auth'
 import { useCatalogSlice } from './catalog'
@@ -79,7 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user?.role,
   ])
   useEffect(() => {
-    applyColorMode(store?.settings.colorMode ?? 'light')
+    applyColorMode(readColorMode(store?.settings.colorMode ?? 'system'))
     applyAccent(store?.settings.accent ?? '7anouti')
   }, [store?.settings.accent, store?.settings.colorMode])
 

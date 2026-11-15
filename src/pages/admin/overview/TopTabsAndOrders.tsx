@@ -65,7 +65,7 @@ export function TopTabsAndOrders({ data }: { data: AdminDashboardData }) {
           <div className="divide-y divide-line/70">
             {data.recentOrders.map((order) => (
               <div key={order.id} className="flex items-center gap-2.5 py-2.5">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-extrabold text-brand-navy">#{order.number.toString().slice(-2)}</span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-extrabold text-accent-foreground">#{order.number.toString().slice(-2)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[11.5px] font-bold">Order #{order.number}</span>

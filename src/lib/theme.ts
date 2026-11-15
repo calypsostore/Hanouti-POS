@@ -69,7 +69,10 @@ export const accentPalettes: AccentPalette[] = [
 export const isAccentPalette = (value: unknown): value is string =>
   typeof value === 'string' && accentPalettes.some((palette) => palette.id === value)
 
+let activeAccent = '7anouti'
+
 export function applyAccent(paletteId: string) {
+  activeAccent = paletteId
   const palette = accentPalettes.find((p) => p.id === paletteId) ?? accentPalettes[0]
   const shades = document.documentElement.classList.contains('dark') ? palette.darkShades : palette.shades
   const root = document.documentElement
@@ -84,17 +87,66 @@ export function applyAccent(paletteId: string) {
   )
 }
 
-export type ColorMode = 'light' | 'dark'
+export type ColorMode = 'system' | 'light' | 'dark'
 export const COLOR_MODE_KEY = '7anouti.color-mode'
+export const DEFAULT_COLOR_MODE: ColorMode = 'system'
+export const LIGHT_THEME_COLOR = '#F6F7FE'
+export const DARK_THEME_COLOR = '#111B30'
 
-export function readColorMode(): ColorMode {
+export function readColorMode(fallback: ColorMode = DEFAULT_COLOR_MODE): ColorMode {
   try {
-    return localStorage.getItem(COLOR_MODE_KEY) === 'dark' ? 'dark' : 'light'
+    const savedMode = localStorage.getItem(COLOR_MODE_KEY)
+    if (savedMode === 'system' || savedMode === 'light' || savedMode === 'dark') return savedMode
+    return fallback
   } catch {
-    return 'light'
+    return fallback
   }
 }
 
+export function saveColorMode(mode: ColorMode) {
+  try {
+    localStorage.setItem(COLOR_MODE_KEY, mode)
+  } catch (error) {
+    console.error('Unable to save the color mode preference.', error)
+  }
+}
+
+let activeColorMode: ColorMode = DEFAULT_COLOR_MODE
+let systemQuery: MediaQueryList | null = null
+let systemQueryListener: (() => void) | null = null
+
+function applyResolvedMode(isDark: boolean) {
+  const root = document.documentElement
+  root.classList.toggle('dark', isDark)
+  root.style.colorScheme = isDark ? 'dark' : 'light'
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', isDark ? DARK_THEME_COLOR : LIGHT_THEME_COLOR)
+  applyAccent(activeAccent)
+}
+
+function removeSystemListener() {
+  if (systemQuery && systemQueryListener) {
+    systemQuery.removeEventListener('change', systemQueryListener)
+  }
+  systemQuery = null
+  systemQueryListener = null
+}
+
 export function applyColorMode(mode: ColorMode) {
-  document.documentElement.classList.toggle('dark', mode === 'dark')
+  activeColorMode = mode
+  removeSystemListener()
+
+  if (mode === 'system') {
+    systemQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    systemQueryListener = () => {
+      if (activeColorMode === 'system' && systemQuery) {
+        applyResolvedMode(systemQuery.matches)
+      }
+    }
+    systemQuery.addEventListener('change', systemQueryListener)
+    applyResolvedMode(systemQuery.matches)
+    return
+  }
+
+  applyResolvedMode(mode === 'dark')
 }

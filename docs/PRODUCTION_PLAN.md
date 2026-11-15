@@ -30,9 +30,12 @@ IndexedDB save succeeds. The small session key remains in localStorage.
 The default platform palette now follows the logo: navy surfaces, cool light
 backgrounds, amber highlights, and accessible navy-on-amber actions. The
 sidebar, shared controls, POS, reports, and receipt branding use the shared
-brand tokens. Light/dark appearance can be toggled and is saved as a local UI
-preference; custom store accent palettes remain available and their foreground
-colors are selected for readable text. This presentation preference and all
+brand tokens. Appearance supports System, Light, and Dark; System follows the
+device preference live, and the pre-React boot script sets the matching theme
+class, browser chrome color, and form-control scheme. The selected mode is saved
+as a local UI preference, while the store's System mode is the default when no
+local choice exists. Custom store accent palettes remain available and their
+foreground colors are selected for readable text. These preferences and all
 local data remain browser-local demo behavior, not a production security boundary.
 The shared logo uses the supplied `logo/logo1.png` image, and the browser-tab
 favicon is set to the same image. The PWA SVG icon uses matching navy-and-amber

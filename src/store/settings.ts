@@ -365,7 +365,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         guestRequirement: 'required',
         staffPickSectionsOnShift: false,
         accent: '7anouti',
-        colorMode: 'light',
+        colorMode: 'system',
         printer: { ...DEFAULT_PRINTER },
         features: template.features,
         payroll: { ...DEFAULT_PAYROLL_SETTINGS },

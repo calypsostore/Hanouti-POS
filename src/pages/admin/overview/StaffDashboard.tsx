@@ -48,7 +48,7 @@ export default function StaffDashboard() {
           <div className="divide-y divide-line/70">
             {data.recentOrders.map((order) => (
               <div key={order.id} className="flex items-center gap-3 py-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-bold text-brand-navy">#{order.number.toString().slice(-2)}</span>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-tint text-[10px] font-bold text-accent-foreground">#{order.number.toString().slice(-2)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2"><span className="text-xs font-bold">Order #{order.number}</span><Badge tone={order.status === 'void' ? 'danger' : 'success'}>{order.status === 'void' ? 'Void' : 'Completed'}</Badge></div>
                   <div className="mt-1 text-[10px] text-muted">{relative(order.createdAt)} · {order.items.length} products</div>

@@ -372,7 +372,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             ? s.settings.requireShiftForOrders
             : s.settings.posMode !== 'quick',
           accent: isAccentPalette(s.settings.accent) ? s.settings.accent : '7anouti',
-          colorMode: s.settings.colorMode === 'dark' ? 'dark' as const : 'light' as const,
+          colorMode: s.settings.colorMode === 'dark' || s.settings.colorMode === 'light' || s.settings.colorMode === 'system'
+            ? s.settings.colorMode
+            : 'system' as const,
           printer: normalizePrinter(
             isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']

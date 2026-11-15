@@ -90,7 +90,7 @@ export function TopBar({
         </div>
 
         {!isSuper && store && (
-          <div className="hidden items-center rounded-xl border border-line bg-cream-100 p-1 md:flex">
+          <div className="hidden items-center rounded-xl border border-line bg-cream-100 p-1 dark:bg-espresso-900 md:flex">
             <Link to="/pos" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'pos' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>POS</Link>
             {store.settings.features.tables && (
               <Link to="/pos?channel=dine-in&focus=table" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'tables' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>Tables</Link>
@@ -116,7 +116,7 @@ export function TopBar({
                 {notices.length === 0 ? <p className="px-2 py-4 text-xs text-muted">You&apos;re all caught up.</p> : notices.map((notice) => {
                   const Icon = notice.id === 'stock' ? PackageX : notice.id === 'tabs' ? CreditCard : Clock3
                   return <Link key={notice.id} to={notice.href} onClick={() => setNoticesOpen(false)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-xs hover:bg-cream-100 dark:hover:bg-espresso-700">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-brand-navy"><Icon className="h-4 w-4" /></span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-accent-foreground"><Icon className="h-4 w-4" /></span>
                     <span className="min-w-0 flex-1">{notice.label}</span><Badge tone="warning">{notice.count}</Badge>
                   </Link>
                 })}

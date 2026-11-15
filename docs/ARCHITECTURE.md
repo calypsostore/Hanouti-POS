@@ -31,6 +31,8 @@
   `src/data/`.
 - This is a browser-local demo application. Business data uses IndexedDB;
   the session identifier and small UI preferences remain in localStorage.
+  Appearance supports System, Light, and Dark; System follows the live device
+  color-scheme preference and sets `html.dark` before React mounts.
   Browser storage is not a trusted backend or production security boundary.
   Settings → Data exports normalized backups and provides owner-only restore
   and device diagnostics. Import requires the current active owner/store to be

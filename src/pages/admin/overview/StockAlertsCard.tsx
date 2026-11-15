@@ -24,7 +24,7 @@ export function StockAlertsCard({ data }: { data: AdminDashboardData }) {
         <div className="divide-y divide-line/70">
           {products.map((product) => (
             <div key={product.id} className="flex items-center gap-2.5 py-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-[12px] font-extrabold text-brand-navy">{product.name.slice(0, 1).toUpperCase()}</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-tint text-[12px] font-extrabold text-accent-foreground">{product.name.slice(0, 1).toUpperCase()}</span>
               <span className="min-w-0 flex-1 truncate text-xs font-semibold">{product.name}</span>
               <span className={product.stock <= 0
                 ? 'rounded-full bg-[var(--semantic-red-soft)] px-2 py-1 text-[10px] font-bold text-[var(--semantic-red-text)]'

@@ -232,7 +232,7 @@ export default function Expenses() {
                       onClick={() => { setEditTarget(e); setOpen(true) }}
                       aria-label={`Edit ${e.category} expense`}
                       title="Edit expense"
-                      className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-brand-tint hover:text-brand-navy group-hover:opacity-100"
+                      className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-brand-tint hover:text-accent-foreground group-hover:opacity-100"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>

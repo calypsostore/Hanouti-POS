@@ -14,7 +14,7 @@ export function PlanCard({ store, now, onUpgrade }: { store: Store; now: Date; o
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-tint text-brand-navy">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-tint text-accent-foreground">
               <CreditCard className="h-4 w-4" />
             </span>
             <div>
