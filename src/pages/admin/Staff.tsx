@@ -39,6 +39,8 @@ import type { Result } from '../../store/types'
 
 type StaffForm = {
   role: 'staff' | 'manager'
+  stationOnly: boolean
+  attendanceEnabled: boolean
   name: string
   username: string
   pin: string
@@ -48,6 +50,31 @@ type StaffForm = {
   salaryAmount: number
   permissions: User['permissions']
 }
+
+const stationOnlyPermissions = (): User['permissions'] => ({
+  discount: false,
+  credit: false,
+  settle: false,
+  reports: false,
+  register: false,
+  supervisor: false,
+  manageInventory: false,
+  recordPurchases: false,
+  viewCosts: false,
+  manageStaffAllowances: false,
+  approveOverrides: false,
+  viewReports: false,
+  manageProducts: false,
+  voidOrders: false,
+  manageStaff: false,
+  manageSettings: false,
+  managePayroll: false,
+  manageTables: false,
+  manageSections: false,
+  viewStation: true,
+  openShift: false,
+  closeShift: false,
+})
 
 export default function Staff() {
   const { db, store, user, addStaff, updateStaff, deleteStaff } = useApp()
@@ -178,6 +205,8 @@ export default function Staff() {
                         </Badge>
                       ) : m.role === 'manager' ? (
                         <Badge tone="accent">Manager (gérant)</Badge>
+                      ) : m.stationOnly ? (
+                        <Badge tone="neutral">Cook / Barista</Badge>
                       ) : (
                         <Badge tone="neutral">Staff</Badge>
                       )}
@@ -406,6 +435,8 @@ function StaffEditor({
   const [photo, setPhoto] = useState(member?.photo)
   const [active, setActive] = useState(member?.active ?? true)
   const [role, setRole] = useState<'staff' | 'manager'>(member?.role === 'manager' ? 'manager' : 'staff')
+  const [stationOnly, setStationOnly] = useState(member?.stationOnly === true)
+  const [attendanceEnabled, setAttendanceEnabled] = useState(member?.attendanceEnabled ?? !member?.stationOnly)
   const [salaryType, setSalaryType] = useState<User['salaryType']>(member?.salaryType ?? 'none')
   const [salaryAmount, setSalaryAmount] = useState(String(member?.salaryAmount ?? 0))
   const [permissions, setPermissions] = useState(member?.permissions ?? defaultPermissions('staff'))
@@ -466,6 +497,8 @@ function StaffEditor({
               const result = await onSave({
                 name: name.trim(),
                 role,
+                stationOnly,
+                attendanceEnabled,
                 username,
                 pin,
                 photo,
@@ -490,32 +523,24 @@ function StaffEditor({
             {nameError && <p className="mt-1 text-xs text-red-600">{nameError}</p>}
           </Field>
           {canChangeRoles && (
-            <Field label="Role">
+            <Field label="Role / permission preset">
               <Select
-                value={role}
+                value={role === 'manager' ? 'manager' : stationOnly ? 'station' : 'staff'}
                 onChange={(event) => {
                   setSaveError('')
-                  const nextRole = event.target.value === 'manager' ? 'manager' : 'staff'
+                  const preset = event.target.value
+                  const nextRole = preset === 'manager' ? 'manager' : 'staff'
+                  const nextStationOnly = preset === 'station'
                   setRole(nextRole)
-                  setPermissions((current) => nextRole === 'manager'
-                    ? { ...current, ...MANAGER_DEFAULT_PERMISSIONS }
-                    : {
-                        ...current,
-                        manageInventory: false,
-                        recordPurchases: false,
-                        viewCosts: false,
-                        manageStaffAllowances: false,
-                        approveOverrides: false,
-                        viewReports: false,
-                        manageProducts: false,
-                        voidOrders: false,
-                        manageStaff: false,
-                        manageSettings: false,
-                        managePayroll: false,
-                      })
+                  setStationOnly(nextStationOnly)
+                  setAttendanceEnabled(nextStationOnly ? false : true)
+                  setPermissions(nextRole === 'manager'
+                    ? { ...defaultPermissions('manager'), ...MANAGER_DEFAULT_PERMISSIONS }
+                    : nextStationOnly ? stationOnlyPermissions() : defaultPermissions('staff'))
                 }}
               >
                 <option value="staff">Staff</option>
+                <option value="station">Cook / Barista (station-only)</option>
                 <option value="manager">Manager (gérant)</option>
               </Select>
             </Field>
@@ -562,6 +587,15 @@ function StaffEditor({
 
         <ImageUpload value={photo} label="Upload profile photo" onChange={setPhoto} />
 
+        {stationOnly && canChangeRoles && (
+          <Toggle
+            checked={attendanceEnabled}
+            onChange={setAttendanceEnabled}
+            label="Enable attendance tracking"
+            description="Station-only accounts do not create attendance records unless an admin enables this."
+          />
+        )}
+
         {role === 'staff' && canManagePayroll && (
           <div className="grid gap-3.5 sm:grid-cols-2">
             <Field label="Salary type">
@@ -589,6 +623,7 @@ function StaffEditor({
 
         <StaffPermissionsEditor
           role={role}
+          stationOnly={stationOnly}
           permissions={permissions}
           onChange={(nextPermissions) => { setPermissions(nextPermissions); setSaveError('') }}
         />

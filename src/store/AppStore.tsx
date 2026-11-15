@@ -15,6 +15,8 @@ import { useInventorySlice } from './inventory'
 import { usePurchasesSlice } from './purchases'
 import { useDataManagementSlice } from './dataManagement'
 import { useOpenOrdersSlice } from './openOrders'
+import { useStationDevicesSlice } from './stationDevices'
+import { usePrintingSlice } from './printing'
 import { useDatabase, useActorGuards } from './runtime'
 import type { AppContextValue } from './types'
 
@@ -47,6 +49,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const inventory = useInventorySlice(dependencies)
   const purchases = usePurchasesSlice(dependencies)
   const dataManagement = useDataManagementSlice(dependencies)
+  const stationDevices = useStationDevicesSlice(dependencies)
+  const printing = usePrintingSlice(dependencies)
   const { heartbeatAttendance, reconcileAttendance } = payroll
   const settings = useSettingsSlice({ ...dependencies, userIdRef: auth.userIdRef, setUserId: auth.setUserId })
   const { db } = database
@@ -64,7 +68,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!database.ready || database.loadError) return
     const updateAttendance = () => {
-      if (user?.role === 'staff') heartbeatAttendance(user.id)
+      if (user?.role === 'staff' && user.attendanceEnabled !== false) heartbeatAttendance(user.id)
       else reconcileAttendance()
     }
     updateAttendance()
@@ -77,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reconcileAttendance,
     user?.id,
     user?.role,
+    user?.attendanceEnabled,
   ])
   useEffect(() => {
     applyColorMode(readColorMode(store?.settings.colorMode ?? 'system'))
@@ -104,6 +109,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...inventory,
     ...purchases,
     ...dataManagement,
+    ...stationDevices,
+    ...printing,
     ...settings,
   }
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

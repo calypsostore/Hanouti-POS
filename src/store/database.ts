@@ -3,7 +3,7 @@ import type {
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
   ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
-  SaleUnit, Shift, Station, StockMovement,
+  SaleUnit, Shift, Station, StationDevice, StockMovement, Printer, PrintJob, PrintRoute,
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v27'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v29'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -394,6 +394,14 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           stationTimerMinutes: isFiniteNumber(s.settings.stationTimerMinutes)
             ? Math.max(1, Math.min(180, Math.round(s.settings.stationTimerMinutes)))
             : 15,
+          receiptPrintPolicy: s.settings.receiptPrintPolicy === 'auto' || s.settings.receiptPrintPolicy === 'never'
+            ? s.settings.receiptPrintPolicy
+            : 'ask' as const,
+          stationTicketPrintPolicy: s.settings.stationTicketPrintPolicy === 'manual' ||
+            s.settings.stationTicketPrintPolicy === 'never'
+            ? s.settings.stationTicketPrintPolicy
+            : 'automatic' as const,
+          reportPrintPolicy: 'manual' as const,
           printer: normalizePrinter({
             ...(isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
@@ -963,6 +971,119 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     list.findIndex((other) => other.id === station.id ||
       (other.storeId === station.storeId && other.name.toLowerCase() === station.name.toLowerCase())) === index,
   )
+  const printConnections: Printer['connection'][] = [
+    'hub-tcp', 'hub-usb', 'hub-serial', 'hub-epson-epos', 'hub-star',
+    'browser-webserial', 'browser-bluetooth', 'browser-print', 'screen',
+  ]
+  const printers = collection<Printer>('printers', (item): item is Printer =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    printConnections.includes(item.connection as Printer['connection']) &&
+    Number.isSafeInteger(item.port) && Number(item.port) >= 1 && Number(item.port) <= 65535 &&
+    Number.isSafeInteger(item.baudRate) && Number(item.baudRate) >= 300 &&
+    (item.paperWidth === 58 || item.paperWidth === 80) &&
+    (item.codepage === undefined || typeof item.codepage === 'string') &&
+    (item.cutMode === 'none' || item.cutMode === 'partial' || item.cutMode === 'full') &&
+    (item.openDrawerOnCash === undefined || typeof item.openDrawerOnCash === 'boolean') &&
+    Number.isSafeInteger(item.copies) && Number(item.copies) >= 1 && Number(item.copies) <= 10 &&
+    typeof item.enabled === 'boolean',
+  ).map((printer) => ({
+    ...printer,
+    codepage: ['cp1252', 'cp437', 'cp850', 'cp858'].includes(String(printer.codepage))
+      ? printer.codepage
+      : 'cp1252',
+    openDrawerOnCash: printer.openDrawerOnCash === true,
+    name: printer.name.trim().slice(0, 100),
+    host: typeof printer.host === 'string' ? printer.host.trim().slice(0, 253) : undefined,
+    osPrinterName: typeof printer.osPrinterName === 'string' ? printer.osPrinterName.trim().slice(0, 120) : undefined,
+    fallbackPrinterId: typeof printer.fallbackPrinterId === 'string' ? printer.fallbackPrinterId : undefined,
+  })  ).filter((printer, index, list) =>
+    stores.some((store) => store.id === printer.storeId) && Boolean(printer.name) &&
+    list.findIndex((other) => other.id === printer.id ||
+      (other.storeId === printer.storeId && other.name.toLowerCase() === printer.name.toLowerCase())) === index,
+  ).map((printer, _, list) => ({
+    ...printer,
+    fallbackPrinterId: list.some((candidate) =>
+      candidate.id === printer.fallbackPrinterId && candidate.storeId === printer.storeId && candidate.id !== printer.id,
+    ) ? printer.fallbackPrinterId : undefined,
+  }))
+  const stationDevices = collection<StationDevice>('stationDevices', (item): item is StationDevice =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    Array.isArray(item.stationIds) && item.stationIds.every((stationId) => typeof stationId === 'string') &&
+    typeof item.active === 'boolean' &&
+    (item.pairingCode === undefined || /^\d{6}$/.test(String(item.pairingCode))) &&
+    (item.pairingCodeExpiresAt === undefined ||
+      (typeof item.pairingCodeExpiresAt === 'string' && Number.isFinite(Date.parse(item.pairingCodeExpiresAt)))) &&
+    (item.pairedAt === undefined || (typeof item.pairedAt === 'string' && Number.isFinite(Date.parse(item.pairedAt)))) &&
+    (item.lastSeenAt === undefined || (typeof item.lastSeenAt === 'string' && Number.isFinite(Date.parse(item.lastSeenAt)))) &&
+    (item.deviceTokenHash === undefined ||
+      (typeof item.deviceTokenHash === 'string' && isSecretHash(item.deviceTokenHash))),
+  ).map((device) => ({
+    ...device,
+    name: device.name.trim().slice(0, 100),
+    stationIds: [...new Set(device.stationIds.filter((stationId) =>
+      stations.some((station) =>
+        station.id === stationId && station.storeId === device.storeId && station.active && station.screen,
+      ),
+    ))],
+    pairingCode: device.pairedAt ? undefined : device.pairingCode,
+    pairingCodeExpiresAt: device.pairedAt ? undefined : device.pairingCodeExpiresAt,
+  })).filter((device, index, list) =>
+    stores.some((store) => store.id === device.storeId) && Boolean(device.name) && device.stationIds.length > 0 &&
+    list.findIndex((other) => other.id === device.id) === index,
+  )
+  const printTypes: PrintJob['type'][] = ['receipt', 'kitchen', 'bar', 'report', 'label', 'test']
+  const printRoutes = collection<PrintRoute>('printRoutes', (item): item is PrintRoute =>
+    hasId(item) && typeof item.storeId === 'string' && printTypes.includes(item.type as PrintJob['type']) &&
+    (item.stationId === undefined || typeof item.stationId === 'string') &&
+    (item.printerId === undefined || typeof item.printerId === 'string'),
+  ).filter((route, index, list) =>
+    stores.some((store) => store.id === route.storeId) &&
+    (route.stationId === undefined || stations.some((station) =>
+      station.id === route.stationId && station.storeId === route.storeId,
+    )) &&
+    (route.printerId === undefined || printers.some((printer) =>
+      printer.id === route.printerId && printer.storeId === route.storeId,
+    )) &&
+    list.findIndex((other) => other.id === route.id ||
+      (other.storeId === route.storeId && other.type === route.type && other.stationId === route.stationId)) === index,
+  )
+  const printJobs = collection<PrintJob>('printJobs', (item): item is PrintJob =>
+    hasId(item) && typeof item.storeId === 'string' && printTypes.includes(item.type as PrintJob['type']) &&
+    typeof item.printerId === 'string' && Array.isArray(item.payload) &&
+    item.payload.length <= 5000 && item.payload.every((line) =>
+      isRecord(line) && typeof line.text === 'string' && line.text.length <= 2000 &&
+      (line.align === undefined || line.align === 'left' || line.align === 'center' || line.align === 'right') &&
+      (line.bold === undefined || typeof line.bold === 'boolean') &&
+      (line.size === undefined || line.size === 'normal' || line.size === 'double'),
+    ) &&
+    Number.isSafeInteger(item.copies) && Number(item.copies) >= 1 && Number(item.copies) <= 10 &&
+    typeof item.createdById === 'string' && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) &&
+    ['queued', 'sending', 'printed', 'failed', 'cancelled'].includes(String(item.status)) &&
+    Number.isSafeInteger(item.attempts) && Number(item.attempts) >= 0 &&
+    (item.openDrawer === undefined || typeof item.openDrawer === 'boolean'),
+  ).map((job) => ({
+    ...job,
+    status: job.status === 'sending' ? 'queued' : job.status,
+    payload: job.payload.map((line) => ({ ...line, text: line.text.slice(0, 2000) })),
+    lastError: typeof job.lastError === 'string' ? job.lastError.slice(0, 500) : undefined,
+    openDrawer: typeof job.openDrawer === 'boolean' ? job.openDrawer : undefined,
+  })).filter((job) =>
+    stores.some((store) => store.id === job.storeId) &&
+    printers.some((printer) => printer.id === job.printerId && printer.storeId === job.storeId) &&
+    users.some((user) => user.id === job.createdById && user.storeId === job.storeId) &&
+    (job.stationId === undefined || stations.some((station) =>
+      station.id === job.stationId && station.storeId === job.storeId,
+    )) &&
+    (job.deviceId === undefined || stationDevices.some((device) =>
+      device.id === job.deviceId && device.storeId === job.storeId,
+    )),
+  )
+  const normalizedStations = stations.map((station) => ({
+    ...station,
+    printerId: printers.some((printer) => printer.id === station.printerId && printer.storeId === station.storeId)
+      ? station.printerId
+      : undefined,
+  }))
   const defaultStationForName = (storeId: string, name: string) => {
     const stationName = defaultStationNameForCategory(name)
     return stations.find((station) => station.storeId === storeId && station.name === stationName)?.id
@@ -1000,8 +1121,17 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       : undefined
   return {
     stores,
-    users,
-    stations,
+    users: users.map((user) => ({
+      ...user,
+      stationId: normalizedStations.some((station) =>
+        station.id === user.stationId && station.storeId === user.storeId,
+      ) ? user.stationId : undefined,
+    })),
+    stations: normalizedStations,
+    stationDevices,
+    printers,
+    printRoutes,
+    printJobs,
     categories: collection<Category>('categories', (item): item is Category =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string',
     ).map((category) => ({
@@ -1087,13 +1217,16 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
 }
 
 const databaseCollectionKeys: Array<keyof Database> = [
-  'stores', 'users', 'stations', 'categories', 'tables', 'inventoryItems', 'stockMovements',
+  'stores', 'users', 'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs', 'categories', 'tables', 'inventoryItems', 'stockMovements',
   'suppliers', 'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
   'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'auditLogs',
 ]
 
 export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
-  const optionalCollections: Array<keyof Database> = ['stations', 'suppliers', 'purchases', 'purchasePayments']
+  const optionalCollections: Array<keyof Database> = [
+    'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs',
+    'suppliers', 'purchases', 'purchasePayments',
+  ]
   if (!isRecord(value) || !databaseCollectionKeys.every((key) =>
     optionalCollections.includes(key) || Array.isArray(value[key]),
   )) return null

@@ -1,7 +1,8 @@
 import type {
   AttendanceStatus, BusinessType, Category, Customer, Database, InventoryCategory, InventoryUnit,
   Order, OrderChannel, OrderItem, OrderItemStatus, OpenOrder, PaymentMethod, Product, Purchase, SalaryType,
-  Station, Store, StoreSettings, StoreStatus, TableSection, User,
+  Station, StationDevice, Store, StoreSettings, StoreStatus, TableSection, User,
+  PrintJob, PrintJobType, PrintLine, Printer,
 } from '../types'
 
 export type Result = { ok: true } | { ok: false; error: string }
@@ -38,6 +39,8 @@ export interface CreateStoreInput {
 
 export interface AddStaffInput {
   role?: 'staff' | 'manager'
+  stationOnly?: boolean
+  attendanceEnabled?: boolean
   name: string
   username: string
   pin: string
@@ -116,6 +119,33 @@ export interface TableSectionInput {
   sort?: number
 }
 
+export interface StationDeviceInput {
+  name: string
+  stationIds: string[]
+}
+
+export type PrinterInput = Omit<Printer, 'id' | 'storeId'>
+
+export interface EnqueuePrintInput {
+  type: PrintJobType
+  payload: PrintLine[]
+  stationId?: string
+  printerId?: string
+  openDrawer?: boolean
+}
+
+export type PrintJobResult =
+  | { ok: true; job: PrintJob }
+  | { ok: false; error: string }
+
+export type StationDeviceResult =
+  | { ok: true; device: StationDevice; pairingCode: string }
+  | { ok: false; error: string }
+
+export type PairedDeviceResult =
+  | { ok: true; deviceId: string; storeId: string; token: string; stationIds: string[] }
+  | { ok: false; error: string }
+
 export type OpenOrderActionResult =
   | { ok: true; order: OpenOrder }
   | { ok: false; error: string }
@@ -191,6 +221,28 @@ export interface AppContextValue {
   updateStation: (id: string, patch: Partial<Station>) => Result
   deleteStation: (id: string) => Result
   reorderStations: (storeId: string, ids: string[]) => Result
+  addStationDevice: (storeId: string, input: StationDeviceInput) => StationDeviceResult
+  updateStationDevice: (id: string, patch: Partial<StationDeviceInput>) => Result
+  disableStationDevice: (id: string) => Result
+  enableStationDevice: (id: string) => StationDeviceResult
+  unpairStationDevice: (id: string) => StationDeviceResult
+  addPrinter: (storeId: string, input: PrinterInput) => Result
+  updatePrinter: (id: string, patch: Partial<PrinterInput>) => Result
+  deletePrinter: (id: string) => Result
+  setPrintRoute: (storeId: string, type: PrintJobType, stationId: string | undefined, printerId: string | undefined) => Result
+  enqueuePrint: (input: EnqueuePrintInput) => Promise<PrintJobResult>
+  retryPrintJob: (id: string) => Promise<PrintJobResult>
+  cancelPrintJob: (id: string) => Result
+  pairStationDevice: (storeCode: string, pairingCode: string) => Promise<PairedDeviceResult>
+  validateStationDeviceSession: (deviceId: string, token: string) => Promise<PairedDeviceResult>
+  updateDeviceOrderItemStatus: (
+    deviceId: string,
+    token: string,
+    orderId: string,
+    lineId: string,
+    status: OrderItemStatus,
+  ) => Promise<Result>
+  updateStationLanding: (stationId: string | undefined, goStraight: boolean) => Result
   bulkAssignProductStation: (storeId: string, productIds: string[], stationId?: string) => Result
   bulkAssignCategoryStation: (storeId: string, categoryIds: string[], stationId?: string) => Result
   addInventoryItem: (storeId: string, data: InventoryItemInput) => Result

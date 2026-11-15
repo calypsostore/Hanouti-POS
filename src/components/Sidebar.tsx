@@ -2,6 +2,7 @@ import {
   BarChart3,
   Calculator,
   ClipboardList,
+  ChefHat,
   LayoutDashboard,
   LogOut,
   Package,
@@ -62,6 +63,9 @@ export function Sidebar({
           ...(store?.settings.features.tables
             ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils, tone: 'teal' as const }]
             : []),
+          ...(can(user, 'viewStation')
+            ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
+            : []),
         ] },
         { label: 'SALES', items: [
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
@@ -81,6 +85,9 @@ export function Sidebar({
             { to: '/pos', label: 'Point of sale', icon: ShoppingBag, tone: 'amber' },
             ...(store?.settings.features.tables
               ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils, tone: 'teal' as const }]
+              : []),
+            ...(can(user, 'viewStation')
+              ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
               : []),
             { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
             { to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' },

@@ -2,19 +2,31 @@ import { useMemo, useState } from 'react'
 import { useApp } from '../../../store/AppStore'
 import { getStaffDashboardData, getTableOccupancy, canViewFinancials } from '../../../lib/dashboard'
 import { money, relative } from '../../../lib/utils'
-import { Badge } from '../../../components/ui'
+import { Badge, Button, Select, Toggle } from '../../../components/ui'
 import { GradientKpiCard } from '../../../components/dashboard/GradientKpiCard'
 import { QuickActionTile } from '../../../components/dashboard/QuickActionTile'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
 import { AdminHeader } from './AdminHeader'
-import { ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
+import { ChefHat, ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { can } from '../../../lib/permissions'
+import { useToast } from '../../../components/toast'
 
 export default function StaffDashboard() {
-  const { db, store, user } = useApp()
+  const { db, store, user, updateStationLanding } = useApp()
+  const { push } = useToast()
   const [now] = useState(() => new Date())
+  const [stationId, setStationId] = useState(user?.stationId ?? '')
+  const [goStraight, setGoStraight] = useState(user?.goStraightToStation === true)
   const data = useMemo(() => store && user ? getStaffDashboardData(db, store.id, user.id, now) : null, [db, now, store, user])
+  const stations = db.stations.filter((station) => station.storeId === store?.id && station.active && station.screen)
+    .sort((a, b) => a.sort - b.sort)
+  const waitingTickets = new Set(db.openOrders
+    .filter((order) => order.storeId === store?.id)
+    .flatMap((order) => order.items
+      .filter((item) => item.status === 'sent' && item.stationId)
+      .map((item) => `${order.id}:${item.stationId}`))).size
+
   if (!store || !user || !data) return null
   const openRegister = !!openShiftForStaff(db, store.id, user.id)
   const canSeeMoney = canViewFinancials(user)
@@ -30,6 +42,15 @@ export default function StaffDashboard() {
       {!can(user, 'openShift') && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Ask a manager to enable shift access.</div>}
       <SectionCard icon={ShoppingBag} tone="amber" title="Quick actions" subtitle="Pick up where you left off" bodyClassName="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-5">
         <QuickActionTile icon={ShoppingBag} tone="amber" label="New order" href="/pos" />
+        {can(user, 'viewStation') && (
+          <QuickActionTile
+            icon={ChefHat}
+            tone="green"
+            label="Stations"
+            detail={`${waitingTickets} waiting`}
+            href="/kitchen"
+          />
+        )}
         {store.settings.features.tables && (
           <QuickActionTile
             icon={Utensils}
@@ -43,6 +64,34 @@ export default function StaffDashboard() {
         {can(user, 'openShift') && <QuickActionTile icon={Wallet} tone="green" label={openRegister ? 'My shift' : 'Open shift'} href="/admin/register" />}
         {user.permissions.settle && <QuickActionTile icon={Users} tone="teal" label="Collect tab" href="/admin/customers" />}
       </SectionCard>
+      {can(user, 'viewStation') && !user.stationOnly && (
+        <SectionCard icon={ChefHat} tone="green" title="Station access" subtitle="Choose where your next sign-in opens">
+          <div className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-end sm:px-5">
+            <label className="min-w-0 flex-1 text-xs font-semibold text-ink">
+              My station
+              <Select className="mt-1" value={stationId} onChange={(event) => setStationId(event.target.value)}>
+                <option value="">All stations</option>
+                {stations.map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}
+              </Select>
+            </label>
+            <Toggle checked={goStraight} onChange={setGoStraight} label="Go straight to my station" />
+            <Button
+              variant="secondary"
+              disabled={goStraight && !stationId}
+              onClick={() => {
+                const result = updateStationLanding(stationId || undefined, goStraight)
+                if (!result.ok) {
+                  push(result.error, 'error')
+                  return
+                }
+                push('Station sign-in preference saved', 'success')
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </SectionCard>
+      )}
       <SectionCard icon={ReceiptText} tone="blue" title="Your recent orders" subtitle="Latest transactions" bodyClassName="px-4 pb-4 sm:px-5">
         {data.recentOrders.length === 0 ? <p className="py-6 text-center text-xs text-muted">Your orders will appear here after your first sale.</p> : (
           <div className="divide-y divide-line/70">

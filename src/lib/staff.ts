@@ -6,6 +6,9 @@ export const normalizeUsername = (value: string) => value.trim().toLowerCase()
 
 export const isValidUsername = (value: string) => USERNAME_PATTERN.test(value)
 
+export const shouldTrackAttendance = (user: Pick<User, 'role' | 'attendanceEnabled'>) =>
+  user.role === 'staff' && user.attendanceEnabled !== false
+
 const usernamePart = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9._-]/g, '') || 'staff'
 

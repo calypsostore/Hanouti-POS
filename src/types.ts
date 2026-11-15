@@ -102,6 +102,22 @@ export type AttendanceSource = 'auto' | 'manual'
 export type PrinterWidth = 58 | 80
 export type PrintMode = 'auto' | 'manual'
 export type PrinterConnection = 'webserial' | 'browser'
+export type PrintConnection =
+  | 'hub-tcp'
+  | 'hub-usb'
+  | 'hub-serial'
+  | 'hub-epson-epos'
+  | 'hub-star'
+  | 'browser-webserial'
+  | 'browser-bluetooth'
+  | 'browser-print'
+  | 'screen'
+export type PrintCodepage = 'cp1252' | 'cp437' | 'cp850' | 'cp858'
+export type DevicePrintPreference = 'hub' | 'this-device' | 'browser'
+export type PrintJobType = 'receipt' | 'kitchen' | 'bar' | 'report' | 'label' | 'test'
+export type PrintJobStatus = 'queued' | 'sending' | 'printed' | 'failed' | 'cancelled'
+export type ReceiptPrintPolicy = 'auto' | 'ask' | 'never'
+export type TicketPrintPolicy = 'automatic' | 'manual' | 'never'
 export type BusinessType = 'cafe' | 'restaurant' | 'bakery' | 'snack' | 'retail' | 'salon'
 export type SaleUnit = 'kg' | 'g' | 'piece'
 export type TicketSendPolicy = 'done_or_idle' | 'instant' | 'delayed' | 'done_only'
@@ -164,6 +180,9 @@ export interface StoreSettings {
   ticketDelaySeconds: number
   ticketIdleSeconds: number
   stationTimerMinutes: number
+  receiptPrintPolicy: ReceiptPrintPolicy
+  stationTicketPrintPolicy: TicketPrintPolicy
+  reportPrintPolicy: 'manual'
 }
 
 export interface Store {
@@ -201,6 +220,10 @@ export interface User {
   salaryType: SalaryType
   salaryAmount: number
   createdAt: string
+  stationId?: string
+  goStraightToStation?: boolean
+  stationOnly?: boolean
+  attendanceEnabled?: boolean
   permissions: {
     discount: boolean
     credit: boolean
@@ -238,6 +261,69 @@ export interface Station {
   screen: boolean
   active: boolean
   sort: number
+}
+
+export interface StationDevice {
+  id: string
+  storeId: string
+  name: string
+  stationIds: string[]
+  pairingCode?: string
+  pairingCodeExpiresAt?: string
+  pairedAt?: string
+  lastSeenAt?: string
+  active: boolean
+  deviceTokenHash?: string
+}
+
+export interface Printer {
+  id: string
+  storeId: string
+  name: string
+  connection: PrintConnection
+  host?: string
+  port: number
+  osPrinterName?: string
+  baudRate: number
+  paperWidth: PrinterWidth
+  codepage: PrintCodepage
+  cutMode: 'none' | 'partial' | 'full'
+  openDrawerOnCash: boolean
+  copies: number
+  enabled: boolean
+  fallbackPrinterId?: string
+}
+
+export interface PrintLine {
+  text: string
+  align?: 'left' | 'center' | 'right'
+  bold?: boolean
+  size?: 'normal' | 'double'
+}
+
+export interface PrintJob {
+  id: string
+  storeId: string
+  type: PrintJobType
+  stationId?: string
+  printerId: string
+  payload: PrintLine[]
+  copies: number
+  createdById: string
+  deviceId?: string
+  createdAt: string
+  status: PrintJobStatus
+  attempts: number
+  lastError?: string
+  openDrawer?: boolean
+}
+
+export interface PrintRoute {
+  id: string
+  storeId: string
+  type: PrintJobType
+  stationId?: string
+  printerId?: string
 }
 
 export interface Category {
@@ -714,6 +800,10 @@ export interface Database {
   stores: Store[]
   users: User[]
   stations: Station[]
+  stationDevices: StationDevice[]
+  printers: Printer[]
+  printRoutes: PrintRoute[]
+  printJobs: PrintJob[]
   categories: Category[]
   sections: TableSection[]
   tables: DiningTable[]

@@ -8,8 +8,48 @@ the audit of the current build, what is implemented per phase, what is honestly
 Last updated: 2026-11-15 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
-orders and station tickets**. Per-staff register shifts, handover and cash
-accountability remain in progress.
+orders and station tickets, station-device kiosk pairing and station-only staff
+access**. Per-staff register shifts, handover and cash accountability remain in
+progress.
+
+### M1b station devices — implemented as a local demo
+
+- Settings → Stations manages station-screen devices, assigned stations,
+  expiring pairing codes, disable/enable/unpair, and last-seen timestamps.
+  `/pair` pairs a browser-local device; `/kiosk` locks the screen behind an
+  owner/manager PIN and does not create staff attendance or shifts.
+- Staff with station access can open `/kitchen` or a station-specific board,
+  choose their post-login station preference, and use the Cook / Barista
+  station-only preset. Station devices and boards enforce local station scope.
+- The station board is responsive and explains that only this browser/device
+  sees orders until the future hub is active. QR generation is deferred because
+  no QR encoder is present and adding a dependency needs approval.
+- These are not cross-device features yet: the database and pairing records are
+  stored in local IndexedDB. Pairing from a browser without the store database
+  cannot work, and device interactions have not been tested on physical kiosks.
+- Automated coverage checks code expiry/store matching, station scoping, and
+  station-only permissions/attendance. Browser smoke loaded `/pair` and
+  Settings; end-to-end pairing, PIN exit, responsive layouts, and cross-device
+  delivery remain unverified.
+
+### M2 printing architecture — implemented as a local demo
+
+- Settings → Devices & printing manages printer records, routes for receipts,
+  X/Z reports, labels and station tickets, station printer links, test prints,
+  device-local print preference, and receipt/station print policies. Printer
+  history is retained when a used printer is removed.
+- Configured output is persisted through `enqueuePrint`; WebSerial and browser
+  print transports are available, Hub returns an explicit disconnected result,
+  and a Bluetooth transport stub is feature-detected. Print jobs can be filtered,
+  retried, cancelled and reprinted; failed jobs are visible in the TopBar.
+- ESC/POS byte rendering is shared in `src/shared/escpos.ts`, including 58/80mm
+  widths, CP1252/437/850/858 selection, drawer kick and cut modes.
+- Build and lint pass; all 27 Node tests pass. Settings → Devices & printing
+  rendered in the browser, but printer submission and queue interactions could
+  not be completed reliably in the browser harness.
+- The database and queue remain browser-local. The hub is not connected, generic
+  Bluetooth printer protocols are not configured, and no real printer, cash
+  drawer, codepage output or cutter has been tested on hardware.
 
 ## Code organization update (2026-11-12)
 
@@ -330,10 +370,10 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 
 ### Phase 3 — Touch POS + ESC/POS printing ✅ implemented (see §4 for hardware)
 
-- Receipt/kitchen/report **line models** (`src/lib/escpos.ts`) rendered both as
-  an on-screen monospace preview and as **raw ESC/POS bytes** (ESC @ init, ESC t
-  codepage 16 = Windows-1252, ESC a alignment, ESC E bold, GS ! size, ESC d
-  feed, GS V partial cut).
+- Receipt/kitchen/report **line models** (`src/lib/escpos.ts`) are rendered
+  both as an on-screen monospace preview and as raw ESC/POS bytes by the shared
+  renderer (`src/shared/escpos.ts`): selectable codepage, width, drawer kick and
+  cut mode.
 - **WebSerial bridge** (`src/lib/printer.ts`): user picks the port once
   (`requestPort`), port is silently re-opened on later visits (`getPorts`),
   read loop drains status bytes so ACK-printers don't stall, chunked writes with
@@ -342,10 +382,11 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   what prints; send to printer when connected, otherwise the browser print
   dialog as fallback. Used by POS receipts, kitchen tickets, Orders reprint,
   X/Z reports and the settings test print.
-- Settings card: enable, 58/80 mm width, auto/manual mode, connection type,
-  baud rate, kitchen tickets, connect/disconnect, test print.
-- POS: auto-print after checkout (auto mode) with graceful fallback, manual
-  Print button, separate kitchen ticket for dine-in when enabled.
+- Settings → Devices & printing manages printer entities, routing, copy/fallback
+  settings, test jobs and automatic print policies; Receipt settings retain the
+  legacy WebSerial connection controls for compatibility.
+- POS: policy-controlled receipt printing, station ticket queueing when routed,
+  and preview/manual printing when no route is configured.
 - Orders: reprint with `*** REPRINT ***` marker.
 
 ### Phase 4 — X / Z cash register reports ✅ implemented
@@ -505,13 +546,13 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
 - Orders reprint shows `*** REPRINT ***`; staff void demands a manager PIN;
   wrong PIN rejected; correct PIN voids and records `voidedByName` (visible in
   the order drawer); tab charge reversal lands in the ledger.
-- Settings: printer card saves (enabled/width/mode/connection/baud/kitchen);
-  test print opens the print preview; connect shows an explanatory error on
-  browsers without WebSerial.
-- POS: checkout receipt modal offers Print; kitchen button appears only for
-  dine-in when kitchen tickets are enabled; auto mode sends to the printer when
-  one is connected and otherwise falls back to the print dialog — verified
-  manually with `mode: auto` on a clean profile.
+- Settings: the legacy Receipt printer card keeps WebSerial connect/disconnect
+  for compatibility; Devices & printing manages new printer records, routes,
+  queue, and print policies.
+- POS: checkout receipt modal follows the receipt policy; table station tickets
+  use queued station routes when configured and retain a preview path when no
+  route is configured. Browser/hardware dispatch is not equivalent to verified
+  physical output.
 - `npm run build` passes clean (tsc + vite).
 - `npm run test:register-items` covers variant/modifier aggregation, weight
   precision, recorded orders, void timing, two-staff scoping, drawer-total
@@ -524,6 +565,9 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
   successfully. Vite reports the existing large-chunk warning; Oxlint reports
   warnings, including hook-dependency and purity warnings. Real browser print,
   PDF-reader rendering and physical ESC/POS output still require manual checks.
+- M2 browser smoke loaded Settings → Devices & printing. Printer add/edit,
+  route selection, queue actions and print dialog dispatch remain unverified
+  because the browser automation stalled during click interaction.
 
 Phase 1 build/type validation also passes. Manual browser scenarios still to run:
 

@@ -2,6 +2,7 @@ import type { Attendance, AttendanceStatus, Database, PayrollSettings, User } fr
 import { DEFAULT_PAYROLL_SETTINGS } from './defaults'
 import { round } from './pricing-utils'
 import { dateKey, uid } from './utils'
+import { shouldTrackAttendance } from './staff'
 
 export interface AttendanceDaySummary {
   date: string
@@ -80,7 +81,7 @@ export function reconcileAttendance(db: Database, now = new Date()): Database {
 }
 
 export function clockInAttendance(db: Database, user: User, now = new Date()): Database {
-  if (user.role !== 'staff' || !user.storeId) return db
+  if (!shouldTrackAttendance(user) || !user.storeId) return db
   const reconciled = reconcileAttendance(db, now)
   const timestamp = now.toISOString()
   const today = dateKey(now)
@@ -109,7 +110,7 @@ export function clockInAttendance(db: Database, user: User, now = new Date()): D
 }
 
 export function clockOutAttendance(db: Database, user: User, now = new Date()): Database {
-  if (user.role !== 'staff' || !user.storeId) return db
+  if (!shouldTrackAttendance(user) || !user.storeId) return db
   const reconciled = reconcileAttendance(db, now)
   const timestamp = now.toISOString()
   const today = dateKey(now)
@@ -133,7 +134,7 @@ export function clockOutAttendance(db: Database, user: User, now = new Date()): 
 export function heartbeatAttendance(db: Database, userId: string, now = new Date()): Database {
   const reconciled = reconcileAttendance(db, now)
   const user = reconciled.users.find((candidate) => candidate.id === userId && candidate.active)
-  if (!user || user.role !== 'staff' || !user.storeId) return reconciled
+  if (!user || !shouldTrackAttendance(user) || !user.storeId) return reconciled
   return clockInAttendance(reconciled, user, now)
 }
 

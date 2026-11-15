@@ -6,10 +6,10 @@ import { PrintModal, type PrintJob } from '../../components/PrintPreview'
 import { ReceiptView } from '../../components/ReceiptView'
 import { useToast } from '../../components/toast'
 import { buildKitchenLines, buildReceiptLines, linesToEscpos } from '../../lib/escpos'
-import { onPrinterState, printBytes, printerState } from '../../lib/printer'
 import { Button, Modal } from '../../components/ui'
 import { fmtTime } from '../../lib/utils'
 import { preparationTicketsEnabled } from '../../lib/defaults'
+import { resolvePrintPrinter } from '../../lib/printRouting'
 
 export function ReceiptModal({
   order,
@@ -20,44 +20,38 @@ export function ReceiptModal({
   customerName?: string
   onClose: () => void
 }) {
-  const { store } = useApp()
+  const { store, db, enqueuePrint } = useApp()
   const { push } = useToast()
   const [printJob, setPrintJob] = useState<PrintJob | null>(null)
-  const [printer, setPrinter] = useState(printerState())
-  // Guards double auto-printing across StrictMode's double effect invocation.
   const autoPrinted = useRef<Set<string>>(new Set())
-
-  useEffect(() => onPrinterState(setPrinter), [])
 
   useEffect(() => {
     if (!order || !store) return
     if (autoPrinted.current.has(order.id)) return
-    const cfg = store.settings.printer
-    if (!cfg.enabled || cfg.mode !== 'auto') return
+    if (store.settings.receiptPrintPolicy !== 'auto') return
     autoPrinted.current.add(order.id)
-
-    if (cfg.connection === 'webserial') {
-      // Silent thermal send; if no printer is attached, fall back to the dialog.
-      void (async () => {
-        const bytes = linesToEscpos(buildReceiptLines(order, store, { customerName }), cfg.width)
-        const res = await printBytes(bytes)
-        if (res.ok) {
-          push('Receipt sent to printer', 'success')
-        } else {
-          setPrintJob({
-            title: 'Receipt',
-            subtitle: `Order #${order.number}`,
-            lines: buildReceiptLines(order, store, { customerName }),
-            bytes,
-            kind: 'receipt',
-          })
-        }
-      })()
-    } else {
-      const t = window.setTimeout(() => window.print(), 400)
-      return () => window.clearTimeout(t)
+    const lines = buildReceiptLines(order, store, { customerName })
+    const targetPrinter = resolvePrintPrinter(db, store.id, 'receipt')
+    if (!targetPrinter) {
+      setPrintJob({
+        title: 'Receipt',
+        subtitle: `Order #${order.number}`,
+        lines,
+        bytes: linesToEscpos(lines, store.settings.printer.width),
+        kind: 'receipt',
+      })
+      return
     }
-  }, [order, store, customerName, push])
+    void enqueuePrint({
+      type: 'receipt',
+      printerId: targetPrinter.id,
+      payload: lines,
+      openDrawer: order.paymentMethod === 'cash' && targetPrinter.openDrawerOnCash,
+    }).then((result) => {
+      if (result.ok) push('Receipt sent to printer', 'success')
+      else push(result.error, 'error')
+    })
+  }, [db, enqueuePrint, order, store, customerName, push])
 
   if (!order || !store) return null
   const cfg = store.settings.printer
@@ -67,20 +61,16 @@ export function ReceiptModal({
 
   const openPrintDialog = (kind: 'receipt' | 'kitchen') => {
     const lines = kind === 'kitchen' ? buildKitchenLines(order, store) : buildReceiptLines(order, store, { customerName })
+    const targetPrinter = resolvePrintPrinter(db, store.id, kind)
     setPrintJob({
       title: kind === 'kitchen' ? 'Kitchen ticket' : 'Receipt',
       subtitle: `Order #${order.number}`,
       lines,
       bytes: linesToEscpos(lines, cfg.width),
       kind,
+      openDrawer: kind === 'receipt' && order.paymentMethod === 'cash' &&
+        targetPrinter?.openDrawerOnCash === true,
     })
-  }
-
-  const sendKitchen = async () => {
-    const bytes = linesToEscpos(buildKitchenLines(order, store), cfg.width)
-    const res = await printBytes(bytes)
-    if (res.ok) push('Kitchen ticket sent', 'success')
-    else push(res.error, 'error')
   }
 
   return (
@@ -96,17 +86,16 @@ export function ReceiptModal({
             <Button variant="secondary" className="flex-1" onClick={onClose}>
               New sale
             </Button>
-            <Button className="flex-1" onClick={() => openPrintDialog('receipt')}>
-              <Printer className="h-4 w-4" /> Print
-            </Button>
-            {kitchenWanted && (
+            {store.settings.receiptPrintPolicy !== 'never' && (
+              <Button className="flex-1" onClick={() => openPrintDialog('receipt')}>
+                <Printer className="h-4 w-4" /> Print
+              </Button>
+            )}
+            {kitchenWanted && store.settings.stationTicketPrintPolicy !== 'never' && (
               <Button
                 variant="secondary"
                 className="flex-1"
-                onClick={() => {
-                  if (cfg.connection === 'webserial' && printer.connected) void sendKitchen()
-                  else openPrintDialog('kitchen')
-                }}
+                onClick={() => openPrintDialog('kitchen')}
               >
                 <ChefHat className="h-4 w-4" /> Kitchen
               </Button>

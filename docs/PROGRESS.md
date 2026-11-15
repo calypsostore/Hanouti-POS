@@ -18,12 +18,20 @@ Validated in this session:
 - [x] 9. `/kitchen` and `/station/:stationId` boards include PIN-session permission gating, New/Preparing/Ready, timers, sound, bump/recall, filter and reprint.
 - [x] 10. Migration, seed, docs, and tests for ticket splitting/routing
 
+## M1b How kitchen and bar devices connect
+- [x] K1. Station devices: create, rename, assign stations, pair code/expiry, disable, unpair, last seen; QR deferred without a dependency.
+- [x] K2. Public pairing route and locked kiosk session, manager-PIN exit, wake lock/reconnect, and no kiosk attendance.
+- [x] K3. Station navigation, waiting-ticket count, landing preference, and Cook / Barista station-only preset.
+- [x] K4. Multi-station switcher, responsive touch board, connection badge, and empty states.
+- [x] K5. Honest same-device limitation banner until a hub provider is connected.
+- [x] K6. Pairing expiry, validation, station-scope tests, and docs.
+
 ## M2 Print architecture in the app
-- [ ] 11. Printer entity and device settings page
-- [ ] 12. `PrintJob` + `enqueuePrint(job)` transport abstraction
-- [ ] 13. Shared ESC/POS rendering and printer features
-- [ ] 14. Print queue UI and failed-job badge
-- [ ] 15. Auto print policies per store
+- [x] 11. Printer management, device-local print preference, per-type/station routing, station links, and test-print controls
+- [x] 12. Persisted print jobs and the `enqueuePrint` path with Hub, WebSerial, Bluetooth-protocol stub, browser, and mock transports
+- [x] 13. Shared ESC/POS renderer for 58/80 mm, codepage selection, drawer kick, cut modes, and rendering tests
+- [x] 14. Print queue with status filters, retry, cancel, reprint, and failed-job badge
+- [x] 15. Receipt auto/ask/never, station automatic/manual/never, and reports manual policies
 
 ## M3 Local hub (hub/ folder)
 - [ ] 16. Hub HTTP app server, REST API, WebSocket, /status page
@@ -65,3 +73,14 @@ Validated in this session:
 - Real-printer testing remains unverified on hardware.
 - Multi-device synchronization is not implemented; BroadcastChannel only
   reconciles tabs within the same browser profile.
+- M1b pairing, kiosk lock, and station-only staff access are browser-local demo
+  behavior. QR generation and cross-device order delivery remain unimplemented.
+- M1b validation: pairing/scope and station-only tests added; browser smoke loaded
+  `/pair` and Settings. Full pairing, kiosk PIN exit, mobile/TV layouts, and
+  multi-device delivery remain unverified.
+- M2 uses browser-local IndexedDB queue state. Hub transports intentionally return
+  “hub not connected” until M3; generic Bluetooth printer protocols are not
+  configured. Browser smoke loaded Settings → Devices & printing, but printer
+  submission/queue interaction did not complete reliably in the browser harness.
+  Real printer output, drawer kick, codepage rendering and cut behavior are
+  untested on hardware.

@@ -26,7 +26,7 @@ export default function PrinterCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Printer className="h-4 w-4 text-accent-foreground" />
-          <h3 className="text-[15px] font-semibold tracking-tight">Thermal printer</h3>
+          <h3 className="text-[15px] font-semibold tracking-tight">Legacy WebSerial connection</h3>
         </div>
         <Badge tone={printer.connected ? 'success' : 'neutral'}>
           {printer.connected ? `Connected · ${printer.label}` : 'Not connected'}
@@ -58,20 +58,9 @@ export default function PrinterCard({
             </p>
           </div>
           <div>
-            <span className="mb-1.5 block text-[12.5px] font-semibold">Printing mode</span>
-            <Segmented
-              value={settings.printer.mode}
-              onChange={(value) => set('printer', { ...settings.printer, mode: value as 'auto' | 'manual' })}
-              size="sm"
-              options={[
-                { value: 'manual', label: 'Manual' },
-                { value: 'auto', label: 'Auto-print' },
-              ]}
-            />
-            <p className="mt-1 text-[10.5px] text-muted">
-              {settings.printer.mode === 'auto'
-                ? 'Receipts print by themselves at checkout'
-                : 'You press Print on the receipt'}
+            <p className="mb-1.5 text-[12.5px] font-semibold">Automatic print policy</p>
+            <p className="text-[11px] leading-relaxed text-muted">
+              Receipt, station-ticket and report policies are managed in Settings → Devices & printing.
             </p>
           </div>
         </div>
@@ -124,7 +113,7 @@ export default function PrinterCard({
         />
 
         <div className="rounded-xl bg-cream-100 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
-          <span className="font-semibold text-ink">How printing works: </span>
+          <span className="font-semibold text-ink">Compatibility: </span>
           USB printers print real ESC/POS bytes through WebSerial — supported on Chrome and
           Edge for desktop (Windows, macOS, Linux). Firefox, Safari and iOS do not support
           WebSerial; those browsers use the browser print dialog with the same layout.

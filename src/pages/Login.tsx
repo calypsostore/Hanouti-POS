@@ -22,6 +22,7 @@ import { BrandLogo } from '../components/BrandLogo'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { APP_BUILD_TIMESTAMP, APP_VERSION } from '../lib/appVersion'
 import { DB_KEY } from '../store/database'
+import type { User } from '../types'
 
 type DemoAccount = {
   role: 'Super admin' | 'Store admin' | 'Staff'
@@ -59,7 +60,7 @@ const demoAccounts: DemoAccount[] = [
 ]
 
 export default function Login() {
-  const { login, loginPin, databaseReady, databaseError } = useApp()
+  const { db, login, loginPin, databaseReady, databaseError } = useApp()
   const navigate = useNavigate()
   const [method, setMethod] = useState<'email' | 'pin'>('email')
   const [email, setEmail] = useState('sami@cafeyasmine.tn')
@@ -71,8 +72,12 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const canSubmit = databaseReady && !databaseError && !isSubmitting
 
-  const go = (role: string) => {
-    if (role === 'super') navigate('/super')
+  const go = (role: string, account?: User) => {
+    if (account?.stationOnly) {
+      navigate(account.stationId ? `/station/${encodeURIComponent(account.stationId)}` : '/kitchen')
+    } else if (account?.goStraightToStation && account.stationId) {
+      navigate(`/station/${encodeURIComponent(account.stationId)}`)
+    } else if (role === 'super') navigate('/super')
     else if (role === 'staff') navigate('/pos')
     else navigate('/admin')
   }
@@ -88,8 +93,9 @@ export default function Login() {
         setError(res.error)
         return
       }
-      const target = email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : 'admin'
-      go(target)
+      const account = db.users.find((candidate) => candidate.email?.toLowerCase() === email.trim().toLowerCase())
+      const target = account?.role ?? (email.toLowerCase() === 'owner@cafepos.tn' ? 'super' : 'admin')
+      go(target, account)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
     } finally {
@@ -108,7 +114,8 @@ export default function Login() {
         setError(res.error)
         return
       }
-      go('staff')
+      const account = db.users.find((candidate) => candidate.username?.toLowerCase() === username.trim().toLowerCase())
+      go(account?.role ?? 'staff', account)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
     } finally {
@@ -128,7 +135,10 @@ export default function Login() {
         setError(res.error)
         return
       }
-      go(account.role === 'Super admin' ? 'super' : account.role === 'Staff' ? 'staff' : 'admin')
+      const user = account.role === 'Staff'
+        ? db.users.find((candidate) => candidate.username === account.username)
+        : db.users.find((candidate) => candidate.email === account.email)
+      go(user?.role ?? (account.role === 'Super admin' ? 'super' : account.role === 'Staff' ? 'staff' : 'admin'), user)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
     } finally {

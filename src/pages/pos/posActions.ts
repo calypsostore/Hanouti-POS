@@ -1,14 +1,9 @@
 import type { OpenOrder, Order, OrderChannel, OrderItem, PaymentMethod, Store } from '../../types'
-import type { Station } from '../../types'
 import type { AppContextValue } from '../../store/types'
-import type { PrintJob } from '../../components/PrintPreview'
-import { linesToEscpos } from '../../lib/escpos'
 import { money } from '../../lib/utils'
-import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 
 type Props = {
   store: Store
-  stations: Station[]
   channel: OrderChannel
   tableId?: string
   tableName?: string
@@ -27,6 +22,7 @@ type Props = {
   createOrder: AppContextValue['createOrder']
   addItemsToOpenOrder: AppContextValue['addItemsToOpenOrder']
   sendToStations: AppContextValue['sendToStations']
+  dispatchStationTickets: (order: OpenOrder, items: OrderItem[], kind: 'NEW' | 'ADDITION') => void
   payOpenOrder: AppContextValue['payOpenOrder']
   recordOpenOrder: AppContextValue['recordOpenOrder']
   push: (message: string, type: 'success' | 'error') => void
@@ -44,7 +40,6 @@ type Props = {
   setPaymentOpen: (open: boolean) => void
   setMobileCartOpen: (open: boolean) => void
   setReceipt: (order: Order | null) => void
-  setKitchenJob: (job: PrintJob | null) => void
   navigateToFloor: () => void
 }
 
@@ -75,20 +70,7 @@ export const createPOSActions = (props: Props) => {
       return false
     }
     const kind = hadPreviouslySentItems ? 'ADDITION' : 'NEW'
-    const tickets = buildStationTickets(result.order, result.items, props.stations, kind)
-    if (tickets.length) {
-      const lines = tickets.flatMap((ticket, index) => [
-        ...(index ? [{ text: '' }, { text: '----------------' }] : []),
-        ...buildStationTicketLines(ticket),
-      ])
-      props.setKitchenJob({
-        title: kind === 'ADDITION' ? 'Addition tickets' : 'Preparation tickets',
-        subtitle: `${tickets.length} station ticket${tickets.length === 1 ? '' : 's'} · ${result.order.tableName}`,
-        lines,
-        bytes: linesToEscpos(lines, props.store.settings.printer.width),
-        kind: 'kitchen',
-      })
-    }
+    props.dispatchStationTickets(result.order, result.items, kind)
     return true
   }
 

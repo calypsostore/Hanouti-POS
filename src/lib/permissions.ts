@@ -20,6 +20,9 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
 }
 
 export function can(user: User, capability: Capability): boolean {
+  if (user.stationOnly) {
+    return capability === 'viewStation' && user.permissions.viewStation === true
+  }
   if (user.role === 'admin') return true
   if (capability === 'openShift' || capability === 'closeShift') {
     return user.permissions[capability] === true

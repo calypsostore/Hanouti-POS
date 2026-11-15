@@ -20,10 +20,12 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
 
 export default function StaffPermissionsEditor({
   role,
+  stationOnly = false,
   permissions,
   onChange,
 }: {
   role: 'staff' | 'manager'
+  stationOnly?: boolean
   permissions: User['permissions']
   onChange: (permissions: User['permissions']) => void
 }) {
@@ -33,8 +35,14 @@ export default function StaffPermissionsEditor({
   return (
     <div className="rounded-xl border border-line bg-white p-3.5">
       <div className="mb-2 text-[12.5px] font-semibold text-ink">
-        {role === 'manager' ? 'Manager capabilities' : 'Staff permissions'}
+        {stationOnly ? 'Cook / Barista permissions' : role === 'manager' ? 'Manager capabilities' : 'Staff permissions'}
       </div>
+      {stationOnly ? (
+        <p className="text-xs leading-relaxed text-muted">
+          This account can open its assigned station screen and move tickets through Preparing, Ready, and Served.
+          It cannot access POS, sales, management, or register actions.
+        </p>
+      ) : (
       <div className="space-y-3">
         <Toggle checked={permissions.discount} onChange={(value) => toggle('discount', value)} label="Apply discounts" description="Can reduce the total at checkout." />
         <Toggle checked={permissions.credit} onChange={(value) => toggle('credit', value)} label="Charge orders to tabs" description="Can attach an order to a customer account." />
@@ -69,6 +77,7 @@ export default function StaffPermissionsEditor({
           />
         ))}
       </div>
+      )}
     </div>
   )
 }

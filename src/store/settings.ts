@@ -42,6 +42,9 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   ticketDelaySeconds: settings.ticketDelaySeconds,
   ticketIdleSeconds: settings.ticketIdleSeconds,
   stationTimerMinutes: settings.stationTimerMinutes,
+  receiptPrintPolicy: settings.receiptPrintPolicy,
+  stationTicketPrintPolicy: settings.stationTicketPrintPolicy,
+  reportPrintPolicy: settings.reportPrintPolicy,
 })
 
 const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => ({
@@ -401,6 +404,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         ticketDelaySeconds: 10,
         ticketIdleSeconds: 20,
         stationTimerMinutes: 15,
+        receiptPrintPolicy: 'ask',
+        stationTicketPrintPolicy: 'automatic',
+        reportPrintPolicy: 'manual',
       },
     }
     const stations = defaultStationsForStore(storeId)

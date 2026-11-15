@@ -18,21 +18,31 @@ import TablesTab from './TablesTab'
 import DataTab from './DataTab'
 import StationsTab from './StationsTab'
 import ServiceTab from './ServiceTab'
+import DevicesTab from './DevicesTab'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'data'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
-type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
+export type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
   const { db, store, updateStore, updateSettings, updateStaff, user } = useApp()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'tables' || requested === 'stations' || requested === 'service'
+    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices'
       ? requested
       : 'profile'
   })
+  const requestedTab = searchParams.get('tab')
+  const activeTab: Tab = requestedTab === 'tables' || requestedTab === 'stations' ||
+    requestedTab === 'service' || requestedTab === 'devices'
+    ? requestedTab
+    : tab
+  const changeTab = (next: Tab) => {
+    setTab(next)
+    setSearchParams(next === 'profile' ? {} : { tab: next })
+  }
   const [form, setForm] = useState<StoreProfile>({
     name: store?.name ?? '',
     icon: store?.icon ?? 'Coffee',
@@ -68,6 +78,9 @@ export default function SettingsPage() {
         ticketDelaySeconds: 10,
         ticketIdleSeconds: 20,
         stationTimerMinutes: 15,
+        receiptPrintPolicy: 'ask',
+        stationTicketPrintPolicy: 'automatic',
+        reportPrintPolicy: 'manual',
       },
   )
   const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)
@@ -131,15 +144,15 @@ export default function SettingsPage() {
             Shape how the register works for {store.name}.
           </p>
         </div>
-        {tab !== 'data' && <Button onClick={save}>
+        {activeTab !== 'data' && <Button onClick={save}>
           <Save className="h-4 w-4" /> Save changes
         </Button>}
       </div>
 
       <div className="min-w-0 max-w-full overflow-x-auto">
         <Segmented
-          value={tab}
-          onChange={setTab}
+          value={activeTab}
+          onChange={(value) => changeTab(value as Tab)}
           className="w-max whitespace-nowrap"
           options={[
             { value: 'profile', label: 'Store profile' },
@@ -149,12 +162,13 @@ export default function SettingsPage() {
             { value: 'tables' as const, label: 'Tables' },
             { value: 'stations' as const, label: 'Stations' },
             { value: 'service' as const, label: 'Service' },
+            { value: 'devices' as const, label: 'Devices & printing' },
             ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
           ]}
         />
       </div>
 
-      {tab === 'profile' && (
+      {activeTab === 'profile' && (
         <ProfileTab
           store={store}
           user={user}
@@ -166,10 +180,10 @@ export default function SettingsPage() {
           setCopied={setCopied}
         />
       )}
-      {tab === 'branding' && (
+      {activeTab === 'branding' && (
         <BrandingTab form={form} setForm={setForm} settings={settings} set={set} />
       )}
-      {tab === 'register' && (
+      {activeTab === 'register' && (
         <RegisterTab
           settings={settings}
           set={set}
@@ -177,7 +191,7 @@ export default function SettingsPage() {
           onEnableTables={enableExistingTables}
         />
       )}
-      {tab === 'receipt' && (
+      {activeTab === 'receipt' && (
         <ReceiptTab
           form={form}
           settings={settings}
@@ -195,10 +209,11 @@ export default function SettingsPage() {
           onTestPrint={() => setTestJob(true)}
         />
       )}
-      {tab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
-      {tab === 'stations' && <StationsTab storeId={store.id} />}
-      {tab === 'service' && <ServiceTab settings={settings} set={set} />}
-      {tab === 'data' && user?.role === 'admin' && <DataTab />}
+      {activeTab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
+      {activeTab === 'stations' && <StationsTab storeId={store.id} />}
+      {activeTab === 'service' && <ServiceTab settings={settings} set={set} />}
+      {activeTab === 'devices' && <DevicesTab storeId={store.id} settings={settings} set={set} />}
+      {activeTab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal
         job={
@@ -208,7 +223,7 @@ export default function SettingsPage() {
                 subtitle: store.name,
                 lines: buildTestLines({ ...store, settings }),
                 bytes: linesToEscpos(buildTestLines({ ...store, settings }), settings.printer.width),
-                kind: 'receipt',
+                kind: 'test',
               }
             : null
         }

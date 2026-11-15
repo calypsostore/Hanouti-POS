@@ -12,6 +12,12 @@ export const DEFAULT_PRINTER: PrinterSettings = {
   kitchenTicket: false,
 }
 
+export const DEFAULT_PRINT_POLICIES = {
+  receiptPrintPolicy: 'ask' as const,
+  stationTicketPrintPolicy: 'automatic' as const,
+  reportPrintPolicy: 'manual' as const,
+}
+
 export const preparationTicketsEnabled = (settings: Pick<StoreSettings, 'features' | 'printer'>): boolean =>
   Boolean(settings.features.kitchenScreen || settings.printer.kitchenTicket)
 
@@ -64,13 +70,17 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
 export const normalizeUser = (u: User): User => {
   const base = defaultPermissions(u.role)
   const p = u.permissions ?? base
-  const capability = (name: Capability) => name === 'recordPurchases'
+  const capability = (name: Capability) => u.stationOnly
+    ? name === 'viewStation'
+    : name === 'recordPurchases'
     ? p[name] === true
     : name === 'openShift' || name === 'closeShift'
       ? typeof p[name] === 'boolean' ? p[name] : base[name]
-      : u.role === 'manager'
-        ? typeof p[name] === 'boolean' ? p[name] : MANAGER_DEFAULT_PERMISSIONS[name]
-        : false
+      : name === 'viewStation' && u.role === 'staff'
+        ? p[name] === true
+        : u.role === 'manager'
+          ? typeof p[name] === 'boolean' ? p[name] : MANAGER_DEFAULT_PERMISSIONS[name]
+          : false
   const enteredUsername = typeof u.username === 'string' ? normalizeUsername(u.username) : ''
   const emailName = u.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '-') ?? ''
   const fallbackName = `user-${u.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 19)}`
@@ -90,13 +100,16 @@ export const normalizeUser = (u: User): User => {
     photo: typeof u.photo === 'string' && u.photo.startsWith('data:image/') && u.photo.length <= 307200
       ? u.photo
       : undefined,
+    goStraightToStation: u.goStraightToStation === true,
+    stationOnly: u.stationOnly === true,
+    attendanceEnabled: u.stationOnly ? u.attendanceEnabled === true : u.attendanceEnabled !== false,
     permissions: {
-      discount: typeof p.discount === 'boolean' ? p.discount : base.discount,
-      credit: typeof p.credit === 'boolean' ? p.credit : base.credit,
-      settle: typeof p.settle === 'boolean' ? p.settle : base.settle,
-      reports: typeof p.reports === 'boolean' ? p.reports : base.reports,
-      register: typeof p.register === 'boolean' ? p.register : base.register,
-      supervisor: typeof p.supervisor === 'boolean' ? p.supervisor : base.supervisor,
+      discount: !u.stationOnly && (typeof p.discount === 'boolean' ? p.discount : base.discount),
+      credit: !u.stationOnly && (typeof p.credit === 'boolean' ? p.credit : base.credit),
+      settle: !u.stationOnly && (typeof p.settle === 'boolean' ? p.settle : base.settle),
+      reports: !u.stationOnly && (typeof p.reports === 'boolean' ? p.reports : base.reports),
+      register: !u.stationOnly && (typeof p.register === 'boolean' ? p.register : base.register),
+      supervisor: !u.stationOnly && (typeof p.supervisor === 'boolean' ? p.supervisor : base.supervisor),
       manageInventory: capability('manageInventory'),
       recordPurchases: capability('recordPurchases'),
       viewCosts: capability('viewCosts'),

@@ -42,8 +42,8 @@ export default function ReceiptTab({
             </Field>
           </div>
           <div className="mt-3 rounded-xl bg-cream-100 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
-            Receipts print on any 58mm or 80mm thermal printer. Cashier mode offers a receipt
-            after every completed sale.
+            Receipt delivery is controlled by the policy in Devices & printing. You can still
+            preview and manually print or download a receipt after checkout.
           </div>
         </Card>
 

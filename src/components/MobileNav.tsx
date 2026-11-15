@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, Package, Plus, ReceiptText, Settings, ShoppingBag, Store, Truck, Utensils, Users, Wallet } from 'lucide-react'
+import { BarChart3, ChefHat, LayoutDashboard, Package, Plus, ReceiptText, Settings, ShoppingBag, Store, Truck, Utensils, Users, Wallet } from 'lucide-react'
 import { Link, NavLink } from 'react-router-dom'
 import { useApp } from '../store/AppStore'
 import { cn } from '../lib/utils'
@@ -17,6 +17,7 @@ export function MobileNav() {
           ...(store?.settings.features.tables
             ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils }]
             : []),
+          ...(can(user, 'viewStation') ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat }] : []),
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
           { to: '/admin/expenses', label: 'Attendance', icon: Wallet },
           ...(can(user, 'recordPurchases')
@@ -45,6 +46,7 @@ export function MobileNav() {
             ...(store?.settings.features.tables
               ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils }]
               : []),
+            ...(can(user, 'viewStation') ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat }] : []),
             ...(can(user, 'manageStaff')
               ? [{ to: '/admin/staff', label: 'Team', icon: Users }]
               : []),
@@ -75,6 +77,7 @@ export function MobileNav() {
             : []),
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
           { to: '/admin/customers', label: 'Tabs', icon: Users },
+          ...(can(user, 'viewStation') ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat }] : []),
           { to: '/admin/settings', label: 'Settings', icon: Settings },
           ...(can(user, 'manageInventory')
             ? [{ to: '/admin/inventory', label: 'Stock', icon: Package }]

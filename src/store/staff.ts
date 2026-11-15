@@ -10,7 +10,8 @@ import type { Capability } from '../types'
 const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
   'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
-  'manageStaff', 'manageSettings', 'managePayroll', 'openShift', 'closeShift',
+  'manageStaff', 'manageSettings', 'managePayroll', 'manageTables', 'manageSections',
+  'viewStation', 'openShift', 'closeShift',
 ]
 const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'register', 'supervisor'] as const
 
@@ -22,11 +23,21 @@ const permissionsForRole = (
   role: User['role'],
   existing: User['permissions'],
   patch?: User['permissions'],
+  stationOnly = false,
 ): User['permissions'] => {
   const permissions = { ...defaultPermissions(role), ...existing, ...patch }
+  if (stationOnly) {
+    for (const key of LEGACY_PERMISSION_KEYS) permissions[key] = false
+    for (const capability of CAPABILITIES) permissions[capability] = false
+    permissions.viewStation = true
+    permissions.openShift = false
+    permissions.closeShift = false
+    return permissions
+  }
   if (role !== 'manager') {
     for (const capability of CAPABILITIES) {
-      if (capability !== 'recordPurchases' && capability !== 'openShift' && capability !== 'closeShift') {
+      if (capability !== 'recordPurchases' && capability !== 'viewStation' &&
+          capability !== 'openShift' && capability !== 'closeShift') {
         permissions[capability] = false
       }
     }
@@ -55,6 +66,12 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     async (storeId, data) => {
       const actorResult = requireCapability(storeId, 'manageStaff')
       if (!actorResult.ok) return actorResult
+      if (data.stationOnly && actorResult.actor.role !== 'admin') {
+        return { ok: false, error: 'Only the owner can assign the Cook / Barista preset.' }
+      }
+      if (data.stationOnly && data.attendanceEnabled && actorResult.actor.role !== 'admin') {
+        return { ok: false, error: 'Only the owner can enable attendance for a station-only account.' }
+      }
       if (data.role !== undefined && data.role !== 'staff' && data.role !== 'manager') {
         return { ok: false, error: 'Choose a valid team member role.' }
       }
@@ -103,7 +120,9 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
         password,
         pin,
         role: data.role ?? 'staff',
-        permissions: permissionsForRole(data.role ?? 'staff', data.permissions),
+        stationOnly: data.stationOnly === true && data.role !== 'manager',
+        attendanceEnabled: data.stationOnly && data.role !== 'manager' ? data.attendanceEnabled === true : true,
+        permissions: permissionsForRole(data.role ?? 'staff', data.permissions, undefined, data.stationOnly),
         id: uid('usr'),
         storeId,
         createdAt: new Date().toISOString(),
@@ -140,6 +159,14 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     if (patch.role !== undefined && patch.role !== member.role && actorResult.actor.role !== 'admin') {
       return { ok: false, error: 'Only the owner can change team member roles.' }
     }
+    if (patch.stationOnly !== undefined && patch.stationOnly !== member.stationOnly &&
+        actorResult.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can assign the Cook / Barista preset.' }
+    }
+    if (patch.attendanceEnabled !== undefined && patch.attendanceEnabled !== member.attendanceEnabled &&
+        actorResult.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can change attendance tracking for this account.' }
+    }
     if (member.role === 'manager' && actorResult.actor.role !== 'admin') {
       return { ok: false, error: 'Only the owner can edit a manager account.' }
     }
@@ -150,6 +177,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       return { ok: false, error: 'Choose a valid team member role.' }
     }
     const nextRole = patch.role ?? member.role
+    const stationOnly = patch.stationOnly ?? member.stationOnly ?? false
     const username = patch.username === undefined ? undefined : normalizeUsername(patch.username)
     if (username !== undefined) {
       if (!isValidUsername(username)) {
@@ -200,8 +228,14 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       return { ok: false, error: 'You cannot demote or deactivate the last active store admin.' }
     }
     const safePatch: Partial<User> = { ...patch }
-    if (patch.permissions !== undefined || patch.role !== undefined) {
-      safePatch.permissions = permissionsForRole(nextRole, member.permissions, patch.permissions)
+    if (patch.permissions !== undefined || patch.role !== undefined || patch.stationOnly !== undefined) {
+      safePatch.permissions = permissionsForRole(nextRole, member.permissions, patch.permissions, stationOnly)
+    }
+    if (patch.stationOnly !== undefined || patch.role !== undefined) {
+      safePatch.stationOnly = stationOnly && nextRole === 'staff'
+      safePatch.attendanceEnabled = safePatch.stationOnly
+        ? patch.attendanceEnabled === true || (patch.attendanceEnabled === undefined && member.attendanceEnabled === true)
+        : patch.attendanceEnabled !== false
     }
     if (username !== undefined) safePatch.username = username
     if (patch.salaryAmount !== undefined) safePatch.salaryAmount = round(patch.salaryAmount)

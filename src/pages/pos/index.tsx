@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../../store/AppStore'
 import { computeTotals } from '../../lib/pricing'
@@ -42,6 +42,10 @@ const stationTicketJob = (
     lines,
     bytes: linesToEscpos(lines, store.settings.printer.width),
     kind: 'kitchen',
+    stationTickets: tickets.map((ticket) => ({
+      stationId: ticket.stationId,
+      lines: buildStationTicketLines(ticket),
+    })),
   }
 }
 
@@ -49,6 +53,7 @@ export default function POS() {
   const {
     user, store, db, logout, createOrder, addItemsToOpenOrder, sendToStations, updateOpenOrderItem,
     voidSentOrderItem, payOpenOrder, recordOpenOrder,
+    enqueuePrint,
   } = useApp()
   const navigate = useNavigate()
   const { push } = useToast()
@@ -89,6 +94,51 @@ export default function POS() {
   const [voidTarget, setVoidTarget] = useState<string>()
   const [voidReason, setVoidReason] = useState('')
   const [now, setNow] = useState(new Date())
+
+  const dispatchStationTickets = useCallback((
+    order: OpenOrder,
+    items: OrderItem[],
+    kind: TicketKind,
+  ) => {
+    if (!store || store.settings.stationTicketPrintPolicy === 'never') return
+    const stations = db.stations.filter((station) => station.storeId === store.id)
+    const tickets = buildStationTickets(order, items, stations, kind)
+    const previewStationIds = new Set<string>()
+    for (const ticket of tickets) {
+      const station = stations.find((entry) => entry.id === ticket.stationId)
+      const route = db.printRoutes.find((entry) =>
+        entry.storeId === store.id && entry.type === 'kitchen' && entry.stationId === ticket.stationId,
+      )
+      const printer = db.printers.find((entry) =>
+        entry.storeId === store.id && entry.enabled &&
+        entry.id === (route?.printerId ?? station?.printerId),
+      )
+      if (store.settings.stationTicketPrintPolicy === 'automatic' && printer) {
+        void enqueuePrint({
+          type: 'kitchen',
+          stationId: ticket.stationId,
+          printerId: printer.id,
+          payload: buildStationTicketLines(ticket),
+        }).then((result) => {
+          if (result.ok) push(`${station?.name ?? 'Station'} ticket sent`, 'success')
+          else push(result.error, 'error')
+        })
+      } else {
+        previewStationIds.add(ticket.stationId)
+      }
+    }
+    if (previewStationIds.size) {
+      const previewItems = items.filter((item) => item.stationId && previewStationIds.has(item.stationId))
+      const job = stationTicketJob(
+        order,
+        previewItems,
+        stations.filter((station) => previewStationIds.has(station.id)),
+        store,
+        kind,
+      )
+      if (job) setKitchenJob(job)
+    }
+  }, [db.printRoutes, db.printers, db.stations, enqueuePrint, push, store])
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
@@ -149,19 +199,16 @@ export default function POS() {
         push(result.error, 'error')
         return
       }
-      const job = stationTicketJob(
+      dispatchStationTickets(
         result.order,
         result.items,
-        db.stations.filter((station) => station.storeId === store.id),
-        store,
         openOrder.items.some((item) => item.sentAt || (item.status !== 'draft' && item.status !== 'void'))
           ? 'ADDITION'
           : 'NEW',
       )
-      if (job) setKitchenJob(job)
     }, remaining)
     return () => window.clearTimeout(timeout)
-  }, [db.stations, openOrder, push, sendToStations, store])
+  }, [dispatchStationTickets, db.stations, openOrder, push, sendToStations, store])
 
   if (!user || !store) return null
 
@@ -205,8 +252,6 @@ export default function POS() {
   const canOpenRegister = can(user, 'openShift')
   const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
-  const stations = db.stations.filter((station) => station.storeId === store.id)
-
   const changeOpenItemQty = (lineId: string, delta: number) => {
     const order = openOrder
     const savedItem = order?.items.find((item) => item.lineId === lineId)
@@ -236,8 +281,7 @@ export default function POS() {
       push(result.error, 'error')
       return
     }
-    const job = stationTicketJob(result.order, [result.item], stations, store, 'CANCELLED')
-    if (job) setKitchenJob(job)
+    dispatchStationTickets(result.order, [result.item], 'CANCELLED')
     push('Sent item voided; a cancellation ticket is ready to print.', 'success')
     setVoidTarget(undefined)
     setVoidReason('')
@@ -255,7 +299,6 @@ export default function POS() {
 
   const actions = createPOSActions({
     store,
-    stations,
     channel,
     tableId,
     tableName: activeTableName,
@@ -274,6 +317,7 @@ export default function POS() {
     createOrder,
     addItemsToOpenOrder,
     sendToStations,
+    dispatchStationTickets,
     payOpenOrder,
     recordOpenOrder,
     push,
@@ -291,7 +335,6 @@ export default function POS() {
     setPaymentOpen,
     setMobileCartOpen,
     setReceipt,
-    setKitchenJob,
     navigateToFloor: () => navigate('/pos/floor'),
   })
   const {

@@ -64,6 +64,9 @@ const defaultSettings = (
   ticketDelaySeconds: 10,
   ticketIdleSeconds: 20,
   stationTimerMinutes: 15,
+  receiptPrintPolicy: 'ask',
+  stationTicketPrintPolicy: 'automatic',
+  reportPrintPolicy: 'manual',
   ...over,
 })
 
@@ -1056,6 +1059,10 @@ export function buildSeed(): Database {
     stores,
     users,
     stations,
+    stationDevices: [],
+    printers: [],
+    printRoutes: [],
+    printJobs: [],
     categories,
     sections,
     tables,

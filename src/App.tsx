@@ -24,13 +24,17 @@ import Settings from './pages/admin/Settings'
 import SetupWizard from './pages/admin/SetupWizard'
 import SuperOverview from './pages/super/Overview'
 import SuperStores from './pages/super/Stores'
-import type { Role } from './types'
+import type { Role, User } from './types'
 import type { Capability } from './types'
 import { can } from './lib/permissions'
+import { hasStationDeviceSession } from './lib/stationDeviceSession'
+import PairStationDevice from './pages/PairStationDevice'
+import StationDeviceKiosk from './pages/StationDeviceKiosk'
 
-function homeFor(role: Role) {
-  if (role === 'super') return '/super'
-  if (role === 'staff') return '/staff'
+function homeFor(user: User) {
+  if (user.stationOnly) return user.stationId ? `/station/${encodeURIComponent(user.stationId)}` : '/kitchen'
+  if (user.role === 'super') return '/super'
+  if (user.role === 'staff') return '/staff'
   return '/admin'
 }
 
@@ -51,17 +55,34 @@ function Protected({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function StationOnlyGate({ children }: { children: React.ReactNode }) {
+  const { user } = useApp()
+  const { pathname } = useLocation()
+  if (user?.stationOnly && pathname !== '/kitchen' && !/^\/station\/[^/]+$/.test(pathname)) {
+    return <Navigate to={homeFor(user)} replace />
+  }
+  return <>{children}</>
+}
+
+function DeviceKioskGate({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  if (hasStationDeviceSession() && pathname !== '/kiosk') {
+    return <Navigate to="/kiosk" replace />
+  }
+  return <>{children}</>
+}
+
 function RoleGate({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  if (!roles.includes(user.role)) return <Navigate to={homeFor(user.role)} replace />
+  if (!roles.includes(user.role)) return <Navigate to={homeFor(user)} replace />
   return <>{children}</>
 }
 
 function CapabilityGate({ capability, children }: { capability: Capability; children: React.ReactNode }) {
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user.role)} replace />
+  if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user)} replace />
   return <>{children}</>
 }
 
@@ -76,7 +97,7 @@ function RegisterGate({ children }: { children: React.ReactNode }) {
 
 function LoginRoute() {
   const { user } = useApp()
-  if (user) return <Navigate to={homeFor(user.role)} replace />
+  if (user) return <Navigate to={homeFor(user)} replace />
   return <Login />
 }
 
@@ -103,7 +124,7 @@ function StoreSetupGate({ children }: { children: React.ReactNode }) {
 function HomeRoute() {
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={homeFor(user.role)} replace />
+  return <Navigate to={homeFor(user)} replace />
 }
 
 export default function App() {
@@ -112,7 +133,11 @@ export default function App() {
       <AppProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <DeviceKioskGate>
+          <StationOnlyGate>
           <Routes>
+            <Route path="/pair" element={<PairStationDevice />} />
+            <Route path="/kiosk" element={<StationDeviceKiosk />} />
             <Route path="/login" element={<LoginRoute />} />
             <Route path="/" element={<HomeRoute />} />
 
@@ -293,6 +318,8 @@ export default function App() {
 
             <Route path="*" element={<HomeRoute />} />
           </Routes>
+          </StationOnlyGate>
+          </DeviceKioskGate>
         </BrowserRouter>
       </AppProvider>
     </ToastProvider>

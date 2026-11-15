@@ -8,6 +8,7 @@ import { downloadReceiptPdf } from '../lib/receiptPdf'
 import { ThermalReceipt } from './ThermalReceipt'
 import type { PrinterWidth } from '../types'
 import type { RegisterItemsReport } from '../types'
+import type { PrintJobType } from '../types'
 import { RegisterItemsTable } from './RegisterItemsTable'
 import {
   connectPrinter,
@@ -15,6 +16,7 @@ import {
   printBytes,
   printerState,
 } from '../lib/printer'
+import { resolvePrintPrinter } from '../lib/printRouting'
 
 export interface PrintJob {
   title: string
@@ -22,10 +24,13 @@ export interface PrintJob {
   lines: ReceiptLine[]
   /** Raw ESC/POS payload. Null → browser printing only. */
   bytes: Uint8Array | null
-  kind: 'receipt' | 'kitchen' | 'report'
+  kind: PrintJobType
+  stationId?: string
+  stationTickets?: Array<{ stationId: string; lines: ReceiptLine[] }>
   width?: PrinterWidth
   itemsReport?: RegisterItemsReport
   itemsRebuiltFromOrders?: boolean
+  openDrawer?: boolean
 }
 
 /**
@@ -34,36 +39,131 @@ export interface PrintJob {
  * browser printing, PDF export, and the ESC/POS byte stream.
  */
 export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: () => void }) {
-  const { store } = useApp()
+  const { store, db, enqueuePrint } = useApp()
   const { push } = useToast()
   const [state, setState] = useState(printerState())
+  const [sentStationState, setSentStationState] = useState<{ job: PrintJob | null; ids: Set<string> }>({
+    job: null,
+    ids: new Set(),
+  })
 
   useEffect(() => onPrinterState(setState), [])
 
   if (!job || !store) return null
   const cfg = store.settings.printer
+  const sentStationIds = sentStationState.job === job ? sentStationState.ids : new Set<string>()
+  const markStationTicketsSent = (ids: string[]) => setSentStationState((current) => ({
+    job,
+    ids: new Set([...(current.job === job ? current.ids : []), ...ids]),
+  }))
   const width = job.width ?? cfg.width
   const cols = columnsFor(width)
-  const wantsSerial = cfg.enabled && cfg.connection === 'webserial'
+  const configuredPrinters = db.printers.filter((printer) => printer.storeId === store.id && printer.enabled)
+  const targetPrinter = resolvePrintPrinter(db, store.id, job.kind, job.stationId)
+  const stationTargets = job.stationTickets?.map((ticket) => ({
+    ...ticket,
+    printer: resolvePrintPrinter(db, store.id, job.kind, ticket.stationId),
+  })).filter((ticket) => !sentStationIds.has(ticket.stationId))
+  const configuredStationTargets = stationTargets?.filter((ticket) => !!ticket.printer) ?? []
+  const serialTarget = configuredStationTargets.find((ticket) => ticket.printer?.connection === 'browser-webserial')?.printer
+  const wantsSerial = stationTargets
+    ? Boolean(serialTarget)
+    : targetPrinter
+      ? targetPrinter.connection === 'browser-webserial'
+      : configuredPrinters.length === 0 && cfg.enabled && cfg.connection === 'webserial'
 
   const send = async () => {
     if (!job.bytes) return
-    const res = await printBytes(job.bytes)
+    let res: { ok: true } | { ok: false; error: string }
+    if (stationTargets?.length && configuredStationTargets.length) {
+      const failures: string[] = []
+      const succeeded: string[] = []
+      for (const ticket of configuredStationTargets) {
+        const result = await enqueuePrint({
+          type: job.kind,
+          stationId: ticket.stationId,
+          printerId: ticket.printer?.id,
+          payload: ticket.lines,
+        })
+        if (!result.ok) failures.push(result.error)
+        else succeeded.push(ticket.stationId)
+      }
+      if (succeeded.length) markStationTicketsSent(succeeded)
+      res = failures.length ? { ok: false, error: failures.join(' ') } : { ok: true }
+    } else if (targetPrinter) {
+      res = await enqueuePrint({
+        type: job.kind,
+        stationId: job.stationId,
+        printerId: targetPrinter.id,
+        payload: job.lines,
+        openDrawer: job.openDrawer,
+      })
+    } else {
+      res = await printBytes(job.bytes)
+    }
     if (res.ok) {
-      push('Sent to printer', 'success')
-      onClose()
+      if (stationTargets?.some((ticket) => !ticket.printer)) {
+        push('Configured station tickets sent; unassigned tickets remain in preview.', 'success')
+      } else {
+        push('Sent to printer', 'success')
+        onClose()
+      }
     } else {
       push(res.error, 'error')
     }
   }
 
   const connect = async () => {
-    const res = await connectPrinter(cfg.baudRate)
+    const res = await connectPrinter(serialTarget?.baudRate ?? targetPrinter?.baudRate ?? cfg.baudRate)
     if (res.ok) push(`Printer connected · ${res.label}`, 'success')
     else push(res.error, 'error')
   }
 
   const browserPrint = () => {
+    if (configuredStationTargets.length && configuredStationTargets.every((ticket) =>
+      ticket.printer?.connection === 'browser-print',
+    )) {
+      void Promise.all(configuredStationTargets.map((ticket) => enqueuePrint({
+        type: job.kind,
+        stationId: ticket.stationId,
+        printerId: ticket.printer?.id,
+        payload: ticket.lines,
+      }))).then((results) => {
+        const succeeded = results.flatMap((result, index) =>
+          result.ok ? [configuredStationTargets[index].stationId] : [],
+        )
+        if (succeeded.length) markStationTicketsSent(succeeded)
+        const failures = results.filter((result) => !result.ok)
+        if (failures.length) push(failures.map((result) => result.error).join(' '), 'error')
+        else {
+          if (stationTargets?.some((ticket) => !ticket.printer)) {
+            push('Configured station tickets sent; unassigned tickets remain in preview.', 'success')
+          } else {
+            push('Print jobs completed', 'success')
+            onClose()
+          }
+        }
+      })
+      return
+    }
+    const configuredBrowserPrinter = targetPrinter?.connection === 'browser-print' ? targetPrinter : undefined
+    if (configuredBrowserPrinter) {
+      void enqueuePrint({
+        type: job.kind,
+        stationId: job.stationId,
+        printerId: configuredBrowserPrinter.id,
+        payload: job.lines,
+        openDrawer: job.openDrawer,
+      }).then((result) => {
+        if (result.ok) {
+          push('Print job completed', 'success')
+          onClose()
+        } else {
+          push(result.error, 'error')
+        }
+      })
+      return
+    }
     const printStyle = document.createElement('style')
     printStyle.textContent = `@media print {
       @page { size: ${width}mm auto; margin: 0; }
@@ -80,14 +180,19 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
     window.print()
   }
 
+  const displayLines = stationTargets
+    ? stationTargets.flatMap((ticket) => ticket.lines)
+    : job.lines
+
   const downloadPdf = () => {
     try {
       const filename = `${job.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
-      downloadReceiptPdf(job.lines, width, filename)
+      downloadReceiptPdf(displayLines, width, filename)
       push('Receipt PDF downloaded', 'success')
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not create the receipt PDF.', 'error')
     }
+
   }
 
   return (
@@ -106,7 +211,7 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
             )}
             {wantsSerial && state.connected && (
               <Button onClick={send} disabled={!job.bytes || state.busy}>
-                <Printer className="h-4 w-4" /> Print ESC/POS
+                <Printer className="h-4 w-4" /> {job.stationTickets ? 'Send to configured printers' : 'Print ESC/POS'}
               </Button>
             )}
             <Button variant="secondary" onClick={browserPrint}>
@@ -141,7 +246,7 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
             data-receipt-width={width}
             style={{ width: `${width}mm`, maxWidth: '100%' }}
           >
-            <ThermalReceipt lines={job.lines} width={width} />
+            <ThermalReceipt lines={displayLines} width={width} />
           </div>
         </div>
         {job.itemsReport && (

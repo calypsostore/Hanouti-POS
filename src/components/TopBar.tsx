@@ -5,6 +5,7 @@ import {
   ChefHat,
   Menu,
   PackageX,
+  Printer,
   Settings,
   ShieldCheck,
   Clock3,
@@ -66,6 +67,9 @@ export function TopBar({
   const readyCount = readyOrders.reduce((total, order) =>
     total + order.items.filter((item) => item.status === 'ready').reduce((sum, item) => sum + item.qty, 0), 0)
   const noticeCount = notices.reduce((total, notice) => total + notice.count, 0) + readyCount
+  const failedPrintCount = store
+    ? db.printJobs.filter((job) => job.storeId === store.id && job.status === 'failed').length
+    : 0
   const title = titles[location.pathname] ?? BRAND_NAME
   const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
@@ -140,6 +144,11 @@ export function TopBar({
         )}
         {can(user, 'manageSettings') && (
           <Link to="/admin/settings" aria-label="Settings" title="Settings" className="rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800"><Settings className="h-4 w-4" /></Link>
+        )}
+        {failedPrintCount > 0 && (
+          <Link to="/admin/settings?tab=devices" aria-label={`${failedPrintCount} prints failed`} title={`${failedPrintCount} prints failed`} className="flex items-center gap-1 rounded-xl border border-danger/30 bg-danger/5 px-2 py-1.5 text-danger">
+            <Printer className="h-4 w-4" /><Badge tone="danger">{failedPrintCount}</Badge>
+          </Link>
         )}
         <div className="relative">
           <button type="button" onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-2 rounded-xl border border-line bg-white p-1.5 pr-2 text-left hover:bg-cream-100 dark:bg-espresso-800" aria-label="User menu" aria-expanded={menuOpen}>
