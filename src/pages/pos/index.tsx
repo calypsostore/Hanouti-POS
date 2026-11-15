@@ -17,6 +17,7 @@ import { ProductOptionsModal } from './ProductOptionsModal'
 import { createPOSActions } from './posActions'
 import { useProductCart } from './useProductCart'
 import { openShiftForStaff } from '../../lib/registerShifts'
+import { preparationTicketsEnabled } from '../../lib/defaults'
 
 export default function POS() {
   const {
@@ -119,6 +120,7 @@ export default function POS() {
     activeNote !== (openOrder.note ?? '')
   )
   const hasUnsentItems = displayCart.some((item) => !item.sentAt)
+  const kitchenEnabled = preparationTicketsEnabled(store.settings)
   const quick = store.settings.posMode === 'quick'
   const registerOpen = !!openShiftForStaff(db, store.id, user.id)
   const canOpenRegister = can(user, 'openShift')
@@ -254,6 +256,7 @@ export default function POS() {
     persistedLineIds: openOrder?.items.map((item) => item.lineId ?? ''),
     canSaveOpenOrder,
     hasUnsentItems,
+    kitchenEnabled,
     onSaveOpenOrder: saveOpenChanges,
     onSendKitchen: sendKitchenItems,
     onOpenFloor: () => navigate('/pos/floor'),

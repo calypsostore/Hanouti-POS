@@ -54,12 +54,14 @@ const categorySnapshot = (category: Category): Record<string, AuditJsonValue> =>
   name: category.name,
   icon: category.icon,
   iconColor: category.iconColor,
+  stationId: category.stationId ?? '',
   sort: category.sort,
 })
 
 const productSnapshot = (product: Product): Record<string, AuditJsonValue> => ({
   name: product.name,
   categoryId: product.categoryId,
+  stationId: product.stationId ?? '',
   price: product.price,
   cost: product.cost,
   stock: product.stock,
@@ -79,12 +81,16 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     const actorResult = requireCapability(storeId, 'manageProducts')
     if (!actorResult.ok) return actorResult
     if (!data.name.trim()) return { ok: false, error: 'Enter a category name.' }
+    if (data.stationId && !dbRef.current.stations.some((station) => station.id === data.stationId && station.storeId === storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
+    }
     const category: Category = {
       id: uid('cat'),
       storeId,
       name: data.name.trim(),
       icon: data.icon,
       iconColor: data.iconColor,
+      stationId: data.stationId || undefined,
       sort: dbRef.current.categories.filter((c) => c.storeId === storeId).length,
     }
     commitDb((prev) => addLog({
@@ -108,6 +114,9 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
     if (!actorResult.ok) return actorResult
     if (patch.storeId !== undefined && patch.storeId !== category.storeId) {
       return { ok: false, error: 'A category cannot be moved to another store.' }
+    }
+    if (patch.stationId !== undefined && patch.stationId && !dbRef.current.stations.some((station) => station.id === patch.stationId && station.storeId === category.storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
     }
     const safePatch: Partial<Category> = { ...patch }
     delete safePatch.id
@@ -162,6 +171,9 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       candidate.id === data.categoryId && candidate.storeId === storeId,
     )
     if (!category) return { ok: false, error: 'Choose a category from this store.' }
+    if (data.stationId && !dbRef.current.stations.some((station) => station.id === data.stationId && station.storeId === storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
+    }
     if (!Number.isFinite(data.price) || data.price < 0 || !Number.isFinite(data.stock) || data.stock < 0) {
       return { ok: false, error: 'Enter a valid product price and stock quantity.' }
     }
@@ -194,6 +206,9 @@ export function useCatalogSlice(dependencies: StoreSliceDependencies) {
       category.id === patch.categoryId && category.storeId === product.storeId,
     )) {
       return { ok: false, error: 'Choose a category from this store.' }
+    }
+    if (patch.stationId !== undefined && patch.stationId && !dbRef.current.stations.some((station) => station.id === patch.stationId && station.storeId === product.storeId)) {
+      return { ok: false, error: 'Choose a station from this store.' }
     }
     if (patch.price !== undefined && (!Number.isFinite(patch.price) || patch.price < 0)) {
       return { ok: false, error: 'Enter a valid product price.' }

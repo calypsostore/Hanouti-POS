@@ -77,6 +77,7 @@ export function CartPanel({
   persistedLineIds,
   canSaveOpenOrder,
   hasUnsentItems,
+  kitchenEnabled,
   onSaveOpenOrder,
   onSendKitchen,
   onOpenFloor,
@@ -126,6 +127,7 @@ export function CartPanel({
   persistedLineIds?: string[]
   canSaveOpenOrder?: boolean
   hasUnsentItems?: boolean
+  kitchenEnabled?: boolean
   onSaveOpenOrder?: () => void
   onSendKitchen?: () => void
   onOpenFloor?: () => void
@@ -255,6 +257,7 @@ export function CartPanel({
         isOpenOrder={isOpenOrder}
         canSaveOpenOrder={canSaveOpenOrder}
         hasUnsentItems={hasUnsentItems}
+        kitchenEnabled={kitchenEnabled}
         onSaveOpenOrder={onSaveOpenOrder}
         onSendKitchen={onSendKitchen}
         onOpenFloor={onOpenFloor}

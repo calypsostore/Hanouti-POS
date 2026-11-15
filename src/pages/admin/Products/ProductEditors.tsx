@@ -9,11 +9,13 @@ import { ProductOptionsEditor } from './ProductOptionsEditor'
 export function ProductEditor({
   product,
   categories,
+  stations,
   onClose,
   onSave,
 }: {
   product?: Product
   categories: Category[]
+  stations: Array<{ id: string; name: string }> | []
   onClose: () => void
   onSave: (data: Omit<Product, 'id' | 'storeId'>) => void
 }) {
@@ -22,6 +24,7 @@ export function ProductEditor({
   const [iconColor, setIconColor] = useState(product?.iconColor ?? 'amber')
   const [image, setImage] = useState(product?.image)
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? categories[0]?.id ?? '')
+  const [stationId, setStationId] = useState(product?.stationId ?? '')
   const [price, setPrice] = useState(String(product?.price ?? ''))
   const [cost, setCost] = useState(String(product?.cost ?? ''))
   const [trackStock, setTrackStock] = useState(product?.trackStock ?? false)
@@ -64,6 +67,7 @@ export function ProductEditor({
                   iconColor,
                   image,
                   categoryId,
+                  stationId: stationId || undefined,
                   price: priceNum,
                   cost: costNum,
                   trackStock,
@@ -103,6 +107,18 @@ export function ProductEditor({
               ))}
             </Select>
           </Field>
+          {stations.length > 0 && (
+            <Field label="Station" className="sm:col-span-2">
+              <Select value={stationId} onChange={(e) => setStationId(e.target.value)}>
+                <option value="">No station</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Selling price (DT)">
             <Input type="number" min={0} step={0.1} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.000" className="tabular" />
           </Field>
@@ -160,16 +176,19 @@ export function ProductEditor({
 
 export function CategoryEditor({
   category,
+  stations,
   onClose,
   onSave,
 }: {
   category?: Category
+  stations: Array<{ id: string; name: string }> | []
   onClose: () => void
-  onSave: (data: Pick<Category, 'name' | 'icon' | 'iconColor'>) => void
+  onSave: (data: Pick<Category, 'name' | 'icon' | 'iconColor' | 'stationId'>) => void
 }) {
   const [name, setName] = useState(category?.name ?? '')
   const [icon, setIcon] = useState(category?.icon ?? 'Utensils')
   const [iconColor, setIconColor] = useState(category?.iconColor ?? 'slate')
+  const [stationId, setStationId] = useState(category?.stationId ?? '')
 
   return (
     <Modal
@@ -180,7 +199,7 @@ export function CategoryEditor({
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), icon, iconColor })}>
+          <Button disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), icon, iconColor, stationId: stationId || undefined })}>
             {category ? 'Save' : 'Create category'}
           </Button>
         </div>
@@ -194,6 +213,18 @@ export function CategoryEditor({
           <span className="mb-1.5 block text-[12.5px] font-semibold">Icon</span>
           <IconPicker value={icon} color={iconColor} onChange={setIcon} onColorChange={setIconColor} />
         </div>
+        {stations.length > 0 && (
+          <Field label="Station">
+            <Select value={stationId} onChange={(e) => setStationId(e.target.value)}>
+              <option value="">No station</option>
+              {stations.map((station) => (
+                <option key={station.id} value={station.id}>
+                  {station.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
     </Modal>
   )

@@ -180,7 +180,7 @@ export interface AppContextValue {
   openRegister: (storeId: string, openingCash: number) => Result
   closeRegister: (sessionId: string, countedCash: number, note?: string) => Result
   settleCredit: (customerId: string, amount: number, method: 'cash' | 'card', note?: string) => Result
-  addCategory: (storeId: string, data: Pick<Category, 'name' | 'icon' | 'iconColor'>) => Result
+  addCategory: (storeId: string, data: Pick<Category, 'name' | 'icon' | 'iconColor' | 'stationId'>) => Result
   updateCategory: (id: string, patch: Partial<Category>) => Result
   deleteCategory: (id: string) => Result
   addProduct: (storeId: string, data: Omit<Product, 'id' | 'storeId'>) => Result

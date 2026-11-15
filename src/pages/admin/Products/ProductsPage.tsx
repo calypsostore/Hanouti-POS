@@ -25,6 +25,7 @@ export default function ProductsPage() {
   if (!store) return null
 
   const categories = db.categories.filter((c) => c.storeId === store.id).sort((a, b) => a.sort - b.sort)
+  const stations = db.stations.filter((station) => station.storeId === store.id).sort((a, b) => a.sort - b.sort)
   const products = db.products.filter((p) => p.storeId === store.id)
   const filtered = products
     .filter((p) => categoryFilter === 'all' || p.categoryId === categoryFilter)
@@ -94,6 +95,7 @@ export default function ProductsPage() {
           key={productEditor.product?.id ?? 'new'}
           product={productEditor.product}
           categories={categories}
+          stations={stations}
           onClose={() => setProductEditor({ open: false })}
           onSave={(data) => {
             if (productEditor.product) {
@@ -120,6 +122,7 @@ export default function ProductsPage() {
         <CategoryEditor
           key={categoryEditor.category?.id ?? 'new'}
           category={categoryEditor.category}
+          stations={stations}
           onClose={() => setCategoryEditor({ open: false })}
           onSave={(data) => {
             if (categoryEditor.category) {

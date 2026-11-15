@@ -219,12 +219,25 @@ export interface User {
   }
 }
 
+export interface Station {
+  id: string
+  storeId: string
+  name: string
+  icon: IconName
+  color: IconColor
+  printerId?: string
+  screen: boolean
+  active: boolean
+  sort: number
+}
+
 export interface Category {
   id: string
   storeId: string
   name: string
   icon: IconName
   iconColor: IconColor
+  stationId?: string
   sort: number
 }
 
@@ -346,6 +359,7 @@ export interface Product {
   id: string
   storeId: string
   categoryId: string
+  stationId?: string
   name: string
   icon: IconName
   iconColor: IconColor
@@ -684,6 +698,7 @@ export interface AuditLog {
 export interface Database {
   stores: Store[]
   users: User[]
+  stations: Station[]
   categories: Category[]
   sections: TableSection[]
   tables: DiningTable[]

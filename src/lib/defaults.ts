@@ -1,4 +1,4 @@
-import type { Capability, PayrollSettings, PrinterSettings, Role, User } from '../types'
+import type { Capability, PayrollSettings, PrinterSettings, Role, StoreSettings, User } from '../types'
 import { MANAGER_DEFAULT_PERMISSIONS } from './permissions'
 import { round } from './pricing-utils'
 import { isValidUsername, normalizeUsername } from './staff'
@@ -11,6 +11,9 @@ export const DEFAULT_PRINTER: PrinterSettings = {
   baudRate: 9600,
   kitchenTicket: false,
 }
+
+export const preparationTicketsEnabled = (settings: Pick<StoreSettings, 'features' | 'printer'>): boolean =>
+  Boolean(settings.features.kitchenScreen || settings.printer.kitchenTicket)
 
 export const DEFAULT_PAYROLL_SETTINGS = {
   workingDaysPerMonth: 26,

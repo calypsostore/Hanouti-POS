@@ -5,6 +5,7 @@ import type {
   Database,
   DiningTable,
   Expense,
+  IconColor,
   IconName,
   InventoryItem,
   LedgerEntry,
@@ -20,6 +21,7 @@ import type {
   StockMovement,
   Store,
   StoreSettings,
+  Station,
   Supplier,
   TableSection,
   User,
@@ -548,6 +550,7 @@ const expenseCatalog: Array<[string, number, string]> = [
 ]
 
 export function buildSeed(): Database {
+  const stations: Station[] = []
   const categories: Category[] = []
   const products: Product[] = []
   const customers: Customer[] = []
@@ -666,8 +669,33 @@ export function buildSeed(): Database {
 
   for (const store of stores) {
     const template = businessTemplate(store.businessType)
+    const stationDefaults: Array<{ name: string; icon: IconName; color: IconColor; screen: boolean; active: boolean }> = [
+      { name: 'Counter', icon: 'Coffee', color: 'amber', screen: false, active: true },
+      { name: 'Kitchen', icon: 'Utensils', color: 'rose', screen: true, active: true },
+      { name: 'Bar', icon: 'CupSoda', color: 'blue', screen: true, active: true },
+    ]
+    const storeStations = stationDefaults.map((station, index) => {
+      const item: Station = {
+        id: `sta_${store.id}_${index}`,
+        storeId: store.id,
+        name: station.name,
+        icon: station.icon,
+        color: station.color,
+        screen: station.screen,
+        active: station.active,
+        sort: index,
+      }
+      stations.push(item)
+      return item
+    })
     const cats = template.categories.map((c, i) => {
-      const cat: Category = { ...c, id: `cat_${store.id}_${i}`, storeId: store.id, sort: i }
+      const cat: Category = {
+        ...c,
+        id: `cat_${store.id}_${i}`,
+        storeId: store.id,
+        stationId: storeStations[i % storeStations.length]?.id,
+        sort: i,
+      }
       categories.push(cat)
       return cat
     })
@@ -680,6 +708,7 @@ export function buildSeed(): Database {
         id: `prd_${store.id}_${i}`,
         storeId: store.id,
         categoryId: cats[catIdx].id,
+        stationId: cats[catIdx].stationId,
         name,
         icon,
         iconColor: cats[catIdx].iconColor,
@@ -1035,6 +1064,7 @@ export function buildSeed(): Database {
   const database: Database = {
     stores,
     users,
+    stations,
     categories,
     sections,
     tables,

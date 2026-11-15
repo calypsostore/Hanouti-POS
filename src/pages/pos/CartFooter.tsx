@@ -18,6 +18,7 @@ export function CartFooter({
   isOpenOrder,
   canSaveOpenOrder,
   hasUnsentItems,
+  kitchenEnabled,
   onSaveOpenOrder,
   onSendKitchen,
   onOpenFloor,
@@ -37,6 +38,7 @@ export function CartFooter({
   isOpenOrder?: boolean
   canSaveOpenOrder?: boolean
   hasUnsentItems?: boolean
+  kitchenEnabled?: boolean
   onSaveOpenOrder?: () => void
   onSendKitchen?: () => void
   onOpenFloor?: () => void
@@ -86,14 +88,18 @@ export function CartFooter({
       </div>
 
       {isOpenOrder && (
-        <div className="grid shrink-0 grid-cols-2 gap-2 py-2">
-          <Button variant="secondary" className="w-full" disabled={!canSaveOpenOrder} onClick={onSaveOpenOrder}>
-            Save items
-          </Button>
-          <Button variant="secondary" className="w-full" disabled={!hasUnsentItems} onClick={onSendKitchen}>
-            Send to kitchen
-          </Button>
-          <Button variant="ghost" className="col-span-2 w-full" onClick={onOpenFloor}>Back to tables</Button>
+        <div className="grid shrink-0 gap-2 py-2">
+          {kitchenEnabled && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" className="w-full" disabled={!canSaveOpenOrder} onClick={onSaveOpenOrder}>
+                Save items
+              </Button>
+              <Button variant="secondary" className="w-full" disabled={!hasUnsentItems} onClick={onSendKitchen}>
+                Send to kitchen
+              </Button>
+            </div>
+          )}
+          <Button variant="ghost" className="w-full" onClick={onOpenFloor}>Back to tables</Button>
         </div>
       )}
 

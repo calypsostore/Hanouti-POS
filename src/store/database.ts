@@ -3,7 +3,7 @@ import type {
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
   ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
-  SaleUnit, Shift, StockMovement,
+  SaleUnit, Shift, Station, StockMovement,
   Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
@@ -15,10 +15,10 @@ import { isValidUsername } from '../lib/staff'
 import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 
-export const DB_KEY = '7anouti.db.v25'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v26'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -318,6 +318,11 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           ? s.businessType
           : seed.stores.find((seedStore) => seedStore.id === s.id)?.businessType ?? 'cafe'
         const template = businessTemplate(businessType)
+        const legacyKitchenScreen = isRecord(s.settings.features) && typeof s.settings.features.kitchenScreen === 'boolean'
+          ? s.settings.features.kitchenScreen
+          : isRecord(s.settings.printer) && typeof s.settings.printer.kitchenTicket === 'boolean'
+            ? s.settings.printer.kitchenTicket
+            : template.features.kitchenScreen
         return ({
         ...seed.stores[0],
         ...withoutLegacyEmoji(s),
@@ -341,8 +346,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
               ? s.settings.features.tables : template.features.tables,
             delivery: isRecord(s.settings.features) && typeof s.settings.features.delivery === 'boolean'
               ? s.settings.features.delivery : false,
-            kitchenScreen: isRecord(s.settings.features) && typeof s.settings.features.kitchenScreen === 'boolean'
-              ? s.settings.features.kitchenScreen : template.features.kitchenScreen,
+            kitchenScreen: legacyKitchenScreen,
             barcode: isRecord(s.settings.features) && typeof s.settings.features.barcode === 'boolean'
               ? s.settings.features.barcode : template.features.barcode,
             weightItems: isRecord(s.settings.features) && typeof s.settings.features.weightItems === 'boolean'
@@ -375,11 +379,14 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           colorMode: s.settings.colorMode === 'dark' || s.settings.colorMode === 'light' || s.settings.colorMode === 'system'
             ? s.settings.colorMode
             : 'system' as const,
-          printer: normalizePrinter(
-            isRecord(s.settings) && isRecord(s.settings.printer)
+          printer: normalizePrinter({
+            ...(isRecord(s.settings) && isRecord(s.settings.printer)
               ? s.settings.printer as StoreSettings['printer']
-              : undefined,
-          ),
+              : {}),
+            kitchenTicket: isRecord(s.settings.printer) && typeof s.settings.printer.kitchenTicket === 'boolean'
+              ? Boolean(s.settings.printer.kitchenTicket || legacyKitchenScreen)
+              : Boolean(legacyKitchenScreen),
+          }),
           payroll: normalizePayrollSettings(
             isRecord(s.settings.payroll) ? s.settings.payroll as Partial<StoreSettings['payroll']> : undefined,
           ),
@@ -893,15 +900,33 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     ) ? payment.shiftId : sessionForTimestamp(payment.storeId, payment.createdAt)?.id,
   }))
 
+  const stations = collection<Station>('stations', (item): item is Station =>
+    hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string' &&
+    typeof item.active === 'boolean' && isFiniteNumber(item.sort),
+  ).map((station) => ({
+    ...withoutLegacyEmoji(station),
+    name: station.name.trim().slice(0, 80),
+    icon: isIconName(station.icon) ? station.icon : 'Utensils',
+    color: isIconColor(station.color) ? station.color : 'amber',
+    printerId: typeof station.printerId === 'string' ? station.printerId : undefined,
+    screen: station.screen === true,
+    active: station.active,
+    sort: isFiniteNumber(station.sort) ? station.sort : 0,
+  })).filter((station) => stores.some((store) => store.id === station.storeId) && station.name.length > 0)
+  const validStationIds = new Set(stations.map((station) => station.id))
   return {
     stores,
     users,
+    stations,
     categories: collection<Category>('categories', (item): item is Category =>
       hasId(item) && typeof item.storeId === 'string' && typeof item.name === 'string',
     ).map((category) => ({
       ...withoutLegacyEmoji(category),
       icon: isIconName(category.icon) ? category.icon : iconFromLegacyEmoji(legacyEmoji(category), 'Store'),
       iconColor: isIconColor(category.iconColor) ? category.iconColor : 'amber',
+      stationId: typeof category.stationId === 'string' && validStationIds.has(category.stationId)
+        ? category.stationId
+        : undefined,
       sort: isFiniteNumber(category.sort) ? category.sort : 0,
     })),
     sections: allSections,
@@ -920,6 +945,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       ...withoutLegacyEmoji(product),
       icon: isIconName(product.icon) ? product.icon : iconFromLegacyEmoji(legacyEmoji(product), 'Store'),
       iconColor: isIconColor(product.iconColor) ? product.iconColor : 'amber',
+      stationId: typeof product.stationId === 'string' && validStationIds.has(product.stationId)
+        ? product.stationId
+        : undefined,
       image: typeof product.image === 'string' && product.image.length <= 307200 ? product.image : undefined,
       trackStock: Boolean(product.trackStock),
       active: product.active !== false,
@@ -955,7 +983,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
 }
 
 const databaseCollectionKeys: Array<keyof Database> = [
-  'stores', 'users', 'categories', 'tables', 'inventoryItems', 'stockMovements',
+  'stores', 'users', 'stations', 'categories', 'tables', 'inventoryItems', 'stockMovements',
   'suppliers', 'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
   'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'auditLogs',
 ]

@@ -9,6 +9,7 @@ import { buildKitchenLines, buildReceiptLines, linesToEscpos } from '../../lib/e
 import { onPrinterState, printBytes, printerState } from '../../lib/printer'
 import { Button, Modal } from '../../components/ui'
 import { fmtTime } from '../../lib/utils'
+import { preparationTicketsEnabled } from '../../lib/defaults'
 
 export function ReceiptModal({
   order,
@@ -60,7 +61,7 @@ export function ReceiptModal({
 
   if (!order || !store) return null
   const cfg = store.settings.printer
-  const kitchenWanted = cfg.enabled && cfg.kitchenTicket && order.channel === 'dine-in'
+  const kitchenWanted = cfg.enabled && order.channel === 'dine-in' && preparationTicketsEnabled(store.settings)
 
   const openPrintDialog = (kind: 'receipt' | 'kitchen') => {
     const lines = kind === 'kitchen' ? buildKitchenLines(order, store) : buildReceiptLines(order, store, { customerName })

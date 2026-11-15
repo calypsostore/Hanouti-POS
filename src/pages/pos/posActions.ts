@@ -2,6 +2,7 @@ import type { OpenOrder, Order, OrderChannel, OrderItem, PaymentMethod, Store } 
 import type { AppContextValue } from '../../store/types'
 import type { PrintJob } from '../../components/PrintPreview'
 import { buildOpenKitchenLines, linesToEscpos } from '../../lib/escpos'
+import { preparationTicketsEnabled } from '../../lib/defaults'
 import { money } from '../../lib/utils'
 
 type Props = {
@@ -204,6 +205,10 @@ export const createPOSActions = (props: Props) => {
 
   const sendKitchenItems = () => {
     if (!props.openOrder) return
+    if (!preparationTicketsEnabled(props.store.settings)) {
+      props.push('Preparation tickets are disabled for this store.', 'error')
+      return
+    }
     const result = props.sendToKitchen(
       props.openOrder.id,
       props.cart,
