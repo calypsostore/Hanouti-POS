@@ -24,8 +24,8 @@ const DATABASE_COLLECTIONS: Array<keyof Database> = [
   'stores', 'users', 'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs',
   'categories', 'sections', 'tables', 'inventoryItems', 'stockMovements', 'suppliers',
   'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders',
-  'ledger', 'expenses', 'attendance', 'advances', 'payrolls', 'shifts',
-  'registerSessions', 'auditLogs',
+  'ledger', 'expenses',   'attendance', 'advances', 'payrolls', 'shifts',
+  'registerSessions', 'registerDayReports', 'auditLogs',
 ]
 
 export type HubSnapshot = {

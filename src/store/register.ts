@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { CashDifferenceResolution, RegisterSession } from '../types'
+import type { CashDifferenceResolution, RegisterDayReport, RegisterSession } from '../types'
 import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
@@ -22,6 +22,11 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       const actor = actorResult.actor
       if (!can(actor, 'openShift')) {
         return { ok: false, error: 'You do not have permission to open a shift.' }
+      }
+      if (dbRef.current.registerDayReports.some((report) =>
+        report.storeId === storeId && report.date === dateKey(new Date()),
+      )) {
+        return { ok: false, error: 'The store day is closed. Open a new shift on the next business day.' }
       }
       if (!Number.isFinite(openingCash) || openingCash < 0) {
         return { ok: false, error: 'Enter a valid opening cash amount.' }
@@ -86,8 +91,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         return { ok: false, error: 'Enter the cash you counted in the drawer.' }
       }
 
-      // The snapshot is computed once from persisted data and frozen: the
-      // stored Z report never changes even if later orders are voided.
+      // The closed shift snapshot stays fixed; the store-day Z is closed separately by an admin.
       const closedAt = new Date().toISOString()
       const snapshot = computeRegisterTotals(
         current,
@@ -116,9 +120,6 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
             createdAt: new Date().toISOString(),
           }
         : undefined
-      const zReportNumber = current.registerSessions
-        .filter((candidate) => candidate.storeId === session.storeId)
-        .reduce((max, candidate) => Math.max(max, candidate.zReportNumber ?? 0), 0) + 1
       const reportDetails = registerReportDetails(current, session, closedAt)
       commitDb((prev) => {
         const closed = addLog({
@@ -129,6 +130,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
             ? {
                 ...s,
                 status: 'closed' as const,
+                closeType: 'shift' as const,
                 closedAt,
                 closedById: actor.id,
                 closedByName: actor.name,
@@ -137,7 +139,6 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
                 leaveFloatForNextShift: leaveFloatForNextShift === true,
                 note: [forceReason?.trim(), note?.trim()].filter(Boolean).join(' · ') || undefined,
                 snapshot,
-                zReportNumber,
                 reportDetails,
               }
             : s,
@@ -165,6 +166,86 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     },
     [commitDb, dbRef, requireActor],
   )
+
+  const closeRegisterDay = useCallback<AppContextValue['closeRegisterDay']>((storeId, countedCash, note) => {
+    const actorResult = requireActor(storeId)
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    if (actor.role !== 'admin') return { ok: false, error: 'Only the owner can close the store-day Z report.' }
+    if (!Number.isFinite(countedCash) || countedCash < 0) {
+      return { ok: false, error: 'Enter the cash counted at day end.' }
+    }
+
+    const current = dbRef.current
+    const day = dateKey(new Date())
+    if (current.registerDayReports.some((report) => report.storeId === storeId && report.date === day)) {
+      return { ok: false, error: 'The store-day Z report has already been closed.' }
+    }
+    if (current.registerSessions.some((session) => session.storeId === storeId && session.status === 'open')) {
+      return { ok: false, error: 'Close or hand over every staff shift before closing the day.' }
+    }
+    const daySessions = current.registerSessions.filter((session) =>
+      session.storeId === storeId && dateKey(session.openedAt) === day,
+    )
+    if (!daySessions.length) return { ok: false, error: 'There are no register shifts to close for today.' }
+
+    const closedAt = new Date().toISOString()
+    const startISO = new Date(`${day}T00:00:00`).toISOString()
+    const firstShift = daySessions.reduce((first, session) =>
+      session.openedAt < first.openedAt ? session : first,
+    )
+    const openingCash = round(firstShift.openingFloat ?? firstShift.openingCash)
+    const daySession: RegisterSession = {
+      id: '',
+      storeId,
+      status: 'open',
+      openedAt: startISO,
+      openedById: actor.id,
+      openedByName: actor.name,
+      openingCash,
+      openingFloat: openingCash,
+    }
+    const snapshot = computeRegisterTotals(current, storeId, startISO, closedAt, openingCash)
+    const reportDetails = registerReportDetails(current, daySession, closedAt)
+    const counted = round(countedCash)
+    const store = current.stores.find((candidate) => candidate.id === storeId)
+    const difference = store?.settings.posMode === 'quick'
+      ? 0
+      : shiftCashDifference(counted, snapshot.expectedCash)
+    const zReportNumber = Math.max(
+      ...current.registerDayReports.filter((report) => report.storeId === storeId).map((report) => report.zReportNumber),
+      ...current.registerSessions.filter((session) => session.storeId === storeId)
+        .map((session) => session.zReportNumber ?? 0),
+      0,
+    ) + 1
+    const report: RegisterDayReport = {
+      id: uid('regday'),
+      storeId,
+      date: day,
+      closedAt,
+      closedById: actor.id,
+      closedByName: actor.name,
+      zReportNumber,
+      openingCash,
+      countedCash: counted,
+      difference,
+      note: note?.trim().slice(0, 500) || undefined,
+      snapshot,
+      reportDetails,
+    }
+    commitDb((prev) => addLog({
+      ...prev,
+      registerDayReports: [...prev.registerDayReports, report],
+    }, actor, {
+      storeId,
+      action: 'register_closed',
+      entity: 'register',
+      entityId: report.id,
+      summary: `Closed store-day Z-${String(zReportNumber).padStart(6, '0')} for ${day}`,
+      after: { date: day, countedCash: counted, difference, expectedCash: snapshot.expectedCash },
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
 
   const resolveCashDifference = useCallback<AppContextValue['resolveCashDifference']>((
     id,
@@ -339,6 +420,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
   return {
     openRegister,
     closeRegister,
+    closeRegisterDay,
     settleCredit,
     resolveCashDifference,
     voidCashDifference,

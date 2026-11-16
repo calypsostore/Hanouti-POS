@@ -1129,6 +1129,7 @@ export function buildSeed(): Database {
     payrolls: [],
     shifts,
     registerSessions,
+    registerDayReports: [],
     cashDifferences: [],
     auditLogs: [],
   }

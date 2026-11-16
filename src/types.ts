@@ -933,6 +933,7 @@ export interface RegisterSession {
   id: string
   storeId: string
   status: 'open' | 'closed'
+  closeType?: 'shift'
   openedAt: string
   openedById: string
   openedByName: string
@@ -950,6 +951,22 @@ export interface RegisterSession {
   snapshot?: RegisterSnapshot
   zReportNumber?: number
   reportDetails?: RegisterReportDetails
+}
+
+export interface RegisterDayReport {
+  id: string
+  storeId: string
+  date: string
+  closedAt: string
+  closedById: string
+  closedByName: string
+  zReportNumber: number
+  openingCash: number
+  countedCash: number
+  difference: number
+  note?: string
+  snapshot: RegisterSnapshot
+  reportDetails: RegisterReportDetails
 }
 
 export type CashDifferenceStatus = 'open' | 'settled' | 'voided' | 'archived'
@@ -1013,6 +1030,7 @@ export interface Database {
   payrolls: Payroll[]
   shifts: Shift[]
   registerSessions: RegisterSession[]
+  registerDayReports: RegisterDayReport[]
   cashDifferences: CashDifference[]
   auditLogs: AuditLog[]
 }

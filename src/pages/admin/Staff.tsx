@@ -7,6 +7,7 @@ import {
   Crown,
   KeyRound,
   Pencil,
+  Search,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -87,6 +88,9 @@ export default function Staff() {
   const [adminPin, setAdminPin] = useState('')
   const [adminPinConfirmation, setAdminPinConfirmation] = useState('')
   const [savingAdminPin, setSavingAdminPin] = useState(false)
+  const [staffSearch, setStaffSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager' | 'staff'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
   if (!user) return null
   const canManageStaff = can(user, 'manageStaff')
@@ -97,6 +101,15 @@ export default function Staff() {
   if (!store) return null
 
   const team = db.users.filter((u) => u.storeId === store.id)
+  const filteredTeam = team.filter((member) => {
+    const query = staffSearch.trim().toLocaleLowerCase()
+    const matchesSearch = !query || [member.name, member.username, member.email]
+      .some((value) => value?.toLocaleLowerCase().includes(query))
+    const matchesRole = roleFilter === 'all' || member.role === roleFilter
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'active' ? member.active : !member.active)
+    return matchesSearch && matchesRole && matchesStatus
+  })
 
   return (
     <div className="space-y-5">
@@ -235,8 +248,29 @@ export default function Staff() {
           <EmptyState icon={<Users className="h-5 w-5" />} title="No team members yet" />
         </Card>
       ) : (
+        <>
+        <div className="grid gap-2 rounded-2xl border border-line bg-surface p-3 sm:grid-cols-[1fr_auto_auto]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input value={staffSearch} onChange={(event) => setStaffSearch(event.target.value)} placeholder="Search name, username, or email" className="pl-9" />
+          </div>
+          <Select aria-label="Filter team by role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
+            <option value="all">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="staff">Staff</option>
+          </Select>
+          <Select aria-label="Filter team by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </Select>
+        </div>
+        {filteredTeam.length === 0 ? (
+          <Card><EmptyState icon={<Search className="h-5 w-5" />} title="No matching team members" description="Change or clear the search and filters." /></Card>
+        ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {team.map((m) => {
+          {filteredTeam.map((m) => {
             const detailsAvailable = m.role === 'staff'
             return (
               <Card
@@ -355,6 +389,8 @@ export default function Staff() {
             )
           })}
         </div>
+        )}
+        </>
       )}
 
       <Card className="flex items-start gap-3 border-accent-foreground/20 bg-accent-50/60 p-4">

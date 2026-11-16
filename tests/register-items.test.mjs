@@ -213,6 +213,40 @@ test('register totals follow the assigned shift instead of an overlapping store 
   assert.equal(totals.expectedCash, 105)
 })
 
+test('store-day totals include sales assigned to every staff shift', () => {
+  const dayOrders = [
+    order('day-shift-one', {
+      total: 15,
+      shiftId: 'shift-one',
+      staffId: 'staff-1',
+      items: [item('coffee', 'Coffee', { qty: 3 })],
+    }),
+    order('day-shift-two', {
+      total: 25,
+      shiftId: 'shift-two',
+      staffId: 'staff-2',
+      staffName: 'Staff Two',
+      items: [item('tea', 'Tea', { qty: 5 })],
+    }),
+  ]
+  const totals = computeRegisterTotals({
+    orders: dayOrders,
+    ledger: [],
+    expenses: [],
+    purchasePayments: [],
+  }, 'store-1', start, end, 100)
+  const items = registerSessionItems({
+    ...db,
+    orders: dayOrders,
+  }, { id: '', storeId: 'store-1', openedAt: start }, end)
+
+  assert.equal(totals.salesTotal, 40)
+  assert.equal(totals.ordersCount, 2)
+  assert.equal(totals.expectedCash, 140)
+  assert.equal(items.itemsSold.find((row) => row.productId === 'coffee')?.qty, 3)
+  assert.equal(items.itemsSold.find((row) => row.productId === 'tea')?.qty, 5)
+})
+
 test('coffee shift report compares yield estimate, recipe use, and tracked stock remainder', () => {
   const session = {
     id: 'session-1',

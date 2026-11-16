@@ -46,6 +46,10 @@ const PRIVATE_COLLECTIONS: Record<string, string> = {
   ledger: 'ledger',
 }
 const ORDER_COLLECTIONS = new Set(['orders', 'openOrders', 'orderItems', 'payments'])
+const localDateKey = (value: string): string => {
+  const date = new Date(value)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 function isAvailabilityOnlyProductChange(
   previous: unknown,
@@ -709,14 +713,61 @@ export async function createHubServer(): Promise<HubRuntime> {
           if (previous.status === 'closed' && !isDeepStrictEqual(previous, doc)) {
             throw Object.assign(new Error('Closed register sessions are immutable.'), { status: 403 })
           }
+          if (previous.status === 'open' && doc.status === 'closed' &&
+            (doc.closeType !== 'shift' || doc.zReportNumber !== undefined)) {
+            throw new Error('Staff shift closeouts must save an X report; only the owner closes the day Z.')
+          }
         } else if (actor.role !== 'admin' &&
           (doc.staffId !== actor.userId || doc.openedById !== actor.userId)) {
           throw Object.assign(new Error('New register sessions must belong to the authenticated staff member.'), { status: 403 })
+        } else if (!record(previous)) {
+          const openedAt = doc.openedAt
+          if (typeof openedAt !== 'string' || !Number.isFinite(Date.parse(openedAt))) {
+            throw new Error('Register shift opening time is invalid.')
+          }
+          if (Object.values(validationState.collections.registerDayReports ?? {}).some((report) =>
+            report.storeId === actor.storeId && report.date === localDateKey(openedAt),
+          )) {
+            throw new Error('The store day is closed. Open a new shift on the next business day.')
+          }
         }
         const hasCashCount = doc.countedCash !== undefined || doc.difference !== undefined
         const isClosing = doc.status === 'closed' || doc.closedAt !== undefined || hasCashCount
         if (isClosing) requireCapability(actor, 'closeShift')
         else requireCapability(actor, 'openShift')
+      }
+      if (operation.collection === 'registerDayReports') {
+        const previous = validationState.collections.registerDayReports?.[operation.id]
+        if (actor.role !== 'admin') {
+          throw Object.assign(new Error('Only the owner can close the store-day Z report.'), { status: 403 })
+        }
+        if (operation.kind === 'delete' || record(previous)) {
+          throw Object.assign(new Error('Store-day Z reports are immutable and cannot be deleted.'), { status: 403 })
+        }
+        const report = operation.document
+        if (!record(report) || report.closedById !== actor.userId ||
+          typeof report.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(report.date) ||
+          typeof report.closedByName !== 'string' ||
+          typeof report.closedAt !== 'string' || !Number.isFinite(Date.parse(report.closedAt)) ||
+          !Number.isSafeInteger(report.zReportNumber) || Number(report.zReportNumber) < 1 ||
+          !Number.isFinite(report.openingCash) || Number(report.openingCash) < 0 ||
+          !Number.isFinite(report.countedCash) || Number(report.countedCash) < 0 ||
+          !Number.isFinite(report.difference) || !record(report.snapshot) || !record(report.reportDetails)) {
+          throw new Error('Store-day Z report details are invalid.')
+        }
+        if (Object.values(validationState.collections.registerSessions ?? {}).some((session) =>
+          session.storeId === actor.storeId && session.status === 'open',
+        )) {
+          throw new Error('All staff shifts must be closed before the store-day Z report.')
+        }
+        if (Object.values(validationState.collections.registerDayReports ?? {}).some((dayReport) =>
+          dayReport.storeId === actor.storeId &&
+            (dayReport.date === report.date || dayReport.zReportNumber === report.zReportNumber),
+        ) || Object.values(validationState.collections.registerSessions ?? {}).some((session) =>
+          session.storeId === actor.storeId && session.zReportNumber === report.zReportNumber,
+        )) {
+          throw new Error('The store-day Z report date or number has already been used.')
+        }
       }
       if (operation.collection === 'orders' && operation.kind === 'put' &&
         record(operation.document) && (operation.document.status === 'void' || operation.document.voidedAt)) {
@@ -1132,6 +1183,7 @@ export async function createHubServer(): Promise<HubRuntime> {
           if (name !== 'stores') {
             if (name === 'shifts' && !canManageSchedules(actor)) continue
             if (name === 'registerSessions' && !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
+            if (name === 'registerDayReports' && actor.role !== 'admin') continue
             if (permission === 'ledger') {
               if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
             } else if (permission && !can(actor, permission)) continue

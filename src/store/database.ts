@@ -2,7 +2,7 @@ import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, CashDifference,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
-  ProductVariant, Purchase, PurchasePayment, RegisterItemRow, RegisterReportDetails, RegisterSession,
+  ProductVariant, Purchase, PurchasePayment, RegisterDayReport, RegisterItemRow, RegisterReportDetails, RegisterSession,
   SaleUnit, Shift, Station, StationDevice, StockMovement, Printer, PrintJob, PrintRoute,
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v36'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v37'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -1076,6 +1076,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     isFiniteNumber(item.openingCash),
   ).map((session) => ({
     ...session,
+    closeType: session.closeType === 'shift' ? 'shift' as const : undefined,
     snapshot: isRecord(session.snapshot) &&
       [16, 18].includes(Object.values(session.snapshot).length) &&
       Object.values(session.snapshot).every(isFiniteNumber)
@@ -1100,7 +1101,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     }
   }
   for (const session of orderedClosedSessions) {
-    if (reportNumbers.has(session)) continue
+    if (reportNumbers.has(session) || session.closeType === 'shift') continue
     const used = usedReportNumbers.get(session.storeId) ?? new Set<number>()
     let number = 1
     while (used.has(number)) number += 1
@@ -1131,6 +1132,26 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         zReportNumber: reportNumbers.get(session),
       }
     })
+  const registerDayReports = collection<RegisterDayReport>('registerDayReports', (item): item is RegisterDayReport =>
+    hasId(item) && typeof item.storeId === 'string' &&
+    typeof item.date === 'string' && isDateKey(item.date) &&
+    typeof item.closedAt === 'string' && Number.isFinite(Date.parse(item.closedAt)) &&
+    typeof item.closedById === 'string' && typeof item.closedByName === 'string' &&
+    Number.isSafeInteger(item.zReportNumber) && Number(item.zReportNumber) > 0 &&
+    isFiniteNumber(item.openingCash) && item.openingCash >= 0 &&
+    isFiniteNumber(item.countedCash) && item.countedCash >= 0 &&
+    isFiniteNumber(item.difference) &&
+    isRecord(item.snapshot) && Object.values(item.snapshot).every(isFiniteNumber) &&
+    normalizeReportDetails(item.reportDetails) !== undefined,
+  ).map((report) => ({
+    ...report,
+    snapshot: report.snapshot as RegisterDayReport['snapshot'],
+    reportDetails: normalizeReportDetails(report.reportDetails) as RegisterDayReport['reportDetails'],
+    note: typeof report.note === 'string' ? report.note.slice(0, 500) : undefined,
+  })).filter((report) =>
+    stores.some((store) => store.id === report.storeId) &&
+    users.some((actor) => actor.id === report.closedById && actor.storeId === report.storeId && actor.role === 'admin'),
+  )
   const cashDifferences = collection<CashDifference>('cashDifferences', (item): item is CashDifference =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.staffId === 'string' &&
     typeof item.shiftId === 'string' && isFiniteNumber(item.amount) && item.amount !== 0 &&
@@ -1483,6 +1504,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     payrolls,
     shifts,
     registerSessions,
+    registerDayReports,
     cashDifferences,
     auditLogs,
   }
@@ -1491,13 +1513,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
 const databaseCollectionKeys: Array<keyof Database> = [
   'stores', 'users', 'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs', 'categories', 'tables', 'inventoryItems', 'stockMovements',
   'suppliers', 'purchases', 'purchasePayments', 'products', 'customers', 'orders', 'openOrders', 'ledger', 'expenses',
-  'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'cashDifferences', 'auditLogs',
+  'attendance', 'advances', 'payrolls', 'shifts', 'registerSessions', 'registerDayReports', 'cashDifferences', 'auditLogs',
 ]
 
 export function normalizeDatabaseBackup(value: unknown, seed: Database): Database | null {
   const optionalCollections: Array<keyof Database> = [
     'stations', 'stationDevices', 'printers', 'printRoutes', 'printJobs',
-    'suppliers', 'purchases', 'purchasePayments', 'cashDifferences',
+    'suppliers', 'purchases', 'purchasePayments', 'registerDayReports', 'cashDifferences',
   ]
   if (!isRecord(value) || !databaseCollectionKeys.every((key) =>
     optionalCollections.includes(key) || Array.isArray(value[key]),

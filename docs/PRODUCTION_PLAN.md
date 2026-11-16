@@ -5,13 +5,15 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-15 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-16 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
 orders and station tickets, station-device kiosk pairing, hub sync/offline
 outbox, PWA foundation, configurable POS automation, per-staff shifts, table
-handover, and cash-difference tracking**. Closed Z reports stay frozen; the
-staff analytics and cash-difference flows are implemented in the client store.
+handover, cash-difference tracking, and owner-only store-day Z closeout**.
+Staff close their own shifts into frozen X snapshots; the owner closes one
+immutable daily Z after all shifts end. Staff analytics and cash differences
+are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
@@ -585,11 +587,16 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   means accuracy ≥98%, discounts ≤5%, voids ≤2%; Good means ≥90%, ≤10%, ≤5%;
   other results are Needs attention. Admin dashboard flags overlong shifts and
   open differences; thresholds and shift duration are configurable.
-- **X report**: a read-only interim snapshot. It never mutates or closes the
-  session. **Z report**: closing computes and saves the snapshot and report
-  detail once; duplicate closes are rejected, and reprints use the same
-  frozen figures and receipt metadata without creating a new close record.
-- X and Z use the same session-window calculation. Cash drawer expectation
+- Admin → Team supports search by name, username, or email, with role and
+  active-status filters; existing edit, deactivate, and remove controls remain
+  available on each matching profile.
+- **X report**: a read-only interim snapshot; closing a staff shift saves its
+  final X snapshot and ends only that shift. **Store-day Z**: only the owner
+  can close it, and only after every shift is closed. It aggregates all staff
+  shifts, freezes the daily totals once, rejects duplicate closes, and can be
+  reprinted from its immutable day report record.
+- Shift X uses the staff session window; day Z uses the local calendar-day
+  window and includes orders and items from every staff shift. Cash drawer expectation
   includes cash received, cash tab settlements, expenses and cash refunds;
   card sales and card tab settlements are excluded from physical cash. Sales
   exclude orders voided by the report cutoff. Refund totals include only
@@ -608,11 +615,14 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   drawer totals. Voided items are a separate list with the authorizer. The
   live X view provides search, category/quantity sorting and CSV export; its
   item rows are staff-scoped unless the user is a supervisor or admin.
-- Existing Z reports are reprinted from frozen session details where available;
+- Pre-existing per-session Z reports remain reprintable from their frozen
+  session details; new staff shifts do not receive individual Z numbers.
+  New store-day Z reports are retained separately and reprint from their frozen
+  day details.
   legacy sessions without a recorded counted-cash value display it as
   unavailable instead of assuming zero.
-- Existing closed sessions retain their frozen financial totals and receive
-  a sequential Z number during database migration. The v23 normalizer accepts
+- Existing closed sessions retain their frozen financial totals and historical
+  Z numbers. New day reports receive sequential Z numbers. The v37 normalizer accepts
   old report details without item rows; those rows are rebuilt from session
   orders at view time and marked `Rebuilt from orders`, without rewriting the
   frozen totals.
@@ -631,8 +641,10 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
 ### Phase 5 — Inventory, recipes, suppliers ⏳ partially implemented
 
 Product stock counters, inventory items/movements, supplier records, purchases,
-stock counts, and low-stock alerts are implemented. Recipe consumption per
-product and full ingredient valuation remain unimplemented.
+stock counts, and low-stock alerts are implemented. Recipe-based ingredient
+deduction on sale is available through the per-store Order rules setting.
+Purchase invoices support attached images. Full ingredient valuation and
+accounting integration remain unimplemented.
 
 ### Gérant and inventory rollout from the owner brief (2026-11-13)
 
@@ -654,11 +666,11 @@ product and full ingredient valuation remain unimplemented.
 
 #### Phases 2–6 — Inventory, purchases, recipes, daily reporting, and staff use
 
-Inventory items, stock movement actions, supplier/purchase workflows, and stock
-count/reporting basics are implemented in the app and validated by store-layer
-guards; hub validation is partial. Recipes/costing and staff-consumption
-allowances remain unimplemented. Bill images and standalone data remain
-browser-local; hub mode stores business records locally on the hub machine.
+Inventory items, stock movement actions, supplier/purchase workflows, stock
+count/reporting, recipe deduction, and staff-consumption allowances are
+implemented and validated by store-layer guards and hub order validation.
+Bill images and standalone data remain browser-local; hub mode stores business
+records locally on the hub machine.
 
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 

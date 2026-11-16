@@ -16,7 +16,7 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'viewStation', label: 'View station screens', description: 'Access kitchen and bar station boards after PIN sign-in.' },
   { key: 'managePayroll', label: 'Manage payroll', description: 'Edit attendance, advances, and payroll.' },
   { key: 'openShift', label: 'Open shifts', description: 'Start a personal cash-register shift.' },
-  { key: 'closeShift', label: 'Close shifts', description: 'Close personal shifts and print Z reports.' },
+  { key: 'closeShift', label: 'Close shifts', description: 'Close personal shifts and print frozen X reports. Store-day Z close remains owner-only.' },
   { key: 'takeOverTables', label: 'Take over tables', description: 'Accept unassigned tables from a staff handover.' },
   { key: 'forceCloseShift', label: 'Force-close shifts', description: 'Close another staff shift after entering a reason.' },
   { key: 'manageCashDifferences', label: 'Manage cash differences', description: 'Settle, void, and archive shift cash differences.' },
@@ -55,12 +55,12 @@ export default function StaffPermissionsEditor({
         <Toggle checked={permissions.credit} onChange={(value) => toggle('credit', value)} label="Charge orders to tabs" description="Can attach an order to a customer account." />
         <Toggle checked={permissions.settle} onChange={(value) => toggle('settle', value)} label="Take customer payments" description="Can settle tab balances." />
         <Toggle checked={permissions.reports} onChange={(value) => toggle('reports', value)} label="Show financial summaries" description="Displays financial totals; it does not grant access to the Reports page." />
-        <Toggle checked={permissions.register} onChange={(value) => toggle('register', value)} label="Open and close the register" description="Can open sessions, print X reports, and close with a Z report." />
+        <Toggle checked={permissions.register} onChange={(value) => toggle('register', value)} label="Use the register" description="Can open shifts, print X reports, and close personal shifts. Only the owner closes the store-day Z." />
         {role === 'staff' && (
           <>
             <Toggle checked={permissions.useStaffAllowances === true} onChange={(value) => toggle('useStaffAllowances', value)} label="Use staff items" description="Record allowed staff items during an open shift." />
             <Toggle checked={permissions.openShift === true} onChange={(value) => toggle('openShift', value)} label="Open own shift" description="Start a personal shift before taking orders." />
-            <Toggle checked={permissions.closeShift === true} onChange={(value) => toggle('closeShift', value)} label="Close own shift" description="Close personal shifts and print a Z report." />
+            <Toggle checked={permissions.closeShift === true} onChange={(value) => toggle('closeShift', value)} label="Close own shift" description="End a personal shift and save its X report; the owner closes the store-day Z." />
             <Toggle checked={permissions.takeOverTables === true} onChange={(value) => toggle('takeOverTables', value)} label="Take over tables" description="Accept unassigned tables from a staff handover." />
           </>
         )}

@@ -16,7 +16,7 @@ export function SessionHistory({
     report: RegisterItemsReport
     rebuiltFromOrders: boolean
   }
-  onPrint: (session: RegisterSession) => void
+  onPrint: (session: RegisterSession, kind: 'X' | 'Z') => void
 }) {
   return (
     <>
@@ -24,7 +24,7 @@ export function SessionHistory({
         <div className="mb-2 flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-muted" />
           <h3 className="text-[13.5px] font-bold text-ink">
-            {canSeeAll ? 'Closed sessions (Z history)' : 'Your closed shifts'}
+            {canSeeAll ? 'Closed staff shifts' : 'Your closed shifts'}
           </h3>
           <Badge tone="neutral">{closed.length}</Badge>
         </div>
@@ -32,12 +32,8 @@ export function SessionHistory({
           {closed.length === 0 ? (
             <EmptyState
               icon={<Clock className="h-5 w-5" />}
-              title={canSeeAll ? 'No closed sessions yet' : 'No closed shifts yet'}
-              description={
-                canSeeAll
-                  ? 'Z reports you close will be listed here, frozen as they were printed.'
-                  : 'Open the register and close it at the end of your shift — your Z reports will appear here.'
-              }
+              title="No closed shifts yet"
+              description="Staff can open and close their own shifts. The owner closes and freezes the store-day Z after all shifts are finished."
             />
           ) : (
             <div className="divide-y divide-line/60">
@@ -64,21 +60,32 @@ export function SessionHistory({
                       <Button
                         variant="secondary"
                         size="sm"
-                        title="Preview or reprint this frozen Z report"
-                        onClick={() => onPrint(session)}
+                        title="Preview or reprint this frozen shift X report"
+                        onClick={() => onPrint(session, 'X')}
                       >
                         <Printer className="h-3.5 w-3.5" />
-                        <span className="sm:inline">Z report</span>
+                        <span className="sm:inline">X report</span>
                       </Button>
+                      {session.zReportNumber !== undefined && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          title="Reprint this legacy frozen Z report"
+                          onClick={() => onPrint(session, 'Z')}
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          <span className="sm:inline">Z report</span>
+                        </Button>
+                      )}
                     </div>
                     <details className="basis-full">
                       <summary className="cursor-pointer text-[11px] font-semibold text-accent-foreground">
-                        Items in this Z report
+                        Items in this shift report
                       </summary>
                       <div className="mt-2">
                         <RegisterItemsTable
                           report={itemDetails.report}
-                          title="Z report item detail"
+                          title="Shift report item detail"
                           rebuiltFromOrders={itemDetails.rebuiltFromOrders}
                         />
                       </div>

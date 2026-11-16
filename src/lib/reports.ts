@@ -169,13 +169,13 @@ export const registerReportDetails = (
     session.openedAt,
     endISO,
     session.openingFloat ?? session.openingCash,
-    session.id,
+    session.id || undefined,
   )
   const refunds = db.ledger.filter((entry) =>
     entry.storeId === session.storeId &&
     entry.type === 'payment' &&
     entry.creditAdjustment === true &&
-    entry.shiftId === session.id &&
+    (!session.id || entry.shiftId === session.id) &&
     isInWindow(entry.createdAt ?? '', start, end),
   )
   const taxByRate = new Map<number | null, number>()
@@ -363,7 +363,7 @@ export const registerReportDetails = (
   const cashExpenses = sum(db.expenses
     .filter((expense) =>
       expense.storeId === session.storeId &&
-      expense.shiftId === session.id &&
+      (!session.id || expense.shiftId === session.id) &&
       (!expense.createdAt || isInWindow(expense.createdAt, start, end)),
     )
     .map((expense) => expense.amount))
@@ -371,7 +371,7 @@ export const registerReportDetails = (
     .filter((payment) =>
       payment.storeId === session.storeId &&
       payment.method === 'cash' &&
-      payment.shiftId === session.id &&
+      (!session.id || payment.shiftId === session.id) &&
       isInWindow(payment.createdAt, start, end),
     )
     .map((payment) => payment.amount))

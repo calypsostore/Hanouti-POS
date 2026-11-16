@@ -37,7 +37,7 @@ export const completedOrdersAt = (orders: Order[], end: number) => orders.filter
 
 export const ordersForRegisterSession = (
   db: Pick<Database, 'orders'>,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
+  session: Pick<RegisterSession, 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'id' | 'staffId' | 'openedById'>>,
   endISO: string,
 ) => {
   const end = Date.parse(endISO)
@@ -47,14 +47,14 @@ export const ordersForRegisterSession = (
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
     isInWindow(order.createdAt, start, end) &&
-    (ownerScoped ? orderPaidBy(order) === staffId : order.shiftId === session.id || order.shiftId === undefined) &&
+    (ownerScoped ? orderPaidBy(order) === staffId : !session.id || order.shiftId === session.id || order.shiftId === undefined) &&
     (order.status === 'completed' || order.status === 'recorded' || order.status === 'void'),
   )
 }
 
 export const voidedOrdersForRegisterSession = (
   db: Pick<Database, 'orders'>,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
+  session: Pick<RegisterSession, 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'id' | 'staffId' | 'openedById'>>,
   endISO: string,
 ) => {
   const end = Date.parse(endISO)
@@ -65,7 +65,7 @@ export const voidedOrdersForRegisterSession = (
     isInWindow(order.voidedAt, start, end) &&
     (session.staffId || session.openedById
       ? !order.voidedById || order.voidedById === (session.staffId ?? session.openedById)
-      : order.voidShiftId === session.id || order.voidShiftId === undefined),
+      : !session.id || order.voidShiftId === session.id || order.voidShiftId === undefined),
   )
 }
 
@@ -165,7 +165,7 @@ const sum = (values: number[]) => round(values.reduce((total, value) => total + 
 
 export const registerSessionItems = (
   db: ItemSource,
-  session: Pick<RegisterSession, 'id' | 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'staffId' | 'openedById'>>,
+  session: Pick<RegisterSession, 'storeId' | 'openedAt'> & Partial<Pick<RegisterSession, 'id' | 'staffId' | 'openedById'>>,
   endISO: string,
   staffId?: string,
 ): RegisterItemsReport => {
@@ -177,7 +177,7 @@ export const registerSessionItems = (
   const voided = db.orders.filter((order) =>
     order.storeId === session.storeId &&
     order.status === 'void' &&
-    (order.voidShiftId === session.id || (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))) &&
+    (!session.id || order.voidShiftId === session.id || (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))) &&
     (!session.staffId && !session.openedById || !order.voidedById ||
       order.voidedById === (session.staffId ?? session.openedById)),
   )

@@ -4,11 +4,11 @@ import { Play, Printer, Square } from 'lucide-react'
 import { Button, Field, Input, Modal, Textarea } from '../../../components/ui'
 import type { PrintJob } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
-import { registerBreakdown, registerReportDetails, sessionSnapshot } from '../../../lib/reports'
+import { computeRegisterTotals, registerBreakdown, registerReportDetails, sessionSnapshot } from '../../../lib/reports'
 import { registerSessionItems } from '../../../lib/registerItems'
 import { buildReportLines, linesToEscpos, type ReportData } from '../../../lib/escpos'
-import type { RegisterItemsReport, RegisterSession } from '../../../types'
-import { money } from '../../../lib/utils'
+import type { RegisterDayReport, RegisterItemsReport, RegisterSession } from '../../../types'
+import { dateKey, money } from '../../../lib/utils'
 import { can } from '../../../lib/permissions'
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { useApp } from '../../../store/AppStore'
@@ -17,12 +17,13 @@ import { RegisterDialogs } from './RegisterDialogs'
 import { SessionHistory } from './SessionHistory'
 
 export default function RegisterPage() {
-  const { db, store, user, openRegister, closeRegister, handoverTables, takeOverTables } = useApp()
+  const { db, store, user, openRegister, closeRegister, closeRegisterDay, handoverTables, takeOverTables } = useApp()
   const { push } = useToast()
   const [now, setNow] = useState(new Date())
   const [openingInput, setOpeningInput] = useState('100')
   const [openModal, setOpenModal] = useState(false)
   const [closeModal, setCloseModal] = useState(false)
+  const [dayCloseModal, setDayCloseModal] = useState(false)
   const [handoverModal, setHandoverModal] = useState(false)
   const [handoverTargetId, setHandoverTargetId] = useState('')
   const [handoverOrderIds, setHandoverOrderIds] = useState<string[]>([])
@@ -31,6 +32,8 @@ export default function RegisterPage() {
   const [forceReason, setForceReason] = useState('')
   const [countedInput, setCountedInput] = useState('')
   const [closeNote, setCloseNote] = useState('')
+  const [dayCountedInput, setDayCountedInput] = useState('')
+  const [dayCloseNote, setDayCloseNote] = useState('')
   const [leaveFloatForNextShift, setLeaveFloatForNextShift] = useState(false)
   const [printJob, setPrintJob] = useState<PrintJob | null>(null)
 
@@ -82,7 +85,7 @@ export default function RegisterPage() {
       push(result.error, 'error')
       return
     }
-    push('Shift force-closed and Z report saved.', 'success')
+    push('Staff shift force-closed.', 'success')
     setForceSession(null)
     setForceReason('')
   }
@@ -107,6 +110,23 @@ export default function RegisterPage() {
   const closed = sessions.filter((session) => session.status === 'closed')
 
   const nowISO = now.toISOString()
+  const today = dateKey(now)
+  const todayStart = new Date(`${today}T00:00:00`).toISOString()
+  const todaySessions = allSessions.filter((session) => dateKey(session.openedAt) === today)
+  const dayReports = db.registerDayReports
+    .filter((report) => report.storeId === store.id)
+    .sort((a, b) => b.date.localeCompare(a.date))
+  const todayDayReport = dayReports.find((report) => report.date === today)
+  const firstTodaySession = todaySessions.reduce<RegisterSession | undefined>((first, session) =>
+    !first || session.openedAt < first.openedAt ? session : first,
+  undefined)
+  const dayOpeningCash = firstTodaySession
+    ? firstTodaySession.openingFloat ?? firstTodaySession.openingCash
+    : 0
+  const liveDaySnapshot = todaySessions.length
+    ? computeRegisterTotals(db, store.id, todayStart, nowISO, dayOpeningCash)
+    : null
+  const canCloseDay = user.role === 'admin' && !todayDayReport && todaySessions.length > 0 && !anyOpen
   const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
   const liveBreakdown = open ? registerBreakdown(db, open, nowISO, itemScope) : null
@@ -145,13 +165,16 @@ export default function RegisterPage() {
     snapshot: NonNullable<ReturnType<typeof sessionSnapshot>>,
     endISO: string,
   ): ReportData => {
-    const generatedAt = kind === 'X' ? endISO : session.closedAt ?? endISO
+    const frozenShiftReport = session.status === 'closed'
+    const generatedAt = kind === 'X' && !frozenShiftReport
+      ? endISO
+      : session.closedAt ?? endISO
     const itemDetails = itemDetailsForSession(
       session,
       generatedAt,
       kind === 'X' && !canSeeAll ? user.id : undefined,
     )
-    const details = kind === 'Z'
+    const details = kind === 'Z' || frozenShiftReport
       ? session.reportDetails ?? null
       : registerReportDetails(db, session, endISO, !canSeeAll ? user.id : undefined)
     return {
@@ -167,7 +190,7 @@ export default function RegisterPage() {
         ? `Z-${String(session.zReportNumber).padStart(6, '0')}`
         : `X-${session.id.slice(-6)}-${Date.parse(generatedAt).toString(36).toUpperCase()}`,
       generatedAt,
-      generatedBy: kind === 'X' ? user.name : session.closedByName ?? user.name,
+      generatedBy: kind === 'X' && !frozenShiftReport ? user.name : session.closedByName ?? user.name,
     }
   }
 
@@ -220,8 +243,54 @@ export default function RegisterPage() {
       push(result.error, 'error')
       return
     }
-    push('Register closed — Z report saved', 'success')
+    push('Your shift is closed. The owner can close the day-end Z after all shifts finish.', 'success')
     setCloseModal(false)
+  }
+
+  const handleCloseRegisterDay = () => {
+    const result = closeRegisterDay(store.id, Number(dayCountedInput), dayCloseNote)
+    if (!result.ok) {
+      push(result.error, 'error')
+      return
+    }
+    push('Store-day Z report closed and frozen.', 'success')
+    setDayCloseModal(false)
+  }
+
+  const printDayReport = (report: RegisterDayReport) => {
+    const session: RegisterSession = {
+      id: report.id,
+      storeId: report.storeId,
+      status: 'closed',
+      openedAt: new Date(`${report.date}T00:00:00`).toISOString(),
+      openedById: report.closedById,
+      openedByName: 'Store day',
+      closedAt: report.closedAt,
+      closedById: report.closedById,
+      closedByName: report.closedByName,
+      openingCash: report.openingCash,
+      countedCash: report.countedCash,
+      difference: report.difference,
+      note: report.note,
+      snapshot: report.snapshot,
+      zReportNumber: report.zReportNumber,
+      reportDetails: report.reportDetails,
+    }
+    const data = reportData('Z', session, report.snapshot, report.closedAt)
+    const lines = buildReportLines(data)
+    setPrintJob({
+      title: `Z Report · ${data.reportNumber}`,
+      subtitle: `${report.reportDetails.storeName} · ${report.date}`,
+      lines,
+      bytes: linesToEscpos(lines, data.width),
+      kind: 'report',
+      width: data.width,
+      itemsReport: {
+        itemsSold: report.reportDetails.itemsSold ?? [],
+        recordedItems: report.reportDetails.recordedItems ?? [],
+        voidedItems: report.reportDetails.voidedItems ?? [],
+      },
+    })
   }
 
   const beginOpen = () => {
@@ -240,8 +309,8 @@ export default function RegisterPage() {
           <h2 className="text-[20px] font-extrabold tracking-tight">Cash register</h2>
           <p className="mt-1 text-[13px] text-muted">
             {canSeeAll
-              ? 'X reports any time without closing. Z closes the day and freezes the numbers.'
-              : 'Your shifts only — open your shift, print your X report and close it.'}
+              ? 'Staff can open and close shifts independently. The owner closes one frozen Z after the day’s work is finished.'
+              : 'Open your own shift, print an X report any time, and close your shift when you hand over.'}
           </p>
         </div>
         {open ? (
@@ -254,13 +323,28 @@ export default function RegisterPage() {
                 beginClose()
               }}
             >
-              <Square className="h-4 w-4" /> Close shift (Z)
+              <Square className="h-4 w-4" /> Close shift
             </Button>
           </div>
         ) : (
-          <Button onClick={beginOpen}>
-            <Play className="h-4 w-4" /> Open shift
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={beginOpen}>
+              <Play className="h-4 w-4" /> Open shift
+            </Button>
+            {user.role === 'admin' && (
+              <Button
+                variant="secondary"
+                disabled={!canCloseDay}
+                onClick={() => {
+                  setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
+                  setDayCloseNote('')
+                  setDayCloseModal(true)
+                }}
+              >
+                <Square className="h-4 w-4" /> Close day (Z)
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -301,8 +385,29 @@ export default function RegisterPage() {
           session,
           session.closedAt ?? session.openedAt,
         )}
-        onPrint={(session) => printReport('Z', session)}
+        onPrint={(session, kind) => printReport(kind, session)}
       />
+
+      {user.role === 'admin' && (
+        <div>
+          <h3 className="mb-2 text-[13.5px] font-bold text-ink">Store-day Z reports</h3>
+          <div className="divide-y divide-line/60 rounded-2xl border border-line bg-surface">
+            {dayReports.length === 0 ? (
+              <p className="p-4 text-sm text-muted">The owner can close today’s Z after all staff shifts are closed.</p>
+            ) : dayReports.map((report) => (
+              <div key={report.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-ink">{report.date} · Z-{String(report.zReportNumber).padStart(6, '0')}</div>
+                  <div className="text-xs text-muted">Closed by {report.closedByName} · cash difference {money(report.difference)}</div>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => printDayReport(report)}>
+                  <Printer className="h-4 w-4" /> Reprint Z
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <RegisterDialogs
         store={store}
@@ -336,6 +441,32 @@ export default function RegisterPage() {
         printJob={printJob}
         onPrintClose={() => setPrintJob(null)}
       />
+      <Modal
+        open={dayCloseModal}
+        onClose={() => setDayCloseModal(false)}
+        title="Close store day — Z report"
+        subtitle={`${store.name} · ${today}`}
+        size="sm"
+        footer={<div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setDayCloseModal(false)}>Cancel</Button>
+          <Button variant="danger" disabled={!Number.isFinite(Number(dayCountedInput)) || Number(dayCountedInput) < 0} onClick={handleCloseRegisterDay}>Close day and freeze Z</Button>
+        </div>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            This closes the whole store day, not one staff shift. It is available only after every shift is closed.
+          </p>
+          <Field label="Expected day-end cash">
+            <div className="text-xl font-bold text-ink">{money(liveDaySnapshot?.expectedCash ?? 0)}</div>
+          </Field>
+          <Field label="Counted cash (DT)">
+            <Input type="number" min={0} step={0.001} value={dayCountedInput} onChange={(event) => setDayCountedInput(event.target.value)} />
+          </Field>
+          <Field label="Day-end note" hint="Optional">
+            <Textarea value={dayCloseNote} onChange={(event) => setDayCloseNote(event.target.value)} rows={3} />
+          </Field>
+        </div>
+      </Modal>
       <Modal
         open={forceSession !== null}
         onClose={() => setForceSession(null)}

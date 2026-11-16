@@ -152,7 +152,7 @@ export function RegisterDialogs({
       <Modal
         open={closeModal}
         onClose={() => onCloseModalChange(false)}
-        title="Close shift — Z report"
+        title="Close shift — X report"
         subtitle={open ? `${open.shiftNumber ?? open.id} · ${fmtTime(open.openedAt)}` : ''}
         size="sm"
         footer={
@@ -165,7 +165,7 @@ export function RegisterDialogs({
                 Cancel
               </Button>
               <Button disabled={!(countedValue >= 0)} onClick={onCloseRegister}>
-                <Square className="h-4 w-4" /> Close &amp; freeze Z
+                <Square className="h-4 w-4" /> Close shift
               </Button>
             </div>
             <label className="flex items-start gap-2 text-xs text-muted">
@@ -223,7 +223,7 @@ export function RegisterDialogs({
               Match expected
             </Button>
           </div>
-          <Field label="Note" hint="Optional — recorded on the Z report">
+          <Field label="Note" hint="Optional — recorded on the shift X report">
             <Textarea
               value={closeNote}
               onChange={(event) => onCloseNoteChange(event.target.value)}
@@ -234,12 +234,12 @@ export function RegisterDialogs({
           {itemsReport && (
             <RegisterItemsTable
               report={itemsReport}
-              title="Items in this Z report"
+              title="Items in this shift report"
             />
           )}
           <p className="text-[11.5px] leading-relaxed text-muted">
-            Closing freezes this shift permanently: its Z report can be viewed or reprinted but never
-            edited. The next shift gets a separate report.
+            Closing ends only your shift. The owner closes and freezes the store-day Z report after all
+            staff shifts are finished.
           </p>
         </div>
       </Modal>

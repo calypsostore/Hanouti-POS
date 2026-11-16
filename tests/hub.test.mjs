@@ -401,6 +401,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
         opId: 'staff-close-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
         ops: [{ kind: 'put', collection: 'registerSessions', id: 'cashier-register', document: {
           id: 'cashier-register', storeId: owner.actor.storeId, status: 'closed',
+          closeType: 'shift',
           openedAt: cashierOpenedAt, openedById: staffUser.id,
           openedByName: staffUser.name, staffId: staffUser.id, openingCash: 0,
           closedAt: new Date().toISOString(), closedById: staffUser.id, countedCash: 0, difference: 0,
@@ -408,6 +409,28 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       }),
     })
     assert.equal(closeOwnRegister.status, 403)
+    const proposedDayReport = {
+      id: 'day-report-one', storeId: owner.actor.storeId,
+      date: new Date().toISOString().slice(0, 10),
+      closedAt: new Date().toISOString(),
+      closedById: owner.actor.userId, closedByName: 'Owner',
+      zReportNumber: 1, openingCash: 0, countedCash: 0, difference: 0,
+      snapshot: {}, reportDetails: {},
+    }
+    const staffCloseDay = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-close-register-day', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'registerDayReports', id: proposedDayReport.id, document: proposedDayReport }],
+      }),
+    })
+    assert.equal(staffCloseDay.status, 403)
+    const ownerCloseWithOpenShifts = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'owner-close-register-day-too-early', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'registerDayReports', id: proposedDayReport.id, document: proposedDayReport }],
+      }),
+    })
+    assert.equal(ownerCloseWithOpenShifts.status, 400)
     const deleteRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-delete-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
