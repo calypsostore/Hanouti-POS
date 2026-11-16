@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Users } from 'lucide-react'
 import type { DiningTable, GuestRequirement, OpenOrder, TableMode, TableSection } from '../../types'
-import { Button, Card, Field, Input } from '../../components/ui'
+import { Badge, Button, Card, Field, Input } from '../../components/ui'
 import { AppIcon } from '../../components/AppIcon'
 import { cn } from '../../lib/utils'
 
@@ -70,6 +70,12 @@ export function TablePicker({
             <datalist id={datalistId}>
               {openTables.map((order) => <option key={order.id} value={order.tableName} />)}
             </datalist>
+            {openTables.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Occupied tables">
+                <span className="text-[10px] font-semibold text-muted">Occupied:</span>
+                {openTables.map((order) => <Badge key={order.id} tone="warning">{order.tableName}</Badge>)}
+              </div>
+            )}
           </>
         </Field>
       ) : tables.length ? groupedTables.map(({ label, section, tables: sectionTablesForGroup }) => sectionTablesForGroup.length > 0 && (
@@ -85,6 +91,7 @@ export function TablePicker({
               <TableButton
                 key={table.id}
                 table={table}
+                occupied={openTables.some((order) => order.tableId === table.id)}
                 selected={selectedId === table.id}
                 buttonRef={index === 0 && label === groupedTables[0].label ? firstTableRef : undefined}
                 onClick={() => onSelect(table.id)}
@@ -116,11 +123,13 @@ export function TablePicker({
 
 function TableButton({
   table,
+  occupied,
   selected,
   buttonRef,
   onClick,
 }: {
   table: DiningTable
+  occupied: boolean
   selected: boolean
   buttonRef?: React.Ref<HTMLButtonElement>
   onClick: () => void
@@ -129,11 +138,15 @@ function TableButton({
     <button
       ref={buttonRef}
       type="button"
+      disabled={occupied}
       aria-pressed={selected}
+      aria-label={`${table.name}, ${occupied ? 'occupied' : 'available'}`}
       onClick={onClick}
       className={cn(
         'flex min-h-12 items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition',
-        selected
+        occupied
+          ? 'cursor-not-allowed border-[var(--semantic-amber-border)] bg-[var(--semantic-amber-soft)] text-[var(--semantic-amber-text)] opacity-80'
+          : selected
           ? 'border-accent-foreground bg-accent-50 text-accent-foreground ring-1 ring-accent-foreground/30'
           : 'border-line bg-white text-ink hover:border-accent-foreground/50',
       )}
@@ -141,8 +154,9 @@ function TableButton({
       <Users className="h-4 w-4 shrink-0" />
       <span className="min-w-0">
         <span className="block truncate text-[11px] font-bold">{table.name}</span>
-        <span className="block text-[9.5px] text-muted">{table.seats} seats</span>
+        <span className="block text-[9.5px]">{occupied ? 'Occupied' : `Available · ${table.seats} seats`}</span>
       </span>
+      {occupied && <Badge tone="warning" className="ml-auto shrink-0 px-1.5 text-[9px]">Busy</Badge>}
     </button>
   )
 }

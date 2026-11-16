@@ -113,7 +113,7 @@ export default function TablesTab({
       <Card className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
         <div>
           <h3 className="text-[15px] font-semibold">Table system</h3>
-          <p className="mt-1 text-[12px] text-muted">Choose how staff identify dine-in tables.</p>
+          <p className="mt-1 text-[12px] text-muted">Enable table service for dine-in. Use Sections and tables or Tables only for live availability; Manual mode records names only.</p>
         </div>
         <Field label="Mode">
           <Select value={settings.tableMode} onChange={(event) => changeTableMode(event.target.value as TableMode)}>

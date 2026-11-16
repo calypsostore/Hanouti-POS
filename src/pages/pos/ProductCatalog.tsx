@@ -67,6 +67,7 @@ export function ProductCatalog({
                 <ChannelSwitch
                   channel={channel}
                   setChannel={setChannel}
+                  allowDineIn={store.settings.features.tables}
                   allowDelivery={store.settings.features.delivery}
                   className="hidden sm:inline-flex"
                 />

@@ -73,7 +73,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const staffUser = {
       id: 'cashier', storeId: owner.actor.storeId, name: 'Cashier', username: 'cashier',
       password: hashSecret('cashier-password'), pin: hashSecret('2266'), role: 'staff',
-      active: true, permissions: { register: false, openShift: true, closeShift: false },
+      active: true, permissions: { register: true, openShift: true, closeShift: false },
     }
     const activeManager = {
       id: 'active-manager', storeId: owner.actor.storeId, name: 'Active manager',
@@ -103,6 +103,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
           ...initialData.collections.stores[0],
           settings: {
             ...initialData.collections.stores[0].settings,
+            requireShiftForOrders: true,
             tableMode: 'tables_only',
             features: { ...initialData.collections.stores[0].settings.features, tables: true },
           },
@@ -251,7 +252,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const orderUpdate = {
       opId: 'sync-order-one', deviceId: 'phone-one', storeId: owner.actor.storeId, baseSeq: 2,
       ops: [{ kind: 'put', collection: 'openOrders', id: 'order-one', document: {
-        id: 'order-one', storeId: owner.actor.storeId, number: 12, shiftId: 'shift-one', tableId: 'table-1',
+        id: 'order-one', storeId: owner.actor.storeId, number: 12, shiftId: 'owner-register', tableId: 'table-1',
         tableName: 'T1', status: 'open', discount: 0, items: [
           { lineId: 'kitchen-item', productId: 'soup', stationId: 'bar', status: 'sent', name: 'Forged soup', price: 0, qty: 1 },
           { lineId: 'bar-item', productId: 'tea', stationId: 'kitchen', status: 'sent', name: 'Forged tea', price: 0, qty: 1 },
@@ -310,7 +311,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       method: 'POST', headers: auth, body: JSON.stringify({
         opId: 'sync-order-two', deviceId: 'phone-two', storeId: owner.actor.storeId, baseSeq: 2,
         ops: [{ kind: 'put', collection: 'openOrders', id: 'order-two', document: {
-          id: 'order-two', storeId: owner.actor.storeId, number: 13, shiftId: 'shift-one', tableId: 'table-1',
+          id: 'order-two', storeId: owner.actor.storeId, number: 13, shiftId: 'owner-register', tableId: 'table-1',
           tableName: 'T1', status: 'open', discount: 0,
           items: [{ lineId: 'phone-two-item', productId: 'tea', status: 'sent', qty: 1 }],
         } }],
@@ -324,7 +325,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       ['bar-item', 'kitchen-item', 'phone-two-item'],
     )
     assert.equal(mergedSnapshot.collections.openOrders[0].staffId, owner.actor.userId)
-    assert.equal(mergedSnapshot.collections.openOrders[0].shiftId, 'shift-one')
+    assert.equal(mergedSnapshot.collections.openOrders[0].shiftId, 'owner-register')
     const firstMenuEdit = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
         opId: 'menu-edit-one', deviceId: 'phone-one', storeId: owner.actor.storeId, baseSeq: 4,
@@ -415,6 +416,28 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(staffSnapshot.collections.stores[0].id, owner.actor.storeId)
     assert.equal(staffSnapshot.collections.registerSessions.length, 0)
     assert.equal(staffSnapshot.collections.shifts, undefined)
+    const checkoutWithoutShift = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-checkout-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'orders', id: 'staff-order-without-shift', document: {
+          id: 'staff-order-without-shift', storeId: owner.actor.storeId, status: 'completed',
+          channel: 'takeaway', paymentMethod: 'cash', items: [{ productId: 'tea', qty: 1 }],
+        } }],
+      }),
+    })
+    assert.equal(checkoutWithoutShift.status, 400)
+    assert.match((await checkoutWithoutShift.json()).error, /open your shift before taking orders/i)
+    const tableOrderWithoutShift = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-table-order-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'openOrders', id: 'staff-table-without-shift', document: {
+          id: 'staff-table-without-shift', storeId: owner.actor.storeId, status: 'open',
+          tableId: 'table-2', tableName: 'T2', items: [],
+        } }],
+      }),
+    })
+    assert.equal(tableOrderWithoutShift.status, 400)
+    assert.match((await tableOrderWithoutShift.json()).error, /open your shift before taking orders/i)
     const deleteSchedule = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-delete-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
@@ -445,6 +468,17 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       }),
     })
     assert.equal(openOwnRegister.status, 200)
+    const checkoutWithShift = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-checkout-with-open-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'orders', id: 'staff-order-with-open-shift', document: {
+          id: 'staff-order-with-open-shift', storeId: owner.actor.storeId, status: 'completed',
+          channel: 'takeaway', paymentMethod: 'cash', shiftId: 'cashier-register',
+          items: [{ productId: 'tea', qty: 1 }],
+        } }],
+      }),
+    })
+    assert.equal(checkoutWithShift.status, 200, await checkoutWithShift.text())
     const closeOwnRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-close-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
@@ -512,6 +546,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
         opId: 'tea-excess-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
         ops: [{ kind: 'put', collection: 'openOrders', id: 'excess-stock-order', document: {
           id: 'excess-stock-order', storeId: owner.actor.storeId, number: 76, status: 'open', discount: 0,
+          tableId: 'table-2', tableName: 'T2',
           items: [{ lineId: 'excess-tea', productId: 'tea', name: 'Tea', price: 1, qty: 2, status: 'draft' }],
         } }],
       }),
@@ -548,7 +583,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       method: 'POST', headers: auth, body: JSON.stringify({
         opId: 'existing-sent-after-86', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: availabilitySeq,
         ops: [{ kind: 'put', collection: 'openOrders', id: 'order-one', document: {
-          id: 'order-one', storeId: owner.actor.storeId, number: 12, shiftId: 'shift-one',
+          id: 'order-one', storeId: owner.actor.storeId, number: 12, shiftId: 'owner-register',
           tableId: 'table-1', tableName: 'T1', status: 'open', discount: 0, note: 'Existing sent items',
           items: [
             { lineId: 'kitchen-item', productId: 'soup', status: 'sent', qty: 1 },
@@ -568,6 +603,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
           opId: `add-unavailable-${productId}`, deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: availabilitySeq,
           ops: [{ kind: 'put', collection: 'openOrders', id: `new-order-${productId}`, document: {
             id: `new-order-${productId}`, storeId: owner.actor.storeId, number: productId === 'tea' ? 77 : 78,
+            tableId: 'table-2', tableName: 'T2',
             status: 'open', discount: 0,
             items: [{ lineId, productId, name, price: 1, qty: 1, status: 'draft' }],
           } }],

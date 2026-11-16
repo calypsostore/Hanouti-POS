@@ -4,15 +4,25 @@ import { balanceFor } from '../../src/lib/selectors.ts'
 import { nextOrderNumber } from '../../src/lib/orderNumber.ts'
 import { resolveOrderLines, stockOverrideAccepted, validateOrderLines, type OrderRulesContext } from '../../src/shared/orderRules.ts'
 import type {
-  InventoryItem, LedgerEntry, OpenOrder, Order, OrderItem, Product, Store, User,
+  DiningTable, InventoryItem, LedgerEntry, OpenOrder, Order, OrderItem, Product, Store, User,
 } from '../../src/types.ts'
 import { requireCapability } from './auth.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
 import { staffConsumptionDiscount, staffConsumptionError } from '../../src/lib/staffConsumption.ts'
+import { dineInTableError } from '../../src/lib/tableService.ts'
 
 const VALID_ITEM_STATUSES = ['draft', 'sent', 'preparing', 'ready', 'served', 'void']
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+const isDiningTableReference = (value: unknown): value is Pick<DiningTable, 'id' | 'storeId' | 'active'> =>
+  isRecord(value) && typeof value.id === 'string' &&
+  typeof value.storeId === 'string' && typeof value.active === 'boolean'
+const isOpenOrderReference = (
+  value: unknown,
+): value is Pick<OpenOrder, 'id' | 'storeId' | 'tableId' | 'tableName'> =>
+  isRecord(value) && typeof value.id === 'string' &&
+  typeof value.storeId === 'string' && typeof value.tableName === 'string' &&
+  (value.tableId === undefined || typeof value.tableId === 'string')
 
 export function validateOrderDocument(
   input: Record<string, unknown>,
@@ -23,6 +33,48 @@ export function validateOrderDocument(
   const store = state.collections.stores?.[actor.storeId] as unknown as Store | undefined
   const user = state.collections.users?.[actor.userId]
   if (!store?.settings || !user) throw new Error('Store settings or authenticated user are unavailable.')
+  const previousDocument = state.collections[collection]?.[String(input.id)]
+  if (collection === 'openOrders' || (collection === 'orders' && !isRecord(previousDocument) && input.channel === 'dine-in')) {
+    const paymentOrderId = typeof input.clientOrderId === 'string' && input.clientOrderId.startsWith('pay:')
+      ? input.clientOrderId.slice(4)
+      : undefined
+    const paymentOrder = paymentOrderId
+      ? state.collections.openOrders?.[paymentOrderId]
+      : undefined
+    const paymentMatchesTable = isOpenOrderReference(paymentOrder) &&
+      paymentOrder.storeId === actor.storeId &&
+      (store.settings.tableMode === 'manual'
+        ? paymentOrder.tableName.trim().toLowerCase() ===
+          (typeof input.tableName === 'string' ? input.tableName.trim().toLowerCase() : '')
+        : paymentOrder.tableId === input.tableId)
+    const excludeOpenOrderId = collection === 'openOrders'
+      ? String(input.id)
+      : paymentMatchesTable ? paymentOrderId : undefined
+    const tableError = dineInTableError(
+      store.settings,
+      Object.values(state.collections.tables ?? {}).filter(isDiningTableReference),
+      Object.values(state.collections.openOrders ?? {}).filter(isOpenOrderReference),
+      {
+        storeId: actor.storeId,
+        tableId: typeof input.tableId === 'string' ? input.tableId : undefined,
+        tableName: typeof input.tableName === 'string' ? input.tableName : undefined,
+        excludeOpenOrderId,
+      },
+    )
+    if (tableError) throw new Error(tableError)
+  }
+  const requiresOpenShift = store.settings.requireShiftForOrders &&
+    (collection === 'openOrders' || !isRecord(previousDocument))
+  const activeShift = Object.values(state.collections.registerSessions ?? {}).find((candidate) =>
+    isRecord(candidate) && candidate.storeId === actor.storeId && candidate.status === 'open' &&
+    (candidate.staffId ?? candidate.openedById) === actor.userId,
+  )
+  if (requiresOpenShift && !activeShift) {
+    throw new Error('Open your shift before taking orders.')
+  }
+  if (requiresOpenShift && typeof input.shiftId === 'string' && input.shiftId !== activeShift?.id) {
+    throw new Error('Orders must use your own open shift.')
+  }
   if (input.staffConsumption !== undefined && typeof input.staffConsumption !== 'boolean') {
     throw new Error('Staff item checkout is invalid.')
   }
@@ -32,6 +84,7 @@ export function validateOrderDocument(
   if (isRecord(previousOrder) && Boolean(previousOrder.staffConsumption) !== staffConsumption) {
     throw new Error('Staff item classification cannot be changed after checkout.')
   }
+  const validatedShiftId = requiresOpenShift ? activeShift?.id : input.shiftId
   if (!Number.isFinite(store.settings.taxRate) || store.settings.taxRate < 0 ||
     !Number.isFinite(store.settings.serviceCharge) || store.settings.serviceCharge < 0 ||
     typeof store.settings.taxInclusive !== 'boolean') {
@@ -298,7 +351,7 @@ export function validateOrderDocument(
     number = nextOrderNumber(usedNumbers, rules?.orderNumberFormat ?? 'plain')
   }
   for (const [field, collectionName] of [
-    ['tableId', 'tables'], ['sectionId', 'sections'], ['customerId', 'customers'], ['shiftId', 'shifts'],
+    ['tableId', 'tables'], ['sectionId', 'sections'], ['customerId', 'customers'], ['shiftId', 'registerSessions'],
   ] as const) {
     const reference = input[field]
     if (reference !== undefined && (typeof reference !== 'string' || state.collections[collectionName]?.[reference]?.storeId !== actor.storeId)) {
@@ -308,6 +361,7 @@ export function validateOrderDocument(
   if (collection === 'orders' && input.status === 'void') requireCapability(actor, 'voidOrders')
   return {
     ...input,
+    shiftId: validatedShiftId,
     items,
     number,
     discount: round(discount),

@@ -126,7 +126,8 @@ document.
   POS state mounted and does not clock out attendance. Local mode verifies a
   local PIN hash; hub mode verifies via the authenticated hub without exposing
   credential hashes to clients.
-- **Shifts/stock:** required-shift prompt, elapsed-shift reminder, open-table
+- **Shifts/stock:** required-shift prompt and order-entry block in the POS,
+  checkout validation in the store and hub, elapsed-shift reminder, open-table
   warning, low-stock dashboard/bell alerts, and optional out-of-stock hiding.
   Per-staff shifts, table handover, configurable cash differences, and long-shift
   alerts are now implemented; multi-device browser handover scenarios remain
@@ -429,10 +430,11 @@ stored; no demo values are presented as production data.
   action were visible together. The POS 86-list button uses a gray flag when
   nothing is unavailable and a waving red flag when unavailable items exist;
   the numeric badge is removed.
-- Dine-in checkout requires an active table when the feature is enabled. Table
+- Dine-in is available only when table service is enabled and requires an active,
+  unoccupied table; the picker labels occupied and available tables. The floor
+  shows order ownership and moved, merged, and transferred table history. Table
   names are snapshotted on orders and shown on receipts, ESC/POS kitchen tickets,
-  the Orders page and CSV exports. The POS table picker is available in desktop
-  and mobile carts; the TopBar shortcut focuses it. Delivery is opt-in.
+  the Orders page and CSV exports. Delivery is opt-in.
 - Schema `7anouti.db.v15` introduced dining tables and preserved historical
   orders without table details. Seed data includes eight tables and sample
   table-linked restaurant orders. These remain browser-local demo records.
@@ -453,6 +455,8 @@ stored; no demo values are presented as production data.
   has section tabs and My tables / All / Unassigned filter controls; Unassigned
   is populated by the handover flow and new shifts can take over tables. Manual mode takes
   a free-form table name with suggestions from currently open tables.
+  Configured-table modes show occupied/available status; manual mode records
+  names without an inventory of available tables.
   Configured section colors and icons are displayed in the Settings preview,
   table-floor filters and headings, and the POS table picker.
 - Settings tabs scroll horizontally on narrow screens without widening the

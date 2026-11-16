@@ -115,6 +115,15 @@ export default function POS() {
   const [voidReason, setVoidReason] = useState('')
   const [now, setNow] = useState(new Date())
 
+  useEffect(() => {
+    if (store && !openOrder && !store.settings.features.tables && channel === 'dine-in') {
+      setChannel('takeaway')
+      setTableId(undefined)
+      setTableName('')
+      setGuests(undefined)
+    }
+  }, [channel, openOrder, store])
+
   const dispatchStationTickets = useCallback((
     order: OpenOrder,
     items: OrderItem[],

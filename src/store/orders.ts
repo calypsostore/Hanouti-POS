@@ -6,7 +6,7 @@ import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
-import { guestCountError } from '../lib/tableService'
+import { dineInTableError, guestCountError } from '../lib/tableService'
 import { openShiftForStaff } from '../lib/registerShifts'
 import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
 import { roundQuantity } from '../lib/inventory'
@@ -60,15 +60,22 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           )
         : undefined
       if (input.tableId && !table) return { ok: false, error: 'Choose an active table from this store.' }
-      if (input.channel === 'dine-in' && target.settings.features.tables) {
-        if (manualTables) {
-          const tableName = typeof input.tableName === 'string' ? input.tableName.trim() : ''
-          if (input.tableId || !tableName || tableName.length > 60) {
-            return { ok: false, error: 'Enter a table name up to 60 characters.' }
-          }
-        } else if (!table) {
-          return { ok: false, error: 'Choose a table before checking out a dine-in order.' }
-        }
+      if (input.channel === 'dine-in') {
+        const excludedOpenOrder = current.openOrders.find((order) =>
+          order.id === input.excludeOpenOrderId && order.storeId === target.id,
+        )
+        const excludeOpenOrderId = excludedOpenOrder && (manualTables
+          ? excludedOpenOrder.tableName.trim().toLowerCase() === input.tableName?.trim().toLowerCase()
+          : excludedOpenOrder.tableId === input.tableId)
+          ? excludedOpenOrder.id
+          : undefined
+        const tableError = dineInTableError(target.settings, current.tables, current.openOrders, {
+          storeId: target.id,
+          tableId: input.tableId,
+          tableName: input.tableName,
+          excludeOpenOrderId,
+        })
+        if (tableError) return { ok: false, error: tableError }
       }
       if (input.channel === 'dine-in' && target.settings.features.tables) {
         const guestsError = guestCountError(input.guests, target.settings.guestRequirement)
@@ -105,6 +112,11 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         : undefined
       if (input.excludeOpenOrderId && !payingOpenOrder) {
         return { ok: false, error: 'The open order being paid could not be found in this store.' }
+      }
+      if (payingOpenOrder && (input.channel !== 'dine-in' || (manualTables
+        ? payingOpenOrder.tableName.trim().toLowerCase() !== input.tableName?.trim().toLowerCase()
+        : payingOpenOrder.tableId !== input.tableId))) {
+        return { ok: false, error: 'The table order being paid does not match the selected table.' }
       }
       const customer = input.customerId
         ? current.customers.find((candidate) =>

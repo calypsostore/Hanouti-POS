@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChefHat, Clock3, Merge, MoveRight, Plus, Utensils } from 'lucide-react'
-import { Button, Field, Input, Modal, Select } from '../../components/ui'
+import { Badge, Button, Field, Input, Modal, Select } from '../../components/ui'
 import { AppIcon } from '../../components/AppIcon'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
@@ -223,6 +223,10 @@ export default function TableFloor() {
               {group.items.map((item) => {
                 const order = item.order
                 const allSent = !!order?.items.length && order.items.every((entry) => entry.sentAt)
+                const tableChanges = order?.tableHistory?.filter((event) =>
+                  event.type === 'moved' || event.type === 'merged' || event.type === 'transferred',
+                ) ?? []
+                const mergedCount = tableChanges.filter((event) => event.type === 'merged').length
                 const section = sections.find((candidate) => candidate.id === item.sectionId)
                 const mine = !order || order.staffId === user.id
                 return (
@@ -240,10 +244,18 @@ export default function TableFloor() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <h3 className="truncate font-bold">{item.name}</h3>
-                          {item.table && <span className="text-[11px] text-muted">{item.table.seats} seats</span>}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge tone={order ? 'warning' : 'success'}>{order ? 'Occupied' : 'Available'}</Badge>
+                            {item.table && <span className="text-[11px] text-muted">{item.table.seats} seats</span>}
+                          </div>
                         </div>
                         {order ? (
                           <>
+                            {mergedCount > 0 && (
+                              <Badge tone="info" className="mt-1">
+                                Merged from {mergedCount + 1} tables
+                              </Badge>
+                            )}
                             <p className="mt-1 text-[13px] font-bold">{money(order.total)}</p>
                             <div className="mt-1 flex flex-wrap gap-3 text-[10.5px] text-muted">
                               <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {elapsedLabel(order, now)}</span>
@@ -256,8 +268,22 @@ export default function TableFloor() {
                               <span>{order.staffName || 'Unassigned'}</span>
                               {allSent && <span className="inline-flex items-center gap-1"><ChefHat className="h-3 w-3" /> Sent</span>}
                             </div>
+                            {tableChanges.length > 0 && (
+                              <div className="mt-2 space-y-1 rounded-lg border border-line/70 bg-white/70 px-2.5 py-2" aria-label={`${item.name} table history`}>
+                                <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Table activity</div>
+                                {tableChanges.map((event) => (
+                                  <div key={event.id} className="text-[10px] leading-relaxed text-ink">
+                                    <span className="font-semibold">
+                                      {event.type === 'moved' ? 'Moved' : event.type === 'merged' ? 'Merged' : 'Transferred'}
+                                    </span>
+                                    {event.details && <> · {event.details}</>}
+                                    <span className="text-muted"> · {event.actorName} · {fmtTime(event.at)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </>
-                        ) : <p className="mt-1 text-xs text-muted">Available</p>}
+                        ) : <p className="mt-1 text-xs text-muted">Ready for a new table order.</p>}
                       </div>
                     </div>
                     {order ? (

@@ -173,7 +173,12 @@ export function CartPanel({
       </div>
 
       {!isOpenOrder && <div className={cn('shrink-0 border-b border-line/70 px-3', embedded ? 'py-1' : 'py-1.5')}>
-        <ChannelSwitch channel={channel} setChannel={setChannel} allowDelivery={deliveryEnabled} />
+        <ChannelSwitch
+          channel={channel}
+          setChannel={setChannel}
+          allowDineIn={tablesEnabled}
+          allowDelivery={deliveryEnabled}
+        />
       </div>}
       {(isOpenOrder || channel === 'dine-in') && (
         <div className={cn('shrink-0 border-b border-line/70 px-3 text-[10.5px] text-muted', embedded ? 'py-1' : 'py-2')}>

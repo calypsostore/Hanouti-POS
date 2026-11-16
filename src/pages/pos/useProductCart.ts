@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { round } from '../../lib/pricing-utils'
 import { uid } from '../../lib/utils'
 import { canOverrideStock } from '../../lib/permissions'
@@ -36,16 +36,17 @@ export function useProductCart(
   const [optionsProduct, setOptionsProduct] = useState<{ product: Product; variantId?: string } | null>(null)
   const [stockPrompt, setStockPrompt] = useState<StockPrompt | null>(null)
   const pendingCart = useRef<OrderItem[] | null>(null)
-  const shiftPromptShown = useRef(false)
 
   const setCart = (items: OrderItem[]) => {
     cartRef.current = items
     setCartState(items)
   }
 
-  useEffect(() => {
-    if (hasOpenShift) shiftPromptShown.current = false
-  }, [hasOpenShift])
+  const canTakeOrders = () => {
+    if (!store?.settings.requireShiftForOrders || hasOpenShift) return true
+    push('Open your shift before taking orders.', 'error')
+    return false
+  }
 
   const qtyInCart = (productId: string) =>
     cart.filter((item) => item.productId === productId).reduce((total, item) => total + item.qty, 0)
@@ -118,10 +119,7 @@ export function useProductCart(
 
   const addSelection = (product: Product, selection: ProductSelection) => {
     if (!store) return
-    if (store.settings.requireShiftForOrders && !hasOpenShift && !shiftPromptShown.current) {
-      shiftPromptShown.current = true
-      push('Open your shift before taking orders.', 'error')
-    }
+    if (!canTakeOrders()) return
     const variant = product.variants?.find((item) => item.id === selection.variantId)
     const price = round((variant?.price ?? product.price) +
       selection.modifiers.reduce((total, modifier) => total + modifier.priceDelta, 0))
@@ -150,6 +148,7 @@ export function useProductCart(
   }
   const addItem = (productId: string, variantId?: string) => {
     if (!store) return
+    if (!canTakeOrders()) return
     const product = db.products.find((candidate) =>
       candidate.id === productId && candidate.storeId === store.id && candidate.active,
     )
