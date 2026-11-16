@@ -105,7 +105,7 @@ export default function Purchases() {
           <h1 className="text-[20px] font-extrabold tracking-tight">Purchases</h1>
           <p className="mt-1 text-[13px] text-muted">Receive supplier goods, track cost, and record payments.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant={tab === 'purchases' ? 'primary' : 'secondary'} onClick={() => setTab('purchases')}>
             <Truck className="h-4 w-4" /> Purchases
           </Button>

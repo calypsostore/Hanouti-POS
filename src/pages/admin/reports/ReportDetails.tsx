@@ -23,8 +23,8 @@ export function ReportDetails({
 
   return (
     <>
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <Card className="min-w-0 lg:col-span-2">
           <div className="px-5 pb-3 pt-5">
             <h3 className="text-[15px] font-semibold tracking-tight">Top products</h3>
             <p className="mt-0.5 text-[12px] text-muted">By revenue in this period</p>
@@ -79,7 +79,7 @@ export function ReportDetails({
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Card className="p-5">
             <h3 className="text-[15px] font-semibold tracking-tight">Customer tabs</h3>
             <div className="mt-3 space-y-2.5 text-[12px]">
@@ -113,8 +113,8 @@ export function ReportDetails({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="p-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card className="min-w-0 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight">Categories</h3>
@@ -143,7 +143,7 @@ export function ReportDetails({
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="min-w-0 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight">Staff performance</h3>

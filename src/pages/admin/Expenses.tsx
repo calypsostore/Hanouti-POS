@@ -161,8 +161,8 @@ export default function Expenses() {
         </Card>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <Card className="min-w-0 lg:col-span-2">
           <div className="flex flex-wrap items-center gap-2 border-b border-line/70 p-4">
             <Select
               value={month}
@@ -251,7 +251,7 @@ export default function Expenses() {
           )}
         </Card>
 
-        <Card className="h-fit p-5">
+        <Card className="h-fit min-w-0 p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Where it goes</h3>
           <p className="mt-0.5 text-[12px] text-muted">This month by category</p>
           <div className="mt-4 space-y-3.5">

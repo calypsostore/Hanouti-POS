@@ -67,7 +67,7 @@ export default function ProductsPage() {
             Your menu, prices and stock — fully yours to shape.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setHistoryOpen((open) => !open)}>
             {historyOpen ? 'Products' : '86 history'}
           </Button>

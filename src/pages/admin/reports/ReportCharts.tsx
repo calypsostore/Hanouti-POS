@@ -32,8 +32,8 @@ export function ReportCharts({
   paymentTotal: number
 }) {
   return (
-    <div className="grid gap-5 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-2">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <Card className="min-w-0 p-5 lg:col-span-2">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-[15px] font-semibold tracking-tight">Sales over time</h3>
@@ -75,7 +75,7 @@ export function ReportCharts({
         ]} />
       </Card>
 
-      <Card className="p-5">
+      <Card className="min-w-0 p-5">
         <h3 className="text-[15px] font-semibold tracking-tight">Payment methods</h3>
         <p className="mt-0.5 text-[12px] text-muted">Share of collected sales</p>
         {sales > 0 ? (

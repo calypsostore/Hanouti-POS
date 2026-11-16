@@ -13,7 +13,8 @@ outbox, PWA foundation, configurable POS automation, per-staff shifts, table
 handover, cash-difference tracking, owner-only store-day Z closeout with a
 daily staff-working-float input and full-store cashier attribution, live
 branding previews and palette-driven primary brand colors, standalone app/hub
-detection, and mobile-safe dashboard cards**. Staff
+detection, and mobile-safe dashboard, product, purchase, expense, and report
+layouts**. Staff
 close their own shifts into frozen X snapshots; the owner closes one immutable
 daily Z after all shifts end. The owner enters that day's variable staff float
 and counted cash; the frozen Z includes every cashier's sales, table orders,

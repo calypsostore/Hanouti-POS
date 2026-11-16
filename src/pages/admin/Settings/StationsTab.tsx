@@ -95,8 +95,8 @@ export default function StationsTab({ storeId }: { storeId: string }) {
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
-      <Card className="divide-y divide-line/60">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+      <Card className="min-w-0 divide-y divide-line/60">
         {stations.map((station, index) => (
           <div key={station.id} className="flex items-center gap-3 p-4">
             <AppIcon name={station.icon} color={station.color} size={18} className="h-10 w-10 rounded-xl" />
@@ -123,7 +123,7 @@ export default function StationsTab({ storeId }: { storeId: string }) {
         {!stations.length && <p className="p-5 text-sm text-muted">Add a station to route preparation items.</p>}
       </Card>
 
-      <Card className="space-y-4 p-4">
+      <Card className="min-w-0 space-y-4 p-4">
         <div>
           <h3 className="font-bold text-ink">{editing ? 'Edit station' : 'Add station'}</h3>
           <p className="mt-1 text-xs text-muted">Stations route items and can have their own preparation screen.</p>
@@ -141,7 +141,7 @@ export default function StationsTab({ storeId }: { storeId: string }) {
         </div>
       </Card>
 
-      <Card className="space-y-4 p-4 lg:col-span-2">
+      <Card className="min-w-0 space-y-4 p-4 lg:col-span-2">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-foreground">
             <MonitorSmartphone className="h-5 w-5" />

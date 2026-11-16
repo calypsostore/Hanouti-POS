@@ -59,8 +59,8 @@ export default function ProductCatalog({
     setIds(ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id])
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
-      <Card className="h-fit p-2">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <Card className="h-fit min-w-0 p-2">
         <button
           onClick={() => onCategoryFilter('all')}
           className={cn(
@@ -137,7 +137,7 @@ export default function ProductCatalog({
         )}
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <div className="border-b border-line/70 p-4">
           {selectedProducts.length > 0 && (
             <div className="mb-3 grid gap-2 rounded-xl bg-cream-100 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
