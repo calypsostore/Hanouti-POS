@@ -167,11 +167,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     [commitDb, dbRef, requireActor],
   )
 
-  const closeRegisterDay = useCallback<AppContextValue['closeRegisterDay']>((storeId, countedCash, note) => {
+  const closeRegisterDay = useCallback<AppContextValue['closeRegisterDay']>((storeId, staffFloat, countedCash, note) => {
     const actorResult = requireActor(storeId)
     if (!actorResult.ok) return actorResult
     const actor = actorResult.actor
     if (actor.role !== 'admin') return { ok: false, error: 'Only the owner can close the store-day Z report.' }
+    if (!Number.isFinite(staffFloat) || staffFloat < 0) {
+      return { ok: false, error: 'Enter the staff working float for this store day.' }
+    }
     if (!Number.isFinite(countedCash) || countedCash < 0) {
       return { ok: false, error: 'Enter the cash counted at day end.' }
     }
@@ -191,10 +194,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
 
     const closedAt = new Date().toISOString()
     const startISO = new Date(`${day}T00:00:00`).toISOString()
-    const firstShift = daySessions.reduce((first, session) =>
-      session.openedAt < first.openedAt ? session : first,
-    )
-    const openingCash = round(firstShift.openingFloat ?? firstShift.openingCash)
+    const openingCash = round(staffFloat)
     const daySession: RegisterSession = {
       id: '',
       storeId,
@@ -242,7 +242,13 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       entity: 'register',
       entityId: report.id,
       summary: `Closed store-day Z-${String(zReportNumber).padStart(6, '0')} for ${day}`,
-      after: { date: day, countedCash: counted, difference, expectedCash: snapshot.expectedCash },
+      after: {
+        date: day,
+        staffFloat: openingCash,
+        countedCash: counted,
+        difference,
+        expectedCash: snapshot.expectedCash,
+      },
     }))
     return { ok: true }
   }, [commitDb, dbRef, requireActor])

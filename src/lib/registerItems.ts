@@ -43,7 +43,8 @@ export const ordersForRegisterSession = (
   const end = Date.parse(endISO)
   const start = Date.parse(session.openedAt)
   const staffId = session.staffId ?? session.openedById
-  const ownerScoped = Boolean(staffId)
+  const isStoreDay = session.id === ''
+  const ownerScoped = Boolean(staffId) && !isStoreDay
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
     isInWindow(order.createdAt, start, end) &&
@@ -59,12 +60,14 @@ export const voidedOrdersForRegisterSession = (
 ) => {
   const end = Date.parse(endISO)
   const start = Date.parse(session.openedAt)
+  const ownerId = session.staffId ?? session.openedById
+  const ownerScoped = Boolean(ownerId) && session.id !== ''
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
     order.status === 'void' &&
     isInWindow(order.voidedAt, start, end) &&
-    (session.staffId || session.openedById
-      ? !order.voidedById || order.voidedById === (session.staffId ?? session.openedById)
+    (ownerScoped
+      ? !order.voidedById || order.voidedById === ownerId
       : !session.id || order.voidShiftId === session.id || order.voidShiftId === undefined),
   )
 }
@@ -171,15 +174,18 @@ export const registerSessionItems = (
 ): RegisterItemsReport => {
   const start = Date.parse(session.openedAt)
   const end = Date.parse(endISO)
+  const ownerId = session.id === '' ? undefined : session.staffId ?? session.openedById
   const inWindow = ordersForRegisterSession(db, session, endISO)
   const completed = completedOrdersAt(inWindow, end)
   const recorded = recordedOrdersAt(inWindow, end)
   const voided = db.orders.filter((order) =>
     order.storeId === session.storeId &&
     order.status === 'void' &&
-    (!session.id || order.voidShiftId === session.id || (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))) &&
-    (!session.staffId && !session.openedById || !order.voidedById ||
-      order.voidedById === (session.staffId ?? session.openedById)),
+    (session.id
+      ? order.voidShiftId === session.id ||
+        (order.voidShiftId === undefined && isInWindow(order.voidedAt, start, end))
+      : isInWindow(order.voidedAt, start, end)) &&
+    (!ownerId || !order.voidedById || order.voidedById === ownerId),
   )
   const inScopeSales = (orders: Order[]) => staffId ? orders.filter((order) => orderPaidBy(order) === staffId) : orders
   const inScopeVoids = (orders: Order[]) => staffId

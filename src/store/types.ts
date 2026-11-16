@@ -220,7 +220,7 @@ export interface AppContextValue {
   voidOrder: (orderId: string, managerPin?: string, reason?: string) => Promise<Result>
   openRegister: (storeId: string, openingCash: number) => Result
   closeRegister: (sessionId: string, countedCash: number, note?: string, forceReason?: string, leaveFloatForNextShift?: boolean) => Result
-  closeRegisterDay: (storeId: string, countedCash: number, note?: string) => Result
+  closeRegisterDay: (storeId: string, staffFloat: number, countedCash: number, note?: string) => Result
   handoverTables: (storeId: string, orderIds: string[], targetStaffId?: string) => Result
   takeOverTables: (orderIds: string[]) => Result
   resolveCashDifference: (id: string, resolution: CashDifferenceResolution, note?: string) => Result

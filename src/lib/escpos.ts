@@ -205,6 +205,7 @@ export const buildOpenKitchenLines = (
 
 export interface ReportData {
   kind: 'X' | 'Z'
+  storeDay?: boolean
   store: Store
   session: RegisterSession
   snapshot: RegisterSnapshot
@@ -334,14 +335,16 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
   lines.push({ text: divider(cols) })
   lines.push({ text: `${data.kind} REPORT`, align: 'center', bold: true, size: 'double' })
   lines.push({
-    text: data.kind === 'X' ? 'INTERIM - SESSION REMAINS OPEN' : 'OFFICIAL SESSION CLOSE',
+    text: data.kind === 'X'
+      ? 'INTERIM - SESSION REMAINS OPEN'
+      : data.storeDay ? 'OFFICIAL STORE-DAY CLOSE' : 'OFFICIAL SESSION CLOSE',
     align: 'center',
     bold: true,
   })
   lines.push({ text: twoCol('Report no.', data.reportNumber, cols) })
   lines.push({ text: twoCol('Printed', fmtDateTime(data.generatedAt), cols) })
   lines.push({ text: twoCol('Session ID', data.session.id, cols) })
-  lines.push({ text: twoCol('Cashier', data.session.openedByName, cols) })
+  lines.push({ text: twoCol(data.storeDay ? 'Day-end cashier' : 'Cashier', data.session.openedByName, cols) })
   lines.push({ text: twoCol('Opened', `${fmtDate(data.session.openedAt)} ${fmtTime(data.session.openedAt)}`, cols) })
   if (data.kind === 'Z') {
     lines.push({ text: twoCol('Closed by', data.session.closedByName ?? data.generatedBy, cols) })
@@ -403,7 +406,7 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
   lines.push(
     ...reportRows(
       [
-        ['Opening cash', amount(data.session.openingCash)],
+        [data.storeDay ? 'Staff working float' : 'Opening cash', amount(data.session.openingCash)],
         ['Cash sales received', `+${reportAmount(details?.cashReceived ?? s.cashSales)}`],
         ['Cash tab payments', `+${reportAmount(s.cashSettlements)}`],
         ['Cash in', `+${reportAmount(cashIn)}`],

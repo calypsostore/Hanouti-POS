@@ -11,6 +11,7 @@ import type { RegisterDayReport, RegisterItemsReport, RegisterSession } from '..
 import { dateKey, money } from '../../../lib/utils'
 import { can } from '../../../lib/permissions'
 import { openShiftForStaff } from '../../../lib/registerShifts'
+import { shiftCashDifference } from '../../../lib/shiftCash'
 import { useApp } from '../../../store/AppStore'
 import { LiveRegister } from './LiveRegister'
 import { RegisterDialogs } from './RegisterDialogs'
@@ -32,6 +33,7 @@ export default function RegisterPage() {
   const [forceReason, setForceReason] = useState('')
   const [countedInput, setCountedInput] = useState('')
   const [closeNote, setCloseNote] = useState('')
+  const [dayStaffFloatInput, setDayStaffFloatInput] = useState('')
   const [dayCountedInput, setDayCountedInput] = useState('')
   const [dayCloseNote, setDayCloseNote] = useState('')
   const [leaveFloatForNextShift, setLeaveFloatForNextShift] = useState(false)
@@ -126,6 +128,10 @@ export default function RegisterPage() {
   const liveDaySnapshot = todaySessions.length
     ? computeRegisterTotals(db, store.id, todayStart, nowISO, dayOpeningCash)
     : null
+  const staffFloatValue = Number(dayStaffFloatInput)
+  const dayCloseSnapshot = todaySessions.length && Number.isFinite(staffFloatValue) && staffFloatValue >= 0
+    ? computeRegisterTotals(db, store.id, todayStart, nowISO, staffFloatValue)
+    : null
   const canCloseDay = user.role === 'admin' && !todayDayReport && todaySessions.length > 0 && !anyOpen
   const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
@@ -158,6 +164,8 @@ export default function RegisterPage() {
   }
   const liveItems = open ? itemDetailsForSession(open, nowISO, itemScope).report : null
   const expected = liveSnapshot?.expectedCash ?? 0
+  const dayExpectedCash = dayCloseSnapshot?.expectedCash ?? 0
+  const dayCashDifference = shiftCashDifference(Number(dayCountedInput) || 0, dayExpectedCash)
 
   const reportData = (
     kind: 'X' | 'Z',
@@ -248,7 +256,12 @@ export default function RegisterPage() {
   }
 
   const handleCloseRegisterDay = () => {
-    const result = closeRegisterDay(store.id, Number(dayCountedInput), dayCloseNote)
+    const result = closeRegisterDay(
+      store.id,
+      Number(dayStaffFloatInput),
+      Number(dayCountedInput),
+      dayCloseNote,
+    )
     if (!result.ok) {
       push(result.error, 'error')
       return
@@ -264,7 +277,7 @@ export default function RegisterPage() {
       status: 'closed',
       openedAt: new Date(`${report.date}T00:00:00`).toISOString(),
       openedById: report.closedById,
-      openedByName: 'Store day',
+      openedByName: report.closedByName,
       closedAt: report.closedAt,
       closedById: report.closedById,
       closedByName: report.closedByName,
@@ -276,7 +289,7 @@ export default function RegisterPage() {
       zReportNumber: report.zReportNumber,
       reportDetails: report.reportDetails,
     }
-    const data = reportData('Z', session, report.snapshot, report.closedAt)
+    const data = { ...reportData('Z', session, report.snapshot, report.closedAt), storeDay: true }
     const lines = buildReportLines(data)
     setPrintJob({
       title: `Z Report · ${data.reportNumber}`,
@@ -336,6 +349,7 @@ export default function RegisterPage() {
                 variant="secondary"
                 disabled={!canCloseDay}
                 onClick={() => {
+                  setDayStaffFloatInput(dayOpeningCash.toFixed(3))
                   setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
                   setDayCloseNote('')
                   setDayCloseModal(true)
@@ -449,7 +463,18 @@ export default function RegisterPage() {
         size="sm"
         footer={<div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setDayCloseModal(false)}>Cancel</Button>
-          <Button variant="danger" disabled={!Number.isFinite(Number(dayCountedInput)) || Number(dayCountedInput) < 0} onClick={handleCloseRegisterDay}>Close day and freeze Z</Button>
+          <Button
+            variant="danger"
+            disabled={
+              !Number.isFinite(Number(dayStaffFloatInput)) ||
+              Number(dayStaffFloatInput) < 0 ||
+              !Number.isFinite(Number(dayCountedInput)) ||
+              Number(dayCountedInput) < 0
+            }
+            onClick={handleCloseRegisterDay}
+          >
+            Close day and freeze Z
+          </Button>
         </div>}
       >
         <div className="space-y-3">
@@ -457,11 +482,23 @@ export default function RegisterPage() {
             This closes the whole store day, not one staff shift. It is available only after every shift is closed.
           </p>
           <Field label="Expected day-end cash">
-            <div className="text-xl font-bold text-ink">{money(liveDaySnapshot?.expectedCash ?? 0)}</div>
+            <div className="text-xl font-bold text-ink">{money(dayExpectedCash)}</div>
+          </Field>
+          <Field label="Staff working float (DT)" hint="Enter the amount set aside for staff to work with today. It can change each day.">
+            <Input
+              type="number"
+              min={0}
+              step={0.001}
+              value={dayStaffFloatInput}
+              onChange={(event) => setDayStaffFloatInput(event.target.value)}
+            />
           </Field>
           <Field label="Counted cash (DT)">
             <Input type="number" min={0} step={0.001} value={dayCountedInput} onChange={(event) => setDayCountedInput(event.target.value)} />
           </Field>
+          <div className="rounded-xl border border-line px-3 py-2 text-sm">
+            <div className="flex justify-between gap-3"><span className="text-muted">Cash difference</span><strong>{money(dayCashDifference)}</strong></div>
+          </div>
           <Field label="Day-end note" hint="Optional">
             <Textarea value={dayCloseNote} onChange={(event) => setDayCloseNote(event.target.value)} rows={3} />
           </Field>

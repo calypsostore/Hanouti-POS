@@ -10,10 +10,13 @@ business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
 orders and station tickets, station-device kiosk pairing, hub sync/offline
 outbox, PWA foundation, configurable POS automation, per-staff shifts, table
-handover, cash-difference tracking, and owner-only store-day Z closeout**.
-Staff close their own shifts into frozen X snapshots; the owner closes one
-immutable daily Z after all shifts end. Staff analytics and cash differences
-are implemented in the client store.
+handover, cash-difference tracking, and owner-only store-day Z closeout with a
+daily staff-working-float input and full-store cashier attribution**. Staff
+close their own shifts into frozen X snapshots; the owner closes one immutable
+daily Z after all shifts end. The owner enters that day's variable staff float
+and counted cash; the frozen Z includes every cashier's sales, table orders,
+and tab settlements and identifies the administrator closing the day. Staff
+analytics and cash differences are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 

@@ -234,7 +234,7 @@ test('store-day totals include sales assigned to every staff shift', () => {
     ledger: [],
     expenses: [],
     purchasePayments: [],
-  }, 'store-1', start, end, 100)
+  }, 'store-1', start, end, 225)
   const items = registerSessionItems({
     ...db,
     orders: dayOrders,
@@ -242,9 +242,80 @@ test('store-day totals include sales assigned to every staff shift', () => {
 
   assert.equal(totals.salesTotal, 40)
   assert.equal(totals.ordersCount, 2)
-  assert.equal(totals.expectedCash, 140)
+  assert.equal(totals.expectedCash, 265)
   assert.equal(items.itemsSold.find((row) => row.productId === 'coffee')?.qty, 3)
   assert.equal(items.itemsSold.find((row) => row.productId === 'tea')?.qty, 5)
+})
+
+test('store-day Z details include every cashier, including admin table sales', () => {
+  const dayOrders = [
+    order('staff-sale', {
+      total: 15,
+      shiftId: 'shift-one',
+      staffId: 'staff-1',
+      staffName: 'Staff One',
+      items: [item('coffee', 'Coffee')],
+    }),
+    order('admin-table-sale', {
+      total: 25,
+      shiftId: 'admin-shift',
+      staffId: 'admin-1',
+      staffName: 'Store Owner',
+      items: [item('tea', 'Tea')],
+    }),
+    order('old-void', {
+      status: 'void',
+      total: 7,
+      voidedAt: '2026-11-13T23:00:00.000Z',
+      staffId: 'staff-1',
+      items: [item('coffee', 'Coffee')],
+    }),
+  ]
+  const details = registerReportDetails({
+    stores: [{
+      id: 'store-1',
+      name: 'Cafe',
+      address: '',
+      city: '',
+      phone: '',
+      settings: {
+        posMode: 'standard',
+        printer: { width: 80 },
+      },
+    }],
+    orders: dayOrders,
+    ledger: [{
+      storeId: 'store-1',
+      type: 'payment',
+      amount: 5,
+      method: 'cash',
+      createdAt: '2026-11-14T12:00:00.000Z',
+      shiftId: 'shift-one',
+    }],
+    expenses: [],
+    purchasePayments: [],
+    products: [
+      { id: 'coffee', storeId: 'store-1', categoryId: 'drinks', name: 'Coffee' },
+      { id: 'tea', storeId: 'store-1', categoryId: 'drinks', name: 'Tea' },
+    ],
+    categories: [{ id: 'drinks', name: 'Drinks' }],
+    inventoryItems: [],
+    stockMovements: [],
+    auditLogs: [],
+  }, {
+    id: '',
+    storeId: 'store-1',
+    status: 'open',
+    openedAt: start,
+    openedById: 'admin-1',
+    openedByName: 'Store Owner',
+    openingCash: 225,
+  }, end)
+
+  assert.deepEqual(details.byEmployee.map((employee) => employee.name).sort(), ['Staff One', 'Store Owner'])
+  assert.equal(details.completedOrders, 2)
+  assert.equal(details.itemsSold.reduce((total, row) => total + row.qty, 0), 2)
+  assert.equal(details.voidedItems.length, 0)
 })
 
 test('coffee shift report compares yield estimate, recipe use, and tracked stock remainder', () => {
