@@ -148,6 +148,11 @@
   this project does not convert between inventory units automatically.
 - Order-rule browser flows and concurrent-phone payment races remain
   unverified; see `docs/AUDIT.md` and `docs/PRODUCTION_PLAN.md`.
-- A hub PIN-verification endpoint was added because sync snapshots intentionally
-  omit password and PIN hashes. It is scoped to the authenticated user and uses
-  a persistent five-failure/15-minute lockout; hashes remain server-side.
+- Hub snapshots intentionally omit password and PIN hashes. Admins set/reset
+  their own 4–12 digit authorization PIN in Admin → Team; it reuses the existing
+  admin `User.pin` credential, so PIN-based sign-in changes at the same time.
+- Purpose-scoped hub PIN checks search only active, same-store users authorized
+  for that action and return only the confirmer ID/name. Failed checks share a
+  persistent five-failure/15-minute lockout; hashes remain server-side.
+- Standalone mode checks saved local hashes. Hub-mode authorization fails closed
+  while disconnected rather than restoring credential hashes to phone caches.

@@ -75,6 +75,16 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       password: hashSecret('cashier-password'), pin: hashSecret('2266'), role: 'staff',
       active: true, permissions: { register: false, openShift: true, closeShift: false },
     }
+    const activeManager = {
+      id: 'active-manager', storeId: owner.actor.storeId, name: 'Active manager',
+      password: hashSecret('manager-password'), pin: hashSecret('4477'), role: 'manager',
+      active: true, permissions: { approveOverrides: true, voidOrders: true, overrideStock: true },
+    }
+    const inactiveManager = {
+      id: 'inactive-manager', storeId: owner.actor.storeId, name: 'Inactive manager',
+      password: hashSecret('inactive-manager-password'), pin: hashSecret('6633'), role: 'manager',
+      active: false, permissions: { approveOverrides: true, voidOrders: true, overrideStock: true },
+    }
     const wrongPin = await fetch(`${base}/api/auth/verify-pin`, {
       method: 'POST', headers: auth, body: JSON.stringify({ pin: '1234' }),
     })
@@ -87,6 +97,8 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       opId: 'sync-one', deviceId: 'phone-one', storeId: owner.actor.storeId, baseSeq: 1,
       ops: [
         { kind: 'put', collection: 'users', id: staffUser.id, document: staffUser },
+        { kind: 'put', collection: 'users', id: activeManager.id, document: activeManager },
+        { kind: 'put', collection: 'users', id: inactiveManager.id, document: inactiveManager },
         { kind: 'put', collection: 'stores', id: owner.actor.storeId, document: {
           ...initialData.collections.stores[0],
           settings: {
@@ -139,6 +151,20 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const synced = await fetch(`${base}/api/sync`, { method: 'POST', headers: auth, body: JSON.stringify(update) })
     assert.equal(synced.status, 200, await synced.text())
+    const verifyAuthorizationPin = async (pin, purpose) => fetch(
+      `${base}/api/auth/verify-authorization-pin`,
+      { method: 'POST', headers: auth, body: JSON.stringify({ pin, storeId: owner.actor.storeId, purpose }) },
+    )
+    for (const purpose of ['void-order', 'cancel-table', 'override-stock']) {
+      const verified = await verifyAuthorizationPin('4477', purpose)
+      const result = await verified.json()
+      assert.equal(result.verified, true, `${purpose} accepts active manager PIN`)
+      assert.equal(result.confirmer.id, activeManager.id)
+    }
+    const inactivePin = await (await verifyAuthorizationPin('6633', 'void-order')).json()
+    assert.equal(inactivePin.verified, false, 'inactive manager PIN cannot authorize')
+    const unauthorizedPin = await (await verifyAuthorizationPin('2266', 'void-order')).json()
+    assert.equal(unauthorizedPin.verified, false, 'staff PIN without void permission cannot authorize')
     const orderUpdate = {
       opId: 'sync-order-one', deviceId: 'phone-one', storeId: owner.actor.storeId, baseSeq: 2,
       ops: [{ kind: 'put', collection: 'openOrders', id: 'order-one', document: {

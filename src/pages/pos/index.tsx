@@ -55,6 +55,7 @@ const stationTicketJob = (
 export default function POS() {
   const {
     user, store, db, logout, createOrder, addItemsToOpenOrder, sendToStations, updateOpenOrderItem, updateProduct,
+    verifyAuthorizationPin,
     voidSentOrderItem, payOpenOrder, recordOpenOrder,
     enqueuePrint,
   } = useApp()
@@ -72,7 +73,7 @@ export default function POS() {
 
   const [categoryId, setCategoryId] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const productCart = useProductCart(db, store, user, push, registerOpen)
+  const productCart = useProductCart(db, store, user, push, registerOpen, verifyAuthorizationPin)
   const {
     cart, setCart, optionsProduct, setOptionsProduct, qtyInCart, addItem, addSelection, scanBarcode, changeQty, setLineQty,
     stockPrompt, resolveStockPrompt, cancelStockPrompt,

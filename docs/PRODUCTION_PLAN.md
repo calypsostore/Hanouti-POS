@@ -41,6 +41,19 @@ document.
 - Still unverified in a live browser: the user’s specific item, store, category,
   active status and stock settings.
 
+### Admin authorization PINs — implemented; browser verification pending
+
+- Implemented: store admins can set/reset their own 4–12 digit PIN from Admin →
+  Team. The value is hashed and audited; it is not shown again. This updates
+  the admin account's existing PIN sign-in credential as well.
+- Active admin and permitted active manager PINs are validated locally in
+  standalone mode and server-side by the hub in connected mode. Hub responses
+  expose only the authorizer ID/name, never credential hashes; deactivated
+  users and users without the purpose-specific permission are rejected.
+- Hub API and local helper tests cover void, table-cancel and stock-override
+  authorization, including inactive and unauthorized PINs. Full browser UI and
+  multi-phone validation remain **UNVERIFIED**.
+
 ### M6 audit items 41–45 — tests/docs/security complete; UI audit pending
 
 ### Availability (86) — partially implemented

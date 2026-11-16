@@ -4,6 +4,7 @@ import type {
   Station, StationDevice, Store, StoreSettings, StoreStatus, TableSection, User,
   PrintJob, PrintJobType, PrintLine, Printer,
 } from '../types'
+import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../lib/authorizationPin'
 
 export type Result = { ok: true } | { ok: false; error: string }
 export type LoginResult = { ok: true; user?: User } | { ok: false; error: string }
@@ -185,6 +186,7 @@ export interface AppContextValue {
   login: (email: string, password: string, storeCode?: string) => Promise<LoginResult>
   loginPin: (username: string, pin: string, storeCode?: string) => Promise<LoginResult>
   verifyPin: (pin: string) => Promise<boolean>
+  verifyAuthorizationPin: (pin: string, storeId: string, purpose: AuthorizationPinPurpose) => Promise<AuthorizationPinResult>
   logout: () => void
   createOrder: (input: CreateOrderInput) => { ok: true; order: Order } | { ok: false; error: string }
   addTable: (storeId: string, data: Pick<DiningTableInput, 'name' | 'seats' | 'sectionId'>) => Result
@@ -275,6 +277,7 @@ export interface AppContextValue {
   voidPurchase: (id: string, reason: string) => Result
   addStaff: (storeId: string, data: AddStaffInput) => Promise<Result>
   updateStaff: (id: string, patch: Partial<User>) => Promise<Result>
+  setOwnAdminPin: (pin: string) => Promise<Result>
   deleteStaff: (id: string) => Result
   addCustomer: (
     storeId: string,

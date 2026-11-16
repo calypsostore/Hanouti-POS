@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react'
 import { applyAccent, applyColorMode, readColorMode } from '../lib/theme'
 import type { Store, User } from '../types'
+import { findPinConfirmer } from '../lib/authorizationPin'
 import { useAuthSlice } from './auth'
 import { useCatalogSlice } from './catalog'
 import { useCustomersSlice } from './customers'
@@ -40,7 +41,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadError: database.loadError,
     userIdRef: auth.userIdRef,
   })
-  const dependencies = { ...database, ...guards }
+  const verifyAuthorizationPin = useCallback<AppContextValue['verifyAuthorizationPin']>(
+    async (pin, storeId, purpose) => {
+      const current = database.dbRef.current
+      const actor = current.users.find((candidate) =>
+        candidate.id === auth.userIdRef.current && candidate.active,
+      )
+      if (!actor || actor.storeId !== storeId) {
+        return { ok: false, error: 'Your active store session is required to verify an authorization PIN.' }
+      }
+      if (database.provider.mode === 'hub') {
+        try {
+          return await database.provider.verifyAuthorizationPin(pin, storeId, purpose)
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Could not verify the authorization PIN.',
+          }
+        }
+      }
+      const store = current.stores.find((candidate) => candidate.id === storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
+      const confirmer = await findPinConfirmer(
+        current.users,
+        storeId,
+        pin.trim(),
+        purpose,
+        store.settings.orderRules,
+      )
+      return confirmer
+        ? { ok: true, confirmer }
+        : { ok: false, error: 'That PIN does not belong to an active authorized manager.' }
+    },
+    [auth.userIdRef, database.dbRef, database.provider],
+  )
+  const dependencies = { ...database, ...guards, verifyAuthorizationPin }
   const orders = useOrdersSlice(dependencies)
   const openOrders = useOpenOrdersSlice(dependencies, orders.createOrder)
   const register = useRegisterSlice(dependencies)
@@ -133,6 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     login: auth.login,
     loginPin: auth.loginPin,
     verifyPin: (pin: string) => database.provider.verifyPin(pin, user?.pin),
+    verifyAuthorizationPin,
     logout: auth.logout,
     ...orders,
     ...openOrders,

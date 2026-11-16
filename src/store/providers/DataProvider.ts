@@ -3,6 +3,7 @@ import type { Database, PrintJob } from '../../types'
 import { readIndexedValue, writeIndexedValue } from '../../lib/storage'
 import { verifySecret } from '../../lib/hash'
 import type { Result } from '../types'
+import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../../lib/authorizationPin'
 
 export type ProviderMode = 'local' | 'hub'
 export type HubConnectionState = 'connected' | 'offline' | 'internet-offline'
@@ -38,6 +39,11 @@ export interface DataProvider {
     { ok: true; userId: string } | { ok: false; error: string; offline?: boolean }
   >
   verifyPin(pin: string, storedHash?: string): Promise<boolean>
+  verifyAuthorizationPin(
+    pin: string,
+    storeId: string,
+    purpose: AuthorizationPinPurpose,
+  ): Promise<AuthorizationPinResult>
   pullSnapshot(): Promise<{ database: Database; seq: number } | null>
   logout(): void
   useSnapshot(listener: (database: Database, seq: number) => void): () => void
@@ -54,6 +60,9 @@ const CONFLICTS_KEY = '7anouti.hub.conflicts.v1'
 type OutboxEntry =
   | { kind: 'change'; key: string; createdAt: number; attempts: number; retryAt: number; lastError?: string; payload: ChangeSet }
   | { kind: 'print'; key: string; createdAt: number; attempts: number; retryAt: number; lastError?: string; payload: PrintJob }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 class HubRequestError extends Error {
   readonly status: number
@@ -108,6 +117,9 @@ export class LocalProvider implements DataProvider {
   }
   async verifyPin(pin: string, storedHash?: string): Promise<boolean> {
     return typeof storedHash === 'string' && verifySecret(pin, storedHash)
+  }
+  async verifyAuthorizationPin(): Promise<AuthorizationPinResult> {
+    return { ok: false, error: 'Authorization PIN verification is unavailable.' }
   }
   async pullSnapshot(): Promise<null> {
     return null
@@ -356,6 +368,19 @@ export class HubProvider implements DataProvider {
   async verifyPin(pin: string): Promise<boolean> {
     const result = await this.request('/api/auth/verify-pin', { pin })
     return result.verified === true
+  }
+
+  async verifyAuthorizationPin(
+    pin: string,
+    storeId: string,
+    purpose: AuthorizationPinPurpose,
+  ): Promise<AuthorizationPinResult> {
+    const result = await this.request('/api/auth/verify-authorization-pin', { pin, storeId, purpose })
+    if (result.verified !== true || !isRecord(result.confirmer) ||
+        typeof result.confirmer.id !== 'string' || typeof result.confirmer.name !== 'string') {
+      return { ok: false, error: 'That PIN does not belong to an active authorized manager.' }
+    }
+    return { ok: true, confirmer: { id: result.confirmer.id, name: result.confirmer.name } }
   }
 
   async pullSnapshot(): Promise<{ database: Database; seq: number } | null> {

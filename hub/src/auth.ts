@@ -113,6 +113,53 @@ export class HubAuth {
     return true
   }
 
+  async verifyAuthorizationPin(
+    actor: AuthenticatedActor,
+    pin: string,
+    purpose: 'void-order' | 'cancel-table' | 'override-stock',
+    ip: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const throttleKey = `authorization-pin:${actor.storeId}:${actor.userId}:${ip}`
+    const failure = this.failures[throttleKey]
+    if (failure?.lockedUntil > Date.now()) {
+      throw Object.assign(new Error('Too many failed PIN attempts. Try again later.'), { status: 429 })
+    }
+
+    const state = await this.storage.readStore(actor.storeId)
+    const users = Object.values(state.collections.users ?? {}) as unknown as HubUser[]
+    const store = state.collections.stores?.[actor.storeId] as
+      | { settings?: { orderRules?: { stockOverrideRoles?: { admin?: boolean; manager?: boolean; staff?: boolean } } } }
+      | undefined
+    const rules = store?.settings?.orderRules?.stockOverrideRoles
+    const eligible = users.filter((user) => {
+      if (!user.active || user.storeId !== actor.storeId || user.stationOnly) return false
+      if (purpose === 'void-order') return user.role === 'admin' || user.permissions?.voidOrders === true
+      if (purpose === 'cancel-table') return user.role === 'admin' || user.permissions?.approveOverrides === true
+      const roleAllowed = user.role === 'admin'
+        ? rules?.admin === true
+        : user.role === 'manager'
+          ? rules?.manager === true
+          : rules?.staff === true
+      return roleAllowed && (user.role === 'admin' || user.permissions?.overrideStock === true)
+    })
+    const confirmer = /^\d{4,12}$/.test(pin)
+      ? eligible.find((user) => verifySecret(pin, user.pin))
+      : undefined
+    if (!confirmer) {
+      const next = (failure?.count ?? 0) + 1
+      this.failures[throttleKey] = {
+        count: next >= MAX_FAILURES ? 0 : next,
+        lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+      }
+      await this.persistFailures()
+      return null
+    }
+
+    delete this.failures[throttleKey]
+    await this.persistFailures()
+    return { id: confirmer.id, name: confirmer.name }
+  }
+
   async setupOwner(body: Record<string, unknown>): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
     if (this.setupInProgress) throw Object.assign(new Error('First-run owner setup is already in progress.'), { status: 409 })
     this.setupInProgress = true

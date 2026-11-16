@@ -146,3 +146,8 @@ phone-local WebSerial fallback are **untested on hardware**.
 - Added payment revalidation, checkout idempotency handling, and hub-assigned order numbers.
 - Added focused order-rule and hub numbering/idempotency tests.
 - Done; browser and concurrent-phone flows remain unverified.
+- Added Admin → Team self-service admin authorization PIN setup/reset; changing it also changes PIN sign-in.
+- Authorization PINs are hashed and audited; README documents the flow without exposing a real PIN.
+- Active users must have the purpose-specific permission; inactive and unauthorized PINs are rejected.
+- Standalone mode checks local hashes; hub mode verifies authorizers server-side without exposing hashes.
+- Local and hub PIN tests added; browser and multi-phone authorization flows remain unverified.

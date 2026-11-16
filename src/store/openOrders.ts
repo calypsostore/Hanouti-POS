@@ -3,7 +3,6 @@ import type { OpenOrder, Order, OrderItem, OrderItemStatus } from '../types'
 import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
-import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
@@ -55,7 +54,7 @@ export function useOpenOrdersSlice(
   dependencies: StoreSliceDependencies,
   createOrder: AppContextValue['createOrder'],
 ) {
-  const { dbRef, commitDb, provider, requireActor, requireCapability } = dependencies
+  const { dbRef, commitDb, provider, requireActor, requireCapability, verifyAuthorizationPin } = dependencies
 
   const openTableOrder = useCallback<AppContextValue['openTableOrder']>((storeId, tableId, guests, requestedTableName) => {
     const actorResult = requireActor(storeId)
@@ -807,18 +806,9 @@ export function useOpenOrdersSlice(
       const actorResult = requireActor(initial.storeId)
       if (!actorResult.ok) return actorResult
       if (!managerPin.trim()) return { ok: false, error: 'An active store admin PIN is required to cancel this order.' }
-      const admins = dbRef.current.users.filter((candidate) =>
-        candidate.storeId === initial.storeId && candidate.active &&
-        (candidate.role === 'admin' || can(candidate, 'approveOverrides')),
-      )
-      let verifiedAdminId: string | null = null
-      for (const admin of admins) {
-        if (await verifySecret(managerPin.trim(), admin.pin)) {
-          verifiedAdminId = admin.id
-          break
-        }
-      }
-      if (!verifiedAdminId) return { ok: false, error: "That PIN doesn't match an active store manager." }
+      const verification = await verifyAuthorizationPin(managerPin.trim(), initial.storeId, 'cancel-table')
+      if (!verification.ok) return verification
+      const verifiedAdminId = verification.confirmer.id
       const order = dbRef.current.openOrders.find((item) => item.id === orderId)
       if (!order) return { ok: false, error: 'Open table order not found.' }
       const latestActor = requireActor(order.storeId)
@@ -844,7 +834,7 @@ export function useOpenOrdersSlice(
       }))
       return { ok: true }
     },
-    [commitDb, dbRef, requireActor],
+    [commitDb, dbRef, requireActor, verifyAuthorizationPin],
   )
 
   return {

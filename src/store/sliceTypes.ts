@@ -2,6 +2,7 @@ import type { Database } from '../types'
 import type { Capability } from '../types'
 import type { ActorResult } from './types'
 import type { DataProvider } from './providers/DataProvider'
+import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../lib/authorizationPin'
 
 type DbRef = { current: Database }
 type UserIdRef = { current: string | null }
@@ -16,6 +17,11 @@ export interface StoreSliceDependencies {
   requireActor: RequireActor
   requireAdmin: RequireAdmin
   requireCapability: RequireCapability
+  verifyAuthorizationPin: (
+    pin: string,
+    storeId: string,
+    purpose: AuthorizationPinPurpose,
+  ) => Promise<AuthorizationPinResult>
   provider: DataProvider
 }
 

@@ -802,6 +802,18 @@ export async function createHubServer(): Promise<HubRuntime> {
         const pin = requireString(body.pin, 'PIN', 12)
         return sendJson(response, 200, { verified: await auth.verifyPin(actor, pin, ip) })
       }
+      if (path === '/api/auth/verify-authorization-pin' && request.method === 'POST') {
+        const body = await readJson(request)
+        const storeId = requireString(body.storeId, 'store ID', 80)
+        const actor = await actorFor(request, storeId)
+        if (actor.stationOnly) throw Object.assign(new Error('Station devices cannot verify staff PINs.'), { status: 403 })
+        const pin = requireString(body.pin, 'PIN', 12)
+        if (body.purpose !== 'void-order' && body.purpose !== 'cancel-table' && body.purpose !== 'override-stock') {
+          throw Object.assign(new Error('Choose a valid PIN authorization purpose.'), { status: 400 })
+        }
+        const confirmer = await auth.verifyAuthorizationPin(actor, pin, body.purpose, ip)
+        return sendJson(response, 200, { verified: confirmer !== null, confirmer })
+      }
       if (path === '/api/auth/logout' && request.method === 'POST') {
         const token = bearer(request)
         if (token) auth.revoke(token)

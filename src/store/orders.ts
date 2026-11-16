@@ -4,7 +4,6 @@ import { computeTotals } from '../lib/pricing'
 import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
-import { verifySecret } from '../lib/hash'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
@@ -19,7 +18,7 @@ import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
 export function useOrdersSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, provider, requireActor } = dependencies
+  const { dbRef, commitDb, provider, requireActor, verifyAuthorizationPin } = dependencies
   const createOrder = useCallback<AppContextValue['createOrder']>(
     (input) => {
       const actorResult = requireActor()
@@ -412,18 +411,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       let verifiedAdminId: string | null = null
       if (actor.role !== 'admin' && !can(actor, 'voidOrders')) {
         if (!managerPin?.trim()) return { ok: false, error: 'An active store admin PIN is required to void this order.' }
-        const admins = current.users.filter((candidate) =>
-          candidate.storeId === initialOrder.storeId && candidate.active &&
-          (candidate.role === 'admin' || can(candidate, 'voidOrders')),
-        )
-        authorizer = null
-        for (const admin of admins) {
-          if (await verifySecret(managerPin.trim(), admin.pin)) {
-            verifiedAdminId = admin.id
-            break
-          }
-        }
-        if (!verifiedAdminId) return { ok: false, error: "That PIN doesn't match an active store manager." }
+        const verification = await verifyAuthorizationPin(managerPin.trim(), initialOrder.storeId, 'void-order')
+        if (!verification.ok) return verification
+        verifiedAdminId = verification.confirmer.id
       }
       const latestOrder = dbRef.current.orders.find((candidate) => candidate.id === orderId)
       if (!latestOrder || latestOrder.status === 'void') return { ok: false, error: 'This order is already void.' }
@@ -605,7 +595,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       })
       return { ok: true }
     },
-    [commitDb, requireActor],
+    [commitDb, requireActor, verifyAuthorizationPin],
   )
 
 

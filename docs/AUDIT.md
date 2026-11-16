@@ -13,7 +13,7 @@ hub applies the same order engine to synced order documents.
 | `recordOpenOrder` | Shared rules, role, shift and table validation | Shared order validation on sync |
 | `payOpenOrder` | Revalidates, excludes its own reservation, idempotent key | Revalidates and deduplicates checkout IDs |
 | Discounts / tab payment | Shared discount and credit-limit rules; credit permission | Shared discount/credit-limit rules and credit capability |
-| `voidOrder` / sent-item void | Void permission/PIN, reason, stock and ledger restoration | Void capability and scoped document validation |
+| `voidOrder` / table cancel / sent-item void | Active authorized PIN where needed, reason, stock and ledger restoration | PIN purpose, active user and permission checked server-side; scoped document validation |
 | Purchases / stock adjustments | Store role, quantity bounds and movement audit | Store ownership and capability checks on synced records |
 | Returns | No separate return workflow exists | Not applicable |
 | Shift close | Register ownership, cash/shift checks, open-table warning | Close capability, owner and immutable-close checks |
@@ -25,5 +25,5 @@ do not create a second order document; hub-assigned numbers are unique.
 
 Remaining limits: purchase/stock ledger updates are not an atomic hub stock
 transaction with order payment, and browser-driven concurrent-phone checkout,
-PIN override, recipe editor, and responsive flows are **UNVERIFIED**. Real
+PIN prompt, recipe editor, and responsive flows are **UNVERIFIED**. Real
 printer output remains untested on hardware.

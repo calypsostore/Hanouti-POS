@@ -138,6 +138,22 @@ The login screen has one-click demo buttons for the first three.
 - Permissions control discounts, tabs, settlements, register, reports and
   shift supervisor
 
+### Admin authorization PINs
+
+After signing in as the store admin, open **Admin → Team → Admin authorization
+PIN** to set or reset a 4–12 digit PIN. Confirm it before saving. The app stores
+only a secure hash; the PIN is not displayed again or written in this README.
+This uses the admin account's PIN credential, so changing it also changes
+PIN-based admin sign-in.
+
+An active admin PIN can authorize restricted order voids and open-table
+cancellations. An active manager PIN can authorize only the actions allowed by
+that manager's permissions; stock overrides additionally follow the store's
+stock-override role setting. Deactivated users' PINs stop authorizing actions.
+When using the shop hub, authorization is checked by the hub against current
+active users and permissions; credential hashes are not sent to the browser.
+Hub authorization requires a live connection and fails closed while offline.
+
 ## How data isolation works in the prototype
 
 Every record carries a `storeId`; every page filters by the signed-in user's

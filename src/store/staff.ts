@@ -65,7 +65,7 @@ const staffSnapshot = (user: User): Record<string, AuditJsonValue> => ({
 })
 
 export function useStaffSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireCapability } = dependencies
+  const { dbRef, commitDb, requireActor, requireCapability } = dependencies
   const addStaff = useCallback<AppContextValue['addStaff']>(
     async (storeId, data) => {
       const actorResult = requireCapability(storeId, 'manageStaff')
@@ -342,5 +342,48 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
   )
 
 
-  return { addStaff, updateStaff, deleteStaff }
+  const setOwnAdminPin = useCallback<AppContextValue['setOwnAdminPin']>(async (pin) => {
+    if (!/^\d{4,12}$/.test(pin)) return { ok: false, error: 'Authorization PIN must contain 4 to 12 digits.' }
+    const actorResult = requireActor()
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    if (actor.role !== 'admin' || !actor.storeId) {
+      return { ok: false, error: 'Only an active store admin can set this authorization PIN.' }
+    }
+    const storeId = actor.storeId
+
+    let hashedPin: string
+    try {
+      hashedPin = await hashSecret(pin)
+    } catch {
+      return { ok: false, error: 'Could not securely save the authorization PIN. Please try again.' }
+    }
+
+    const latestActor = requireActor(storeId)
+    if (!latestActor.ok) return latestActor
+    if (latestActor.actor.id !== actor.id || latestActor.actor.role !== 'admin') {
+      return { ok: false, error: 'Only an active store admin can set this authorization PIN.' }
+    }
+    const admin = dbRef.current.users.find((candidate) =>
+      candidate.id === actor.id && candidate.storeId === storeId &&
+      candidate.role === 'admin' && candidate.active,
+    )
+    if (!admin) return { ok: false, error: 'The active admin account could not be verified.' }
+    commitDb((prev) => addLog({
+      ...prev,
+      users: prev.users.map((candidate) => candidate.id === admin.id
+        ? { ...candidate, pin: hashedPin }
+        : candidate),
+    }, latestActor.actor, {
+      storeId,
+      action: 'pin_reset',
+      entity: 'staff',
+      entityId: admin.id,
+      summary: 'Set or reset the admin authorization PIN',
+      after: { authorizationPinSet: true },
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
+  return { addStaff, updateStaff, deleteStaff, setOwnAdminPin }
 }

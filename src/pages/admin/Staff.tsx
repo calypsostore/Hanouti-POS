@@ -77,12 +77,15 @@ const stationOnlyPermissions = (): User['permissions'] => ({
 })
 
 export default function Staff() {
-  const { db, store, user, addStaff, updateStaff, deleteStaff } = useApp()
+  const { db, store, user, addStaff, updateStaff, deleteStaff, setOwnAdminPin } = useApp()
   const { push } = useToast()
   const navigate = useNavigate()
   const [editor, setEditor] = useState<{ open: boolean; member?: User }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [loginDetails, setLoginDetails] = useState<{ name: string; username: string; pin: string } | null>(null)
+  const [adminPin, setAdminPin] = useState('')
+  const [adminPinConfirmation, setAdminPinConfirmation] = useState('')
+  const [savingAdminPin, setSavingAdminPin] = useState(false)
 
   if (!user) return null
   const canManageStaff = can(user, 'manageStaff')
@@ -139,6 +142,64 @@ export default function Staff() {
           </div>
         </Card>
       </div>
+
+      {user.role === 'admin' && (
+        <Card className="space-y-3 p-4">
+          <div>
+            <h3 className="text-[14px] font-bold text-ink">Admin authorization PIN</h3>
+            <p className="mt-1 text-[12px] text-muted">
+              Used for restricted order and table actions. This also updates the PIN sign-in credential for your admin account.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="New PIN" hint="4–12 digits; stored as a secure hash">
+              <Input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={adminPin}
+                onChange={(event) => setAdminPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+              />
+            </Field>
+            <Field label="Confirm PIN">
+              <Input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={adminPinConfirmation}
+                onChange={(event) => setAdminPinConfirmation(event.target.value.replace(/\D/g, '').slice(0, 12))}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-muted">
+              Active accounts with the required permission are the only accounts that can authorize an action.
+            </p>
+            <Button
+              disabled={savingAdminPin || !/^\d{4,12}$/.test(adminPin) || adminPin !== adminPinConfirmation}
+              onClick={async () => {
+                setSavingAdminPin(true)
+                try {
+                  const result = await setOwnAdminPin(adminPin)
+                  if (!result.ok) {
+                    push(result.error, 'error')
+                    return
+                  }
+                  setAdminPin('')
+                  setAdminPinConfirmation('')
+                  push('Admin authorization PIN saved')
+                } catch (error) {
+                  push(error instanceof Error ? error.message : 'Could not save the admin PIN.', 'error')
+                } finally {
+                  setSavingAdminPin(false)
+                }
+              }}
+            >
+              {savingAdminPin ? 'Saving…' : 'Save PIN'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {loginDetails && (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-accent-foreground/30 bg-accent-50/60 p-4">

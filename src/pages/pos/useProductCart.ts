@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { round } from '../../lib/pricing-utils'
 import { uid } from '../../lib/utils'
-import { verifySecret } from '../../lib/hash'
 import { canOverrideStock } from '../../lib/permissions'
+import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../../lib/authorizationPin'
 import type { Database, OrderItem, Product, Store, User } from '../../types'
 import { validateOrderLines, type OrderIssueCode, type OrderRulesContext } from '../../shared/orderRules'
 import type { ProductSelection } from './ProductOptionsModal'
@@ -25,6 +25,11 @@ export function useProductCart(
   user: User | null,
   push: (message: string, type?: 'success' | 'error' | 'info') => void,
   hasOpenShift: boolean,
+  verifyAuthorizationPin: (
+    pin: string,
+    storeId: string,
+    purpose: AuthorizationPinPurpose,
+  ) => Promise<AuthorizationPinResult>,
 ) {
   const [cart, setCartState] = useState<OrderItem[]>([])
   const cartRef = useRef<OrderItem[]>([])
@@ -268,14 +273,16 @@ export function useProductCart(
     if (user && canOverrideStock(user, store.settings.orderRules)) {
       confirmedBy = user
     } else if (pin?.trim()) {
-      for (const candidateUser of db.users) {
-        if (!candidateUser.active || candidateUser.storeId !== store.id) continue
-        if (!canOverrideStock(candidateUser, store.settings.orderRules)) continue
-        if (await verifySecret(pin.trim(), candidateUser.pin)) {
-          confirmedBy = candidateUser
-          break
-        }
+      const verification = await verifyAuthorizationPin(pin.trim(), store.id, 'override-stock')
+      if (!verification.ok) {
+        push(verification.error, 'error')
+        return
       }
+      confirmedBy = db.users.find((candidateUser) =>
+        candidateUser.id === verification.confirmer.id &&
+        candidateUser.active && candidateUser.storeId === store.id &&
+        canOverrideStock(candidateUser, store.settings.orderRules),
+      )
     }
     if (!confirmedBy) {
       push(pin?.trim() ? "That PIN can't confirm an over-stock sale." : 'A manager PIN is required to sell over stock.', 'error')
