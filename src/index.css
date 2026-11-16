@@ -241,6 +241,15 @@ html.dark {
   }
 }
 
+@keyframes flag-wave {
+  0%, 100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
 @keyframes toastIn {
   from {
     opacity: 0;

@@ -267,7 +267,11 @@ dashboard component set and the app shell is split into a collapsible sidebar,
 top bar, and mobile navigation. The top-bar navigation toggle is mobile-only;
 desktop users can collapse the sidebar from its own control. Dashboard totals
 reuse the existing report and ledger data; month profit is explicitly an
-estimate based on current product costs and recorded expenses. The sticky top
+estimate based on current product costs and recorded expenses. The shared top
+bar keeps the appearance toggle available to staff on their dashboard; the
+mobile POS header hides store metadata and centers its compact action buttons,
+including the dashboard shortcut; larger screens retain the store identity.
+The sticky top
 bar uses a 60%-opaque blurred surface. Sidebar spacing,
 store details, icons, and labels are compacted while navigation targets remain
 easy to tap; the selected store icon has a white tile for contrast. The collapsed
@@ -422,7 +426,9 @@ stored; no demo values are presented as production data.
   and tax share a compact row, and its total and primary action share another
   row to leave more room for order lines and controls; at a 1110 by
   503 desktop viewport, all three order rows, the total and primary checkout
-  action were visible together.
+  action were visible together. The POS 86-list button uses a gray flag when
+  nothing is unavailable and a waving red flag when unavailable items exist;
+  the numeric badge is removed.
 - Dine-in checkout requires an active table when the feature is enabled. Table
   names are snapshotted on orders and shown on receipts, ESC/POS kitchen tickets,
   the Orders page and CSV exports. The POS table picker is available in desktop
