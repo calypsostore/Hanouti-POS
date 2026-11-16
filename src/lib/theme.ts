@@ -74,17 +74,21 @@ let activeAccent = '7anouti'
 export function applyAccent(paletteId: string) {
   activeAccent = paletteId
   const palette = accentPalettes.find((p) => p.id === paletteId) ?? accentPalettes[0]
-  const shades = document.documentElement.classList.contains('dark') ? palette.darkShades : palette.shades
   const root = document.documentElement
+  const isDark = root.classList.contains('dark')
+  const shades = isDark ? palette.darkShades : palette.shades
+  const foreground = isDark ? palette.darkForeground : palette.foreground
   root.style.setProperty('--color-accent-50', shades[50])
   root.style.setProperty('--color-accent-100', shades[100])
   root.style.setProperty('--color-accent-500', shades[500])
   root.style.setProperty('--color-accent-600', shades[600])
   root.style.setProperty('--color-accent-700', shades[700])
-  root.style.setProperty(
-    '--color-accent-foreground',
-    document.documentElement.classList.contains('dark') ? palette.darkForeground : palette.foreground,
-  )
+  root.style.setProperty('--color-accent-foreground', foreground)
+  root.style.setProperty('--color-brand-amber', shades[500])
+  root.style.setProperty('--color-brand-amber-hover', shades[600])
+  root.style.setProperty('--color-brand-amber-pressed', shades[700])
+  root.style.setProperty('--color-brand-amber-soft', shades[50])
+  root.style.setProperty('--color-brand-amber-focus', foreground)
 }
 
 export type ColorMode = 'system' | 'light' | 'dark'
