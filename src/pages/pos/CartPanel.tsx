@@ -141,10 +141,13 @@ export function CartPanel({
   const newItemCount = pendingCount ?? cart.length
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col', embedded && 'min-h-[50vh]')}>
-      <div className="glass-sidebar flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2 text-white">
+      <div className={cn(
+        'glass-sidebar flex shrink-0 items-center justify-between border-b border-white/10 text-white',
+        embedded ? 'px-2 py-1.5' : 'px-3 py-2',
+      )}>
         <div className="flex items-center gap-2">
           <ShoppingBag className="h-4 w-4 text-brand-amber" />
-          <span className="text-[13.5px] font-bold">{isOpenOrder ? `${tableName ?? 'Table'} order` : 'Current order'}</span>
+          <span className={cn('font-bold', embedded ? 'text-[12.5px]' : 'text-[13.5px]')}>{isOpenOrder ? `${tableName ?? 'Table'} order` : 'Current order'}</span>
           {count > 0 && (
             <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white">
               {count}
@@ -169,11 +172,11 @@ export function CartPanel({
         )}
       </div>
 
-      {!isOpenOrder && <div className="shrink-0 border-b border-line/70 px-3 py-1.5">
+      {!isOpenOrder && <div className={cn('shrink-0 border-b border-line/70 px-3', embedded ? 'py-1' : 'py-1.5')}>
         <ChannelSwitch channel={channel} setChannel={setChannel} allowDelivery={deliveryEnabled} />
       </div>}
       {(isOpenOrder || channel === 'dine-in') && (
-        <div className="shrink-0 border-b border-line/70 px-3 py-2 text-[10.5px] text-muted">
+        <div className={cn('shrink-0 border-b border-line/70 px-3 text-[10.5px] text-muted', embedded ? 'py-1' : 'py-2')}>
           <span className="font-semibold text-ink">{tableName || tableNameInput || 'Dine-in'}</span>
           {guests !== undefined && <> · {guests} guests</>}
           {sectionName && <> · {sectionName}</>}
@@ -181,7 +184,10 @@ export function CartPanel({
         </div>
       )}
 
-      <div className={cn('min-h-0 flex-1 overflow-y-auto px-3 py-2 thin-scrollbar', embedded && 'max-h-[36vh]')}>
+      <div className={cn(
+        'min-h-0 flex-1 overflow-y-auto thin-scrollbar',
+        embedded ? 'max-h-[44vh] px-2 py-1' : 'px-3 py-2',
+      )}>
         {!isOpenOrder && channel === 'dine-in' && tablesEnabled && (
           <TablePicker
             tables={tables}
@@ -217,9 +223,12 @@ export function CartPanel({
         ) : (
           <button
             onClick={onPickCustomer}
-            className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line px-2 py-1 text-left transition hover:border-accent-foreground/50 hover:bg-white"
+            className={cn(
+              'mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line px-2 text-left transition hover:border-accent-foreground/50 hover:bg-white',
+              embedded ? 'py-0.5' : 'py-1',
+            )}
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cream-200 text-muted">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cream-200 text-muted">
               <UserRound className="h-3.5 w-3.5" />
             </div>
             <span className="flex-1 text-[12px] font-semibold text-ink">Attach a customer</span>
@@ -240,6 +249,7 @@ export function CartPanel({
         ) : (
           <CartItemsList
             items={cart}
+            compact={embedded}
             persistedLineIds={persistedLineIds}
             changeQty={changeQty}
             setLineQty={setLineQty}
@@ -270,6 +280,7 @@ export function CartPanel({
         hasUnavailableDraft={hasUnavailableDraft}
         issueCount={issueCount}
         onReview={onReview}
+        compact={embedded}
       />
     </div>
   )

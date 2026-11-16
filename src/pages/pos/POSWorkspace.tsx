@@ -32,6 +32,7 @@ export function POSWorkspace({
         onClose={() => setMobileCartOpen(false)}
         title={cart.isOpenOrder ? `${cart.tableName ?? 'Table'} order` : 'Current order'}
         subtitle={subtitle}
+        compact
       >
         <CartPanel embedded {...cart} />
       </Modal>

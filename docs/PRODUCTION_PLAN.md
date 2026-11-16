@@ -416,7 +416,11 @@ stored; no demo values are presented as production data.
 - Schema `7anouti.db.v21` enables table service for legacy stores that already
   contain dining tables; Settings also warns admins when tables exist but the
   feature is off. The compact POS cart caps its footer at 8rem and compresses
-  the customer attach control; at a 1110 by
+  the customer attach control. The order-note action stays pinned and visible
+  outside the footer's scroll area on desktop and mobile, and expands the editor
+  when selected. The mobile cart opens as a taller, denser sheet; its subtotal
+  and tax share a compact row, and its total and primary action share another
+  row to leave more room for order lines and controls; at a 1110 by
   503 desktop viewport, all three order rows, the total and primary checkout
   action were visible together.
 - Dine-in checkout requires an active table when the feature is enabled. Table

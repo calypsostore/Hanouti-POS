@@ -2,11 +2,12 @@ import { Ban, Minus, Plus } from 'lucide-react'
 import { Button } from '../../components/ui'
 import type { OrderItem } from '../../types'
 import { Input } from '../../components/ui'
-import { money } from '../../lib/utils'
+import { cn, money } from '../../lib/utils'
 import { round } from '../../lib/pricing-utils'
 
 export function CartItemsList({
   items,
+  compact = false,
   persistedLineIds,
   changeQty,
   setLineQty,
@@ -16,6 +17,7 @@ export function CartItemsList({
   issueByLine = {},
 }: {
   items: OrderItem[]
+  compact?: boolean
   persistedLineIds?: string[]
   changeQty: (id: string, delta: number) => void
   setLineQty: (id: string, qty: number) => void
@@ -25,7 +27,7 @@ export function CartItemsList({
   issueByLine?: Record<string, string>
 }) {
   return (
-    <ul className="space-y-1">
+    <ul className={compact ? 'space-y-0.5' : 'space-y-1'}>
       {items.map((item) => {
         const persisted = !!item.lineId && persistedLineIds?.includes(item.lineId)
         const unavailable = !!item.lineId && unavailableLineIds.includes(item.lineId) &&
@@ -34,13 +36,20 @@ export function CartItemsList({
         return (
           <li
             key={item.lineId ?? `${item.productId}-${item.variantId ?? ''}`}
-            className={`glass-row group flex items-center gap-2 rounded-xl px-1.5 py-1 ${unavailable ? 'border border-red-500 bg-red-50' : ''}`}
+            className={cn(
+              'glass-row group flex items-center rounded-xl',
+              compact ? 'gap-1.5 px-1 py-0.5' : 'gap-2 px-1.5 py-1',
+              unavailable && 'border border-red-500 bg-red-50',
+            )}
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-tint text-xs font-bold text-accent-foreground">
+            <span className={cn(
+              'flex shrink-0 items-center justify-center rounded-lg bg-brand-tint font-bold text-accent-foreground',
+              compact ? 'h-6 w-6 text-[11px]' : 'h-7 w-7 text-xs',
+            )}>
               {item.name.slice(0, 1).toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12.5px] font-semibold text-ink">{item.name}</div>
+              <div className={cn('truncate font-semibold text-ink', compact ? 'text-[12px]' : 'text-[12.5px]')}>{item.name}</div>
               {item.variantName && <div className="truncate text-[10px] text-muted">{item.variantName}</div>}
               {unavailable && <div className="text-[10px] font-bold text-red-600">86 - remove</div>}
               {!unavailable && issue && (
@@ -77,21 +86,29 @@ export function CartItemsList({
                 <button
                   onClick={() => changeQty(item.lineId ?? item.productId, -1)}
                   disabled={persisted && item.status !== 'draft'}
-                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink"
+                  aria-label={`Decrease ${item.name}`}
+                  className={cn(
+                    'flex items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink',
+                    compact ? 'h-7 w-7' : 'h-6 w-6',
+                  )}
                 >
-                  <Minus className="h-3 w-3" />
+                  <Minus className={compact ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
                 </button>
                 <span className="w-4 text-center text-[11.5px] font-bold tabular">{item.qty}</span>
                 <button
                   onClick={() => changeQty(item.lineId ?? item.productId, 1)}
                   disabled={persisted && item.status !== 'draft'}
-                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink"
+                  aria-label={`Increase ${item.name}`}
+                  className={cn(
+                    'flex items-center justify-center rounded-md text-muted transition hover:bg-cream-100 hover:text-ink',
+                    compact ? 'h-7 w-7' : 'h-6 w-6',
+                  )}
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className={compact ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
                 </button>
               </div>
             )}
-            <div className="w-[62px] text-right text-[12px] font-bold tabular">
+            <div className={cn('text-right font-bold tabular', compact ? 'w-[58px] text-[11px]' : 'w-[62px] text-[12px]')}>
               {money(round(item.price * item.qty))}
             </div>
             {persisted && item.status !== 'draft' && item.status !== 'void' && canVoidSentItems && (
