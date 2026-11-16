@@ -151,6 +151,40 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const synced = await fetch(`${base}/api/sync`, { method: 'POST', headers: auth, body: JSON.stringify(update) })
     assert.equal(synced.status, 200, await synced.text())
+    const invalidYieldSettings = await fetch(`${base}/api/sync`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        opId: 'invalid-yield-settings',
+        deviceId: 'owner-device',
+        storeId: owner.actor.storeId,
+        baseSeq: 1,
+        ops: [{
+          kind: 'put',
+          collection: 'stores',
+          id: owner.actor.storeId,
+          document: {
+            ...update.ops.find((operation) => operation.collection === 'stores').document,
+            settings: {
+              ...update.ops.find((operation) => operation.collection === 'stores').document.settings,
+              inventoryYieldTracking: {
+                enabled: true,
+                trackers: [{
+                  inventoryItemId: 'missing-inventory',
+                  referenceQuantity: 1000,
+                  servingsMin: 5,
+                  servingsMax: 10,
+                  productIds: ['tea'],
+                  categoryIds: [],
+                }],
+              },
+            },
+          },
+        }],
+      }),
+    })
+    assert.equal(invalidYieldSettings.status, 400)
+    assert.match((await invalidYieldSettings.json()).error, /active inventory/i)
     const verifyAuthorizationPin = async (pin, purpose) => fetch(
       `${base}/api/auth/verify-authorization-pin`,
       { method: 'POST', headers: auth, body: JSON.stringify({ pin, storeId: owner.actor.storeId, purpose }) },

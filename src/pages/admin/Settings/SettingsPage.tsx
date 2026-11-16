@@ -6,7 +6,7 @@ import type { Store, StoreSettings } from '../../../types'
 import { Button, Segmented } from '../../../components/ui'
 import { PrintModal } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
-import { DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION } from '../../../lib/defaults'
+import { DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_INVENTORY_YIELD_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION } from '../../../lib/defaults'
 import { buildTestLines, linesToEscpos } from '../../../lib/escpos'
 import { connectPrinter, disconnectPrinter, onPrinterState, printerState as readPrinterState } from '../../../lib/printer'
 import type { PrinterState } from '../../../lib/printer'
@@ -95,6 +95,7 @@ export default function SettingsPage() {
         availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
         orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
         coffeeTracking: { ...DEFAULT_COFFEE_TRACKING },
+        inventoryYieldTracking: { ...DEFAULT_INVENTORY_YIELD_TRACKING, trackers: [] },
         staffConsumption: { ...DEFAULT_STAFF_CONSUMPTION, allowances: [] },
       },
   )
@@ -252,6 +253,7 @@ export default function SettingsPage() {
         set={set}
         products={db.products.filter((product) => product.storeId === store.id)}
         inventoryItems={db.inventoryItems.filter((item) => item.storeId === store.id && item.active)}
+        categories={db.categories.filter((category) => category.storeId === store.id)}
       />}
       {activeTab === 'devices' && <DevicesTab storeId={store.id} />}
       {activeTab === 'automation' && <AutomationTab

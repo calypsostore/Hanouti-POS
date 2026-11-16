@@ -229,7 +229,7 @@ export const registerReportDetails = (
     }
   }
 
-  const beans = store.settings.coffeeTracking.enabled
+  const beans = store.settings.coffeeTracking?.enabled
     ? db.inventoryItems.find((item) =>
         item.id === store.settings.coffeeTracking.inventoryItemId &&
         item.storeId === session.storeId && item.baseUnit === 'g',
@@ -275,6 +275,56 @@ export const registerReportDetails = (
   )
   const availableBeans = round(openingBeanStock + sum(nonSaleBeanMovements.map((movement) => movement.qtyDelta)))
   const ledgerRemaining = round(openingBeanStock + sum(movementsByClose.map((movement) => movement.qtyDelta)))
+  const inventoryYieldSummaries = store.settings.inventoryYieldTracking?.enabled
+    ? store.settings.inventoryYieldTracking.trackers.flatMap((tracker) => {
+        const inventoryItem = db.inventoryItems.find((item) =>
+          item.id === tracker.inventoryItemId && item.storeId === session.storeId,
+        )
+        if (!inventoryItem) return []
+        const productIds = new Set(tracker.productIds)
+        const categoryIds = new Set(tracker.categoryIds)
+        let soldQuantity = 0
+        let recipeUse = 0
+        for (const order of completed) {
+          if (staffId && orderPaidBy(order) !== staffId) continue
+          for (const orderItem of order.items) {
+            const product = db.products.find((candidate) =>
+              candidate.id === orderItem.productId && candidate.storeId === session.storeId,
+            )
+            if (!product || (!productIds.has(product.id) && !categoryIds.has(product.categoryId))) continue
+            soldQuantity = round(soldQuantity + orderItem.qty)
+            const variant = product.variants?.find((candidate) => candidate.id === orderItem.variantId)
+            const itemRecipeUse = recipeFor(product, variant, orderItem.modifiers)
+              .find((ingredient) => ingredient.inventoryItemId === inventoryItem.id)?.qtyPerUnit ?? 0
+            recipeUse = round(recipeUse + itemRecipeUse * orderItem.qty)
+          }
+        }
+        const expectedUseMin = round(soldQuantity * tracker.referenceQuantity / tracker.servingsMax)
+        const expectedUseMax = round(soldQuantity * tracker.referenceQuantity / tracker.servingsMin)
+        const movementsAfterOpen = db.stockMovements.filter((movement) =>
+          movement.storeId === session.storeId && movement.itemId === inventoryItem.id &&
+          Date.parse(movement.createdAt) >= start,
+        )
+        const openingStock = round(inventoryItem.onHand - sum(movementsAfterOpen.map((movement) => movement.qtyDelta)))
+        const movementsByClose = movementsAfterOpen.filter((movement) => Date.parse(movement.createdAt) <= end)
+        const nonConsumptionMovements = movementsByClose.filter((movement) =>
+          movement.type !== 'sale_use' && movement.type !== 'staff_use' && movement.type !== 'count_correction',
+        )
+        const availableStock = round(openingStock + sum(nonConsumptionMovements.map((movement) => movement.qtyDelta)))
+        return [{
+          itemName: inventoryItem.name,
+          soldQuantity,
+          referenceQuantity: tracker.referenceQuantity,
+          expectedUseMin,
+          expectedUseMax,
+          recipeUse,
+          expectedRemainingMin: round(availableStock - expectedUseMax),
+          expectedRemainingMax: round(availableStock - expectedUseMin),
+          ledgerRemaining: round(openingStock + sum(movementsByClose.map((movement) => movement.qtyDelta))),
+          unit: inventoryItem.baseUnit,
+        }]
+      })
+    : undefined
 
   const voidedOrders = voidedOrdersForRegisterSession(db, session, endISO)
     .filter((order) => !staffId || order.voidedById === staffId)
@@ -354,7 +404,8 @@ export const registerReportDetails = (
     staffConsumptions: [...staffUse.values()].sort((a, b) =>
       a.staffName.localeCompare(b.staffName) || a.itemName.localeCompare(b.itemName),
     ),
-    coffeeBeanSummary: beans
+    inventoryYieldSummaries,
+    coffeeBeanSummary: beans && !store.settings.inventoryYieldTracking?.enabled
       ? {
           itemName: beans.name,
           servingsSold: coffeeServings,

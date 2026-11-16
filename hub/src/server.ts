@@ -177,6 +177,38 @@ function normalizeHubCoffeeTracking(value: unknown): StoreSettings['coffeeTracki
   }
 }
 
+function normalizeHubInventoryYieldTracking(value: unknown): StoreSettings['inventoryYieldTracking'] {
+  const source = record(value) ? value : {}
+  const seenItems = new Set<string>()
+  const trackers = Array.isArray(source.trackers)
+    ? source.trackers.flatMap((entry) => {
+        if (!record(entry) || typeof entry.inventoryItemId !== 'string' ||
+          typeof entry.referenceQuantity !== 'number' || !Number.isFinite(entry.referenceQuantity) ||
+          entry.referenceQuantity < 0.001 || entry.referenceQuantity > 1_000_000_000 ||
+          !Number.isSafeInteger(entry.servingsMin) || Number(entry.servingsMin) < 1 ||
+          Number(entry.servingsMin) > 100_000 ||
+          !Number.isSafeInteger(entry.servingsMax) || Number(entry.servingsMax) < Number(entry.servingsMin) ||
+          Number(entry.servingsMax) > 100_000 ||
+          !Array.isArray(entry.productIds) || !Array.isArray(entry.categoryIds)) return []
+        const inventoryItemId = entry.inventoryItemId.trim().slice(0, 128)
+        if (!inventoryItemId || seenItems.has(inventoryItemId)) return []
+        seenItems.add(inventoryItemId)
+        const uniqueIds = (ids: unknown[]) => [...new Set(ids
+          .filter((id): id is string => typeof id === 'string' && !!id.trim())
+          .map((id) => id.trim().slice(0, 128)))].slice(0, 200)
+        return [{
+          inventoryItemId,
+          referenceQuantity: Math.round(entry.referenceQuantity * 1_000_000) / 1_000_000,
+          servingsMin: Number(entry.servingsMin),
+          servingsMax: Number(entry.servingsMax),
+          productIds: uniqueIds(entry.productIds),
+          categoryIds: uniqueIds(entry.categoryIds),
+        }]
+      }).slice(0, 100)
+    : []
+  return { enabled: source.enabled === true, trackers }
+}
+
 function normalizeHubStaffConsumption(value: unknown): StoreSettings['staffConsumption'] {
   const source = record(value) ? value : {}
   const seen = new Set<string>()
@@ -704,6 +736,7 @@ export async function createHubServer(): Promise<HubRuntime> {
             availability: normalizeHubAvailability(settings.availability),
             orderRules: normalizeHubOrderRules(settings.orderRules),
             coffeeTracking: normalizeHubCoffeeTracking(settings.coffeeTracking),
+            inventoryYieldTracking: normalizeHubInventoryYieldTracking(settings.inventoryYieldTracking),
             staffConsumption: normalizeHubStaffConsumption(settings.staffConsumption),
             },
           }
@@ -715,6 +748,30 @@ export async function createHubServer(): Promise<HubRuntime> {
               : undefined
             if (!record(bean) || bean.storeId !== actor.storeId || bean.active !== true || bean.baseUnit !== 'g') {
               throw new Error('Coffee yield tracking must reference active gram-based stock in this store.')
+            }
+          }
+          const inventoryYieldTracking = normalizedSettings.inventoryYieldTracking as StoreSettings['inventoryYieldTracking']
+          if (inventoryYieldTracking.enabled) {
+            if (!inventoryYieldTracking.trackers.length) {
+              throw new Error('Inventory yield tracking needs at least one tracked item.')
+            }
+            for (const tracker of inventoryYieldTracking.trackers) {
+              const item = validationState.collections.inventoryItems?.[tracker.inventoryItemId]
+              if (!record(item) || item.storeId !== actor.storeId || item.active !== true) {
+                throw new Error('Yield tracking must reference active inventory from this store.')
+              }
+              if (!tracker.productIds.length && !tracker.categoryIds.length) {
+                throw new Error('Each tracked inventory item needs at least one consuming product or category.')
+              }
+              if (tracker.productIds.some((id) => {
+                const product = validationState.collections.products?.[id]
+                return !record(product) || product.storeId !== actor.storeId
+              }) || tracker.categoryIds.some((id) => {
+                const category = validationState.collections.categories?.[id]
+                return !record(category) || category.storeId !== actor.storeId
+              })) {
+                throw new Error('Yield tracking must reference products and categories from this store.')
+              }
             }
           }
           const staffConsumption = normalizedSettings.staffConsumption as StoreSettings['staffConsumption']

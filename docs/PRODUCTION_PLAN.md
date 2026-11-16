@@ -15,21 +15,21 @@ staff analytics and cash-difference flows are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
-### Coffee yield and staff items — implemented; browser verification pending
+### Inventory yield and staff items — implemented; browser verification pending
 
-- Admin → Settings → Service can enable coffee-bean tracking, select a gram-based
-  bean inventory item, and configure servings per kilogram. Shift and frozen Z
-  reports show coffee servings, recipe use, expected bean use/remainder, and
-  tracked inventory remainder. Coffee products need bean quantities in their
-  recipes. Automatic stock deduction also uses the existing Order rules →
-  Deduct ingredients on sale setting; otherwise, use Inventory stock counts to
-  compare actual bean stock with the yield estimate before shift close.
+- Admin → Settings → Service can configure yield tracking for multiple inventory
+  items, choose consuming products or categories, and set a reference stock
+  quantity and minimum/maximum sales yield. Shift and frozen Z reports compare
+  estimated use, recipe use, expected remainder, and the stock ledger. Opening
+  stock, manual counts, and received purchases use the existing Inventory and
+  Purchases workflows. Exact recipe deductions remain controlled by Order rules
+  → Deduct ingredients on sale.
 - Admins configure staff-item pricing, permitted products, and per-shift
-  quantity limits. Authorized staff can record their own items during an open
-  shift. Checkouts use configured prices, force recipe stock deductions, and are
-  attributed to the staff member in inventory movements, Z reports, and staff
-  profiles. Access also requires the staff member's **Use staff items**
-  permission.
+  quantity limits with searchable product selection. Staff can search and record
+  their own items during an open shift. Checkouts use configured prices, force
+  recipe stock deductions, and are attributed to the staff member in inventory
+  movements, Z reports, and staff profiles. Access also requires the staff
+  member's **Use staff items** permission.
 - Still unverified: multi-device hub checkout races, physical Z receipt output,
   staff self-service on a phone/tablet, and the stock-count-to-Z workflow in a
   live browser.

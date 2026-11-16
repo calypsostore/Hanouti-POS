@@ -7,7 +7,7 @@ import type {
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
 import { ICON_NAMES } from '../types'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, normalizeCoffeeTracking, normalizeOrderRules, normalizePayrollSettings, normalizePrinter, normalizeStaffConsumption, normalizeUser } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, migrateLegacyCoffeeTracking, normalizeCoffeeTracking, normalizeInventoryYieldTracking, normalizeOrderRules, normalizePayrollSettings, normalizePrinter, normalizeStaffConsumption, normalizeUser } from '../lib/defaults'
 import { hashRandomSecret, hashSecret, isSecretHash } from '../lib/hash'
 import { businessTemplate } from '../lib/businessTemplates'
 import { readIndexedValue } from '../lib/storage'
@@ -16,10 +16,10 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 
-export const DB_KEY = '7anouti.db.v35'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v36'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -179,6 +179,28 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
         : [],
     )
     : undefined
+  const inventoryYieldSummaries = Array.isArray(value.inventoryYieldSummaries)
+    ? value.inventoryYieldSummaries.flatMap((row) =>
+      isRecord(row) && typeof row.itemName === 'string' &&
+      isAmount(row.soldQuantity) && isAmount(row.referenceQuantity) && row.referenceQuantity > 0 &&
+      isAmount(row.expectedUseMin) && isAmount(row.expectedUseMax) && isAmount(row.recipeUse) &&
+      isFiniteNumber(row.expectedRemainingMin) && isFiniteNumber(row.expectedRemainingMax) &&
+      isAmount(row.ledgerRemaining) && isInventoryUnit(row.unit)
+        ? [{
+            itemName: row.itemName.slice(0, 100),
+            soldQuantity: row.soldQuantity,
+            referenceQuantity: row.referenceQuantity,
+            expectedUseMin: row.expectedUseMin,
+            expectedUseMax: row.expectedUseMax,
+            recipeUse: row.recipeUse,
+            expectedRemainingMin: row.expectedRemainingMin,
+            expectedRemainingMax: row.expectedRemainingMax,
+            ledgerRemaining: row.ledgerRemaining,
+            unit: row.unit,
+          }]
+        : [],
+    ).slice(0, 100)
+    : undefined
   const coffeeBeanSummary = isRecord(value.coffeeBeanSummary) &&
     typeof value.coffeeBeanSummary.itemName === 'string' &&
     isAmount(value.coffeeBeanSummary.servingsSold) &&
@@ -239,6 +261,7 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
     recordedItems,
     voidedItems,
     staffConsumptions,
+    inventoryYieldSummaries,
     coffeeBeanSummary,
     voidedOrders,
     cancelledItems,
@@ -408,6 +431,16 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           : isRecord(s.settings.printer) && typeof s.settings.printer.kitchenTicket === 'boolean'
             ? s.settings.printer.kitchenTicket
             : template.features.kitchenScreen
+        const legacyCoffeeTracking = isRecord(s.settings.coffeeTracking)
+          ? normalizeCoffeeTracking(
+              s.settings.coffeeTracking as Partial<StoreSettings['coffeeTracking']>,
+            )
+          : normalizeCoffeeTracking()
+        const inventoryYieldTracking = isRecord(s.settings.inventoryYieldTracking)
+          ? normalizeInventoryYieldTracking(
+              s.settings.inventoryYieldTracking as Partial<StoreSettings['inventoryYieldTracking']>,
+            )
+          : migrateLegacyCoffeeTracking(legacyCoffeeTracking, value.products, s.id)
         return ({
         ...seed.stores[0],
         ...withoutLegacyEmoji(s),
@@ -566,9 +599,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           orderRules: normalizeOrderRules(
             isRecord(s.settings.orderRules) ? s.settings.orderRules as Partial<StoreSettings['orderRules']> : undefined,
           ),
-          coffeeTracking: normalizeCoffeeTracking(
-            isRecord(s.settings.coffeeTracking) ? s.settings.coffeeTracking as Partial<StoreSettings['coffeeTracking']> : undefined,
-          ),
+          coffeeTracking: normalizeCoffeeTracking(),
+          inventoryYieldTracking,
           staffConsumption: normalizeStaffConsumption(
             isRecord(s.settings.staffConsumption) ? s.settings.staffConsumption as Partial<StoreSettings['staffConsumption']> : undefined,
           ),

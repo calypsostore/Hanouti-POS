@@ -240,6 +240,20 @@ export interface CoffeeTrackingSettings {
   servingsPerKgMax: number
 }
 
+export interface InventoryYieldTracker {
+  inventoryItemId: string
+  referenceQuantity: number
+  servingsMin: number
+  servingsMax: number
+  productIds: string[]
+  categoryIds: string[]
+}
+
+export interface InventoryYieldTrackingSettings {
+  enabled: boolean
+  trackers: InventoryYieldTracker[]
+}
+
 export interface StaffConsumptionSettings {
   enabled: boolean
   pricing: 'full_price' | 'discount' | 'free'
@@ -277,6 +291,7 @@ export interface StoreSettings {
   availability: AvailabilitySettings
   orderRules: OrderRulesSettings
   coffeeTracking: CoffeeTrackingSettings
+  inventoryYieldTracking: InventoryYieldTrackingSettings
   staffConsumption: StaffConsumptionSettings
 }
 
@@ -889,6 +904,18 @@ export interface RegisterReportDetails {
     items: string[]
   }>
   staffConsumptions?: Array<{ staffName: string; itemName: string; quantity: number; retailValue: number; chargedValue: number }>
+  inventoryYieldSummaries?: Array<{
+    itemName: string
+    soldQuantity: number
+    referenceQuantity: number
+    expectedUseMin: number
+    expectedUseMax: number
+    recipeUse: number
+    expectedRemainingMin: number
+    expectedRemainingMax: number
+    ledgerRemaining: number
+    unit: InventoryUnit
+  }>
   coffeeBeanSummary?: {
     itemName: string
     servingsSold: number

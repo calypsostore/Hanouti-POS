@@ -31,12 +31,14 @@ export function StaffItemsModal({
   const [method, setMethod] = useState<'cash' | 'card'>('cash')
   const [received, setReceived] = useState('')
   const [cardConfirmed, setCardConfirmed] = useState(false)
+  const [productQuery, setProductQuery] = useState('')
   const reset = () => {
     setQuantities({})
     setVariants({})
     setReceived('')
     setMethod('cash')
     setCardConfirmed(false)
+    setProductQuery('')
   }
   const close = () => {
     reset()
@@ -63,6 +65,9 @@ export function StaffItemsModal({
   const base = computeTotals(items, settings)
   const total = computeTotals(items, settings, staffConsumptionDiscount(items, settings, policy)).total
   const cashReady = total === 0 || Number(received) >= total
+  const matchingProducts = productQuery.trim()
+    ? products.filter((product) => product.name.toLowerCase().includes(productQuery.trim().toLowerCase())).slice(0, 50)
+    : []
 
   return (
     <Modal
@@ -116,8 +121,24 @@ export function StaffItemsModal({
       ) : products.length === 0 ? (
         <p className="text-sm text-muted">The administrator has not allowed any staff items for this shift.</p>
       ) : (
-        <div className="max-h-[55vh] space-y-2 overflow-y-auto">
-          {products.map((product) => {
+        <div className="space-y-2">
+          <Field label="Search allowed items">
+            <Input value={productQuery} onChange={(event) => setProductQuery(event.target.value)}
+              placeholder="Type an item name" />
+          </Field>
+          {items.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {items.map((item) => (
+                <button key={item.productId} type="button"
+                  className="rounded-full border border-line px-2.5 py-1 text-xs text-ink hover:border-brand-amber/60"
+                  onClick={() => setQuantities((current) => ({ ...current, [item.productId]: 0 }))}>
+                  {item.qty} × {item.name} · Remove
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="max-h-[48vh] space-y-2 overflow-y-auto">
+          {matchingProducts.map((product) => {
             const allowance = policy.allowances.find((entry) => entry.productId === product.id)
             const used = orders
               .filter((order) => order.staffConsumption && order.status === 'completed' &&
@@ -161,6 +182,17 @@ export function StaffItemsModal({
               </div>
             )
           })}
+          {!productQuery.trim() && (
+            <p className="rounded-xl border border-dashed border-line p-4 text-center text-sm text-muted">
+              Search for an allowed item to add it.
+            </p>
+          )}
+          {productQuery.trim() && matchingProducts.length === 0 && (
+            <p className="rounded-xl border border-dashed border-line p-4 text-center text-sm text-muted">
+              No allowed items match that search.
+            </p>
+          )}
+          </div>
         </div>
       )}
       {items.length > 0 && (

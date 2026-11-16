@@ -80,11 +80,92 @@ export const DEFAULT_COFFEE_TRACKING: StoreSettings['coffeeTracking'] = {
   servingsPerKgMax: 70,
 }
 
+export const DEFAULT_INVENTORY_YIELD_TRACKING: StoreSettings['inventoryYieldTracking'] = {
+  enabled: false,
+  trackers: [],
+}
+
 export const DEFAULT_STAFF_CONSUMPTION: StoreSettings['staffConsumption'] = {
   enabled: false,
   pricing: 'discount',
   discountPercent: 0,
   allowances: [],
+}
+
+export const normalizeInventoryYieldTracking = (
+  value?: Partial<StoreSettings['inventoryYieldTracking']>,
+): StoreSettings['inventoryYieldTracking'] => {
+  const seenItems = new Set<string>()
+  const trackers = Array.isArray(value?.trackers)
+    ? value.trackers.flatMap((entry) => {
+        if (!entry || typeof entry.inventoryItemId !== 'string' ||
+          !Number.isFinite(entry.referenceQuantity) || entry.referenceQuantity < 0.001 ||
+          entry.referenceQuantity > 1_000_000_000 ||
+          !Number.isSafeInteger(entry.servingsMin) || entry.servingsMin < 1 || entry.servingsMin > 100_000 ||
+          !Number.isSafeInteger(entry.servingsMax) || entry.servingsMax < entry.servingsMin || entry.servingsMax > 100_000 ||
+          !Array.isArray(entry.productIds) || !Array.isArray(entry.categoryIds)) return []
+        const inventoryItemId = entry.inventoryItemId.trim().slice(0, 128)
+        if (!inventoryItemId || seenItems.has(inventoryItemId)) return []
+        seenItems.add(inventoryItemId)
+        const uniqueIds = (ids: string[]) => [...new Set(ids
+          .filter((id) => typeof id === 'string' && id.trim())
+          .map((id) => id.trim().slice(0, 128)))].slice(0, 200)
+        return [{
+          inventoryItemId,
+          referenceQuantity: Math.round(entry.referenceQuantity * 1_000_000) / 1_000_000,
+          servingsMin: entry.servingsMin,
+          servingsMax: entry.servingsMax,
+          productIds: uniqueIds(entry.productIds),
+          categoryIds: uniqueIds(entry.categoryIds),
+        }]
+      }).slice(0, 100)
+    : []
+  return {
+    enabled: value?.enabled === true,
+    trackers,
+  }
+}
+
+export const migrateLegacyCoffeeTracking = (
+  coffee: StoreSettings['coffeeTracking'],
+  products: unknown,
+  storeId: string,
+): StoreSettings['inventoryYieldTracking'] => {
+  if (!coffee.enabled || !coffee.inventoryItemId || !Array.isArray(products)) {
+    return normalizeInventoryYieldTracking()
+  }
+  const inventoryItemId = coffee.inventoryItemId
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+  const recipeUsesItem = (recipe: unknown) =>
+    Array.isArray(recipe) && recipe.some((line) =>
+      isRecord(line) && line.inventoryItemId === inventoryItemId,
+    )
+  const productIds = products.flatMap((product) => {
+    if (!isRecord(product) || product.storeId !== storeId || typeof product.id !== 'string') return []
+    const usesOnProduct = recipeUsesItem(product.recipe)
+    const usesOnVariant = Array.isArray(product.variants) && product.variants.some((variant) =>
+      isRecord(variant) && recipeUsesItem(variant.recipe),
+    )
+    const usesOnModifier = Array.isArray(product.modifiers) && product.modifiers.some((group) =>
+      isRecord(group) && Array.isArray(group.options) && group.options.some((option) =>
+        isRecord(option) && recipeUsesItem(option.recipe),
+      ),
+    )
+    return usesOnProduct || usesOnVariant || usesOnModifier ? [product.id] : []
+  })
+  if (!productIds.length) return normalizeInventoryYieldTracking()
+  return normalizeInventoryYieldTracking({
+    enabled: true,
+    trackers: [{
+      inventoryItemId,
+      referenceQuantity: 1000,
+      servingsMin: coffee.servingsPerKgMin,
+      servingsMax: coffee.servingsPerKgMax,
+      productIds,
+      categoryIds: [],
+    }],
+  })
 }
 
 export const normalizeCoffeeTracking = (value?: Partial<StoreSettings['coffeeTracking']>): StoreSettings['coffeeTracking'] => {

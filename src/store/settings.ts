@@ -4,7 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION, defaultPermissions, normalizeCoffeeTracking, normalizeStaffConsumption } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_INVENTORY_YIELD_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION, defaultPermissions, normalizeCoffeeTracking, normalizeInventoryYieldTracking, normalizeStaffConsumption } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
@@ -70,6 +70,14 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
     reasons: [...settings.availability.reasons],
   },
   coffeeTracking: { ...settings.coffeeTracking },
+  inventoryYieldTracking: {
+    ...settings.inventoryYieldTracking,
+    trackers: settings.inventoryYieldTracking.trackers.map((tracker) => ({
+      ...tracker,
+      productIds: [...tracker.productIds],
+      categoryIds: [...tracker.categoryIds],
+    })),
+  },
   staffConsumption: {
     ...settings.staffConsumption,
     allowances: settings.staffConsumption.allowances.map((allowance) => ({ ...allowance })),
@@ -286,6 +294,30 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         return { ok: false, error: 'Enter a valid coffee yield range per kilogram.' }
       }
     }
+    const inventoryYieldTracking = patch.inventoryYieldTracking
+      ? normalizeInventoryYieldTracking(patch.inventoryYieldTracking)
+      : store.settings.inventoryYieldTracking
+    if (patch.inventoryYieldTracking && inventoryYieldTracking.enabled) {
+      if (!inventoryYieldTracking.trackers.length) {
+        return { ok: false, error: 'Add at least one inventory item to track.' }
+      }
+      for (const tracker of inventoryYieldTracking.trackers) {
+        const item = dbRef.current.inventoryItems.find((candidate) =>
+          candidate.id === tracker.inventoryItemId && candidate.storeId === storeId && candidate.active,
+        )
+        if (!item) return { ok: false, error: 'Choose active inventory items from this store.' }
+        if (!tracker.productIds.length && !tracker.categoryIds.length) {
+          return { ok: false, error: `Choose products or categories that consume ${item.name}.` }
+        }
+        if (tracker.productIds.some((id) => !dbRef.current.products.some((product) =>
+          product.id === id && product.storeId === storeId,
+        )) || tracker.categoryIds.some((id) => !dbRef.current.categories.some((category) =>
+          category.id === id && category.storeId === storeId,
+        ))) {
+          return { ok: false, error: `Choose products or categories from this store for ${item.name}.` }
+        }
+      }
+    }
     const staffConsumption = patch.staffConsumption
       ? normalizeStaffConsumption(patch.staffConsumption)
       : store.settings.staffConsumption
@@ -303,6 +335,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         ...store.settings,
         ...patch,
         coffeeTracking,
+        inventoryYieldTracking,
         staffConsumption,
       },
     }
@@ -513,6 +546,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
         orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
         coffeeTracking: { ...DEFAULT_COFFEE_TRACKING },
+        inventoryYieldTracking: { ...DEFAULT_INVENTORY_YIELD_TRACKING, trackers: [] },
         staffConsumption: { ...DEFAULT_STAFF_CONSUMPTION, allowances: [] },
       },
     }

@@ -13,6 +13,7 @@ import { fmtDate, fmtDateTime, fmtTime } from './utils.ts'
 import { round } from './pricing-utils.ts'
 import { BRAND_NAME } from './brand.ts'
 import { orderNumberLabel } from './orderNumber.ts'
+import { formatInventoryQuantity } from './inventory.ts'
 import {
   formatRegisterItemQuantity,
   groupRegisterItemRows,
@@ -470,7 +471,18 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
       lines.push({ text: `  Retail ${reportAmount(use.retailValue)}` })
     }
   }
-  if (details?.coffeeBeanSummary) {
+  if (details?.inventoryYieldSummaries?.length) {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'INVENTORY YIELD ESTIMATE', bold: true })
+    for (const summary of details.inventoryYieldSummaries) {
+      lines.push({ text: twoCol(`${summary.itemName} · ${summary.soldQuantity} sold`,
+        `${formatInventoryQuantity(summary.expectedUseMin, summary.unit)}-${formatInventoryQuantity(summary.expectedUseMax, summary.unit)}`, cols) })
+      lines.push({ text: `  Recipe use ${formatInventoryQuantity(summary.recipeUse, summary.unit)}` })
+      lines.push({ text: `  Expected remainder ${formatInventoryQuantity(summary.expectedRemainingMin, summary.unit)} - ${formatInventoryQuantity(summary.expectedRemainingMax, summary.unit)}` })
+      lines.push({ text: `  Tracked stock ${formatInventoryQuantity(summary.ledgerRemaining, summary.unit)}` })
+    }
+  }
+  if (!details?.inventoryYieldSummaries?.length && details?.coffeeBeanSummary) {
     const beans = details.coffeeBeanSummary
     lines.push({ text: divider(cols) })
     lines.push({ text: 'COFFEE BEAN ESTIMATE', bold: true })
