@@ -108,7 +108,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
         <div className="min-w-0 space-y-4">
           <StockAlertsCard data={data} enabled={store.settings.automation.lowStockAlerts} />
           <ShiftAlertsCard db={db} store={store} now={now} />

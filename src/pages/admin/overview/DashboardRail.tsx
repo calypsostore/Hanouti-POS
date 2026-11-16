@@ -17,7 +17,7 @@ export function DashboardRail({ now }: { now: Date }) {
   const canRegister = !trackingMode && store.settings.posMode === 'cashier'
   const registerOpen = db.registerSessions.some((session) => session.storeId === store.id && session.status === 'open')
   return (
-    <aside className="space-y-4">
+    <aside className="min-w-0 space-y-4">
       <InfoCard user={user} store={store} profileHref="/admin/settings" />
       <PlanCard
         store={store}

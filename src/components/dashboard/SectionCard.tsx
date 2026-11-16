@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Card } from '../ui'
 import { IconChip } from './IconChip'
 import type { DashboardTone } from '../../lib/palette'
+import { cn } from '../../lib/utils'
 
 export function SectionCard({
   icon,
@@ -24,7 +25,7 @@ export function SectionCard({
   bodyClassName?: string
 }) {
   return (
-    <Card className={className}>
+    <Card className={cn('min-w-0', className)}>
       <div className="flex items-center gap-3 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
         <IconChip icon={icon} tone={tone} className="h-9 w-9 rounded-xl" />
         <div className="min-w-0 flex-1">
