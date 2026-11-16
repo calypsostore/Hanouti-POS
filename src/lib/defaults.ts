@@ -118,7 +118,7 @@ export const normalizeInventoryYieldTracking = (
           productIds: uniqueIds(entry.productIds),
           categoryIds: uniqueIds(entry.categoryIds),
         }]
-      }).slice(0, 100)
+      })
     : []
   return {
     enabled: value?.enabled === true,

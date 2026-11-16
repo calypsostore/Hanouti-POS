@@ -47,6 +47,19 @@ test('normalizes unique inventory-yield rules and consuming targets', () => {
   })
 })
 
+test('preserves more than 100 inventory-yield trackers', () => {
+  const trackers = Array.from({ length: 101 }, (_, index) => ({
+    inventoryItemId: `inventory-${index}`,
+    referenceQuantity: 1000,
+    servingsMin: 1,
+    servingsMax: 1,
+    productIds: ['product-1'],
+    categoryIds: [],
+  }))
+
+  assert.equal(normalizeInventoryYieldTracking({ enabled: true, trackers }).trackers.length, 101)
+})
+
 test('migrates legacy coffee yield settings to recipe-linked products', () => {
   const settings = migrateLegacyCoffeeTracking({
     enabled: true,

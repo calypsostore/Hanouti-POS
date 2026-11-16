@@ -208,7 +208,7 @@ function normalizeHubInventoryYieldTracking(value: unknown): StoreSettings['inve
           productIds: uniqueIds(entry.productIds),
           categoryIds: uniqueIds(entry.categoryIds),
         }]
-      }).slice(0, 100)
+      })
     : []
   return { enabled: source.enabled === true, trackers }
 }

@@ -185,6 +185,55 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     })
     assert.equal(invalidYieldSettings.status, 400)
     assert.match((await invalidYieldSettings.json()).error, /active inventory/i)
+    const yieldItems = Array.from({ length: 101 }, (_, index) => ({
+      id: `yield-item-${index}`,
+      storeId: owner.actor.storeId,
+      name: `Yield item ${index}`,
+      active: true,
+    }))
+    const yieldSettings = {
+      ...update.ops.find((operation) => operation.collection === 'stores').document,
+      settings: {
+        ...update.ops.find((operation) => operation.collection === 'stores').document.settings,
+        inventoryYieldTracking: {
+          enabled: true,
+          trackers: yieldItems.map((item) => ({
+            inventoryItemId: item.id,
+            referenceQuantity: 1000,
+            servingsMin: 1,
+            servingsMax: 1,
+            productIds: ['tea'],
+            categoryIds: [],
+          })),
+        },
+      },
+    }
+    const manyYieldTrackers = await fetch(`${base}/api/sync`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        opId: 'sync-many-yield-trackers',
+        deviceId: 'owner-device',
+        storeId: owner.actor.storeId,
+        baseSeq: 1,
+        ops: [
+          ...yieldItems.map((item) => ({
+            kind: 'put',
+            collection: 'inventoryItems',
+            id: item.id,
+            document: item,
+          })),
+          { kind: 'put', collection: 'stores', id: owner.actor.storeId, document: yieldSettings },
+        ],
+      }),
+    })
+    assert.equal(manyYieldTrackers.status, 200, await manyYieldTrackers.text())
+    const yieldSnapshot = await fetch(`${base}/api/sync/snapshot`, { headers: auth })
+    const yieldSnapshotData = await yieldSnapshot.json()
+    assert.equal(
+      yieldSnapshotData.collections.stores[0].settings.inventoryYieldTracking.trackers.length,
+      101,
+    )
     const verifyAuthorizationPin = async (pin, purpose) => fetch(
       `${base}/api/auth/verify-authorization-pin`,
       { method: 'POST', headers: auth, body: JSON.stringify({ pin, storeId: owner.actor.storeId, purpose }) },

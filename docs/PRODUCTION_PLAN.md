@@ -21,11 +21,12 @@ document.
 
 - Admin → Settings → Service can configure yield tracking for multiple inventory
   items, choose consuming products or categories, and set a reference stock
-  quantity and minimum/maximum sales yield. Shift and frozen Z reports compare
-  estimated use, recipe use, expected remainder, and the stock ledger. Opening
-  stock, manual counts, and received purchases use the existing Inventory and
-  Purchases workflows. Exact recipe deductions remain controlled by Order rules
-  → Deduct ingredients on sale.
+  quantity and minimum/maximum sales yield. There is no hidden 100-item cap;
+  app and hub preserve every valid configured tracker. Shift and frozen Z
+  reports compare estimated use, recipe use, expected remainder, and the stock
+  ledger. Opening stock, manual counts, and received purchases use the existing
+  Inventory and Purchases workflows. Exact recipe deductions remain controlled
+  by Order rules → Deduct ingredients on sale.
 - Admins configure staff-item pricing, permitted products, and per-shift
   quantity limits with searchable product selection. Staff can search and record
   their own items during an open shift. Checkouts use configured prices, force
