@@ -8,7 +8,7 @@ import { defaultPermissions } from '../lib/defaults'
 import type { Capability } from '../types'
 
 const CAPABILITIES: Capability[] = [
-  'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
+  'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances', 'useStaffAllowances',
   'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
   'manageStaff', 'manageSettings', 'managePayroll', 'manageTables', 'manageSections',
   'viewStation', 'openShift', 'closeShift', 'takeOverTables', 'forceCloseShift',
@@ -41,7 +41,8 @@ const permissionsForRole = (
           capability !== 'openShift' && capability !== 'closeShift' &&
           capability !== 'takeOverTables' && capability !== 'forceCloseShift' &&
           capability !== 'manageCashDifferences' && capability !== 'viewStaffAnalytics' &&
-          capability !== 'manage86' && capability !== 'overrideStock') {
+          capability !== 'manage86' && capability !== 'overrideStock' &&
+          capability !== 'useStaffAllowances') {
         permissions[capability] = false
       }
     }

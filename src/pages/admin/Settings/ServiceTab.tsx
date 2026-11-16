@@ -1,14 +1,19 @@
 import type { StoreSettings, TicketSendPolicy } from '../../../types'
 import { Field, Input, Select, Textarea, Toggle } from '../../../components/ui'
+import type { InventoryItem, Product } from '../../../types'
 
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function ServiceTab({
   settings,
   set,
+  products,
+  inventoryItems,
 }: {
   settings: StoreSettings
   set: SettingsSetter
+  products: Product[]
+  inventoryItems: InventoryItem[]
 }) {
   const setNumber = (key: 'ticketDelaySeconds' | 'ticketIdleSeconds' | 'stationTimerMinutes', value: string) => {
     const parsed = Number(value)
@@ -17,6 +22,135 @@ export default function ServiceTab({
 
   return (
     <div className="max-w-3xl space-y-5">
+      <section className="glass rounded-3xl p-5">
+        <h3 className="text-sm font-bold text-ink">Coffee bean tracking</h3>
+        <p className="mt-1 text-xs text-muted">Compare recipe-based bean use from coffee sales with your expected servings per kilogram.</p>
+        <div className="mt-4 space-y-3">
+          <Toggle
+            checked={settings.coffeeTracking.enabled}
+            onChange={(value) => set('coffeeTracking', { ...settings.coffeeTracking, enabled: value })}
+            label="Track coffee bean yield"
+            description="Estimate bean use in shift reports; enable Order rules > Deduct ingredients on sale to decrement recipe stock automatically."
+          />
+          {settings.coffeeTracking.enabled && (
+            <>
+              <Field label="Coffee beans inventory" hint="Use an inventory item measured in grams and add its stock in grams.">
+                <Select
+                  value={settings.coffeeTracking.inventoryItemId ?? ''}
+                  onChange={(event) => set('coffeeTracking', {
+                    ...settings.coffeeTracking,
+                    inventoryItemId: event.target.value || undefined,
+                  })}
+                >
+                  <option value="">Choose beans</option>
+                  {inventoryItems.filter((item) => item.baseUnit === 'g').map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Minimum servings per kg">
+                  <Input type="number" min={1} max={1000} step={1} value={settings.coffeeTracking.servingsPerKgMin}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
+                      if (Number.isSafeInteger(value) && value >= 1 && value <= 1000) {
+                        set('coffeeTracking', { ...settings.coffeeTracking, servingsPerKgMin: value })
+                      }
+                    }} />
+                </Field>
+                <Field label="Maximum servings per kg">
+                  <Input type="number" min={settings.coffeeTracking.servingsPerKgMin} max={1000} step={1} value={settings.coffeeTracking.servingsPerKgMax}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
+                      if (Number.isSafeInteger(value) && value >= settings.coffeeTracking.servingsPerKgMin && value <= 1000) {
+                        set('coffeeTracking', { ...settings.coffeeTracking, servingsPerKgMax: value })
+                      }
+                    }} />
+                </Field>
+              </div>
+              <p className="text-[11px] text-muted">Add beans in grams to each coffee recipe; the shift report compares recipe use, yield estimate, and tracked stock.</p>
+            </>
+          )}
+        </div>
+      </section>
+      <section className="glass rounded-3xl p-5">
+        <h3 className="text-sm font-bold text-ink">Staff items</h3>
+        <p className="mt-1 text-xs text-muted">Allow staff to record their own items during an open shift; stock and Z reports include them.</p>
+        <div className="mt-4 space-y-3">
+          <Toggle
+            checked={settings.staffConsumption.enabled}
+            onChange={(value) => set('staffConsumption', { ...settings.staffConsumption, enabled: value })}
+            label="Enable staff items"
+            description="Only listed items and shift quantities are allowed."
+          />
+          {settings.staffConsumption.enabled && (
+            <>
+              <Field label="Staff item pricing" hint="Staff pay using cash or card; free items are recorded as zero-value cash transactions.">
+                <Select value={settings.staffConsumption.pricing} onChange={(event) => set('staffConsumption', {
+                  ...settings.staffConsumption,
+                  pricing: event.target.value as StoreSettings['staffConsumption']['pricing'],
+                })}>
+                  <option value="full_price">Full price</option>
+                  <option value="discount">Staff discount</option>
+                  <option value="free">Free</option>
+                </Select>
+              </Field>
+              {settings.staffConsumption.pricing === 'discount' && (
+                <Field label="Staff discount (%)">
+                  <Input type="number" min={0} max={100} step={1} value={settings.staffConsumption.discountPercent}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
+                      if (Number.isFinite(value) && value >= 0 && value <= 100) {
+                        set('staffConsumption', { ...settings.staffConsumption, discountPercent: value })
+                      }
+                    }} />
+                </Field>
+              )}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-ink">Allowed items and per-shift limits</div>
+                {products.map((product) => {
+                  const allowance = settings.staffConsumption.allowances.find((entry) => entry.productId === product.id)
+                  const allowances = settings.staffConsumption.allowances
+                  return (
+                    <div key={product.id} className="flex items-center gap-3 rounded-xl border border-line p-2.5">
+                      <input
+                        type="checkbox"
+                        checked={!!allowance}
+                        disabled={!product.active && !allowance}
+                        aria-label={`Allow staff to take ${product.name}`}
+                        onChange={(event) => set('staffConsumption', {
+                          ...settings.staffConsumption,
+                          allowances: event.target.checked
+                            ? [...allowances, { productId: product.id, maxPerShift: 1 }]
+                            : allowances.filter((entry) => entry.productId !== product.id),
+                        })}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                        {product.name}{!product.active && <span className="ml-1 text-muted">(inactive)</span>}
+                      </span>
+                      {allowance && <Field label="Max per shift" className="w-28">
+                        <Input type="number" min={1} max={100} step={1} value={allowance.maxPerShift}
+                          onChange={(event) => {
+                            const value = Number(event.target.value)
+                            if (Number.isSafeInteger(value) && value >= 1 && value <= 100) {
+                              set('staffConsumption', {
+                                ...settings.staffConsumption,
+                                allowances: allowances.map((entry) => entry.productId === product.id
+                                  ? { ...entry, maxPerShift: value }
+                                  : entry),
+                              })
+                            }
+                          }} />
+                      </Field>}
+                    </div>
+                  )
+                })}
+                {products.length === 0 && <p className="text-xs text-muted">Create a product first.</p>}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
       <section className="glass rounded-3xl p-5">
         <h3 className="text-sm font-bold text-ink">Send to stations</h3>
         <p className="mt-1 text-xs leading-relaxed text-muted">

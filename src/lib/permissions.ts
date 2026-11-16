@@ -5,6 +5,7 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   recordPurchases: true,
   viewCosts: true,
   manageStaffAllowances: true,
+  useStaffAllowances: true,
   approveOverrides: true,
   viewReports: true,
   manageProducts: true,
@@ -51,6 +52,9 @@ export function can(user: User, capability: Capability): boolean {
   }
   if (capability === 'recordPurchases' && user.role === 'staff') {
     return user.permissions.recordPurchases === true
+  }
+  if (capability === 'useStaffAllowances' && user.role === 'staff') {
+    return user.permissions.useStaffAllowances === true
   }
   if (capability === 'viewStation') return user.permissions.viewStation === true
   if (user.role !== 'manager') return false

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { registerSessionItems, summarizeRegisterItems } from '../src/lib/registerItems.ts'
-import { computeRegisterTotals } from '../src/lib/reports.ts'
+import { computeRegisterTotals, registerReportDetails } from '../src/lib/reports.ts'
 import { openShiftForStaff } from '../src/lib/registerShifts.ts'
 import { buildReportLines } from '../src/lib/escpos.ts'
 
@@ -211,6 +211,93 @@ test('register totals follow the assigned shift instead of an overlapping store 
   assert.equal(totals.cashSettlements, 2)
   assert.equal(totals.expenses, 7)
   assert.equal(totals.expectedCash, 105)
+})
+
+test('coffee shift report compares yield estimate, recipe use, and tracked stock remainder', () => {
+  const session = {
+    id: 'session-1',
+    storeId: 'store-1',
+    status: 'open',
+    openedAt: start,
+    openedById: 'staff-1',
+    staffId: 'staff-1',
+    openedByName: 'Staff One',
+    openingCash: 0,
+  }
+  const details = registerReportDetails({
+    stores: [{
+      id: 'store-1',
+      name: 'Cafe',
+      address: '',
+      city: '',
+      phone: '',
+      settings: {
+        posMode: 'quick',
+        taxRate: 0,
+        taxInclusive: false,
+        serviceCharge: 0,
+        printer: { width: 80 },
+        coffeeTracking: {
+          enabled: true,
+          inventoryItemId: 'beans',
+          servingsPerKgMin: 50,
+          servingsPerKgMax: 70,
+        },
+      },
+    }],
+    registerSessions: [session],
+    orders: [{
+      ...order('coffee-sale', {
+        items: [item('espresso', 'Espresso', { qty: 10 })],
+        total: 20,
+        createdAt: '2026-11-14T10:00:00.000Z',
+      }),
+      shiftId: session.id,
+      paidById: 'staff-1',
+    }],
+    products: [{
+      id: 'espresso',
+      storeId: 'store-1',
+      categoryId: 'drinks',
+      name: 'Espresso',
+      recipe: [{ inventoryItemId: 'beans', qtyPerUnit: 18 }],
+    }],
+    categories: [{ id: 'drinks', name: 'Drinks' }],
+    inventoryItems: [{
+      id: 'beans',
+      storeId: 'store-1',
+      name: 'Coffee beans',
+      baseUnit: 'g',
+      onHand: 920,
+    }],
+    stockMovements: [{
+      id: 'sale-use',
+      storeId: 'store-1',
+      itemId: 'beans',
+      type: 'sale_use',
+      qtyDelta: -100,
+      createdAt: '2026-11-14T10:00:00.000Z',
+    }, {
+      id: 'stock-count',
+      storeId: 'store-1',
+      itemId: 'beans',
+      type: 'count_correction',
+      qtyDelta: 20,
+      createdAt: '2026-11-14T17:00:00.000Z',
+    }],
+    ledger: [],
+    expenses: [],
+    purchasePayments: [],
+    auditLogs: [],
+  }, session, end)
+
+  assert.equal(details.coffeeBeanSummary.servingsSold, 10)
+  assert.equal(details.coffeeBeanSummary.recipeUse, 180)
+  assert.equal(details.coffeeBeanSummary.expectedUseMin, 142.857)
+  assert.equal(details.coffeeBeanSummary.expectedUseMax, 200)
+  assert.equal(details.coffeeBeanSummary.expectedRemainingMin, 800)
+  assert.equal(details.coffeeBeanSummary.expectedRemainingMax, 857.143)
+  assert.equal(details.coffeeBeanSummary.ledgerRemaining, 920)
 })
 
 test('staff may have separate concurrent shifts while duplicate personal shifts are not selected', () => {

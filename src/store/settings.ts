@@ -4,7 +4,7 @@ import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, defaultPermissions } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION, defaultPermissions, normalizeCoffeeTracking, normalizeStaffConsumption } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
@@ -68,6 +68,11 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   availability: {
     ...settings.availability,
     reasons: [...settings.availability.reasons],
+  },
+  coffeeTracking: { ...settings.coffeeTracking },
+  staffConsumption: {
+    ...settings.staffConsumption,
+    allowances: settings.staffConsumption.allowances.map((allowance) => ({ ...allowance })),
   },
   orderRules: {
     ...settings.orderRules,
@@ -268,7 +273,39 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     }
     const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
     if (!store) return { ok: false, error: 'Store not found.' }
-    const updated = { ...store, settings: { ...store.settings, ...patch } }
+    const coffeeTracking = patch.coffeeTracking
+      ? normalizeCoffeeTracking(patch.coffeeTracking)
+      : store.settings.coffeeTracking
+    if (patch.coffeeTracking && coffeeTracking.enabled) {
+      const beanItem = dbRef.current.inventoryItems.find((item) =>
+        item.id === coffeeTracking.inventoryItemId && item.storeId === storeId && item.active && item.baseUnit === 'g',
+      )
+      if (!beanItem) return { ok: false, error: 'Choose an active coffee-bean inventory item measured in grams.' }
+      if (coffeeTracking.servingsPerKgMin < 1 ||
+        coffeeTracking.servingsPerKgMax < coffeeTracking.servingsPerKgMin) {
+        return { ok: false, error: 'Enter a valid coffee yield range per kilogram.' }
+      }
+    }
+    const staffConsumption = patch.staffConsumption
+      ? normalizeStaffConsumption(patch.staffConsumption)
+      : store.settings.staffConsumption
+    if (patch.staffConsumption && staffConsumption.enabled) {
+      if (!staffConsumption.allowances.length || staffConsumption.allowances.some((allowance) =>
+        !dbRef.current.products.some((product) =>
+          product.id === allowance.productId && product.storeId === storeId &&
+          !product.modifiers?.some((group) => group.required),
+        ),
+      )) return { ok: false, error: 'Choose staff items from this store without required modifiers.' }
+    }
+    const updated = {
+      ...store,
+      settings: {
+        ...store.settings,
+        ...patch,
+        coffeeTracking,
+        staffConsumption,
+      },
+    }
     const changes = changedAuditFields(settingsSnapshot(store.settings), settingsSnapshot(updated.settings))
     commitDb((prev) => addLog({
       ...prev,
@@ -475,6 +512,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         automation: { ...DEFAULT_AUTOMATION_SETTINGS },
         availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
         orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
+        coffeeTracking: { ...DEFAULT_COFFEE_TRACKING },
+        staffConsumption: { ...DEFAULT_STAFF_CONSUMPTION, allowances: [] },
       },
     }
     const stations = defaultStationsForStore(storeId)

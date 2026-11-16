@@ -6,6 +6,7 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'recordPurchases', label: 'Record purchases', description: 'Manage suppliers, receive stock, and record supplier payments.' },
   { key: 'viewCosts', label: 'View costs', description: 'See unit costs, margins, and cost-based reports.' },
   { key: 'manageStaffAllowances', label: 'Manage staff allowances', description: 'Record and review staff consumption allowances.' },
+  { key: 'useStaffAllowances', label: 'Use staff items', description: 'Record allowed staff items during an open shift.' },
   { key: 'approveOverrides', label: 'Approve overrides', description: 'Authorize manager-PIN protected actions.' },
   { key: 'viewReports', label: 'Open reports and activity log', description: 'Access store reports, dashboard, and audit history.' },
   { key: 'manageProducts', label: 'Manage products', description: 'Create and edit products and categories.' },
@@ -57,6 +58,7 @@ export default function StaffPermissionsEditor({
         <Toggle checked={permissions.register} onChange={(value) => toggle('register', value)} label="Open and close the register" description="Can open sessions, print X reports, and close with a Z report." />
         {role === 'staff' && (
           <>
+            <Toggle checked={permissions.useStaffAllowances === true} onChange={(value) => toggle('useStaffAllowances', value)} label="Use staff items" description="Record allowed staff items during an open shift." />
             <Toggle checked={permissions.openShift === true} onChange={(value) => toggle('openShift', value)} label="Open own shift" description="Start a personal shift before taking orders." />
             <Toggle checked={permissions.closeShift === true} onChange={(value) => toggle('closeShift', value)} label="Close own shift" description="Close personal shifts and print a Z report." />
             <Toggle checked={permissions.takeOverTables === true} onChange={(value) => toggle('takeOverTables', value)} label="Take over tables" description="Accept unassigned tables from a staff handover." />

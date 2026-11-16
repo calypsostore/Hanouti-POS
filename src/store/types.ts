@@ -25,6 +25,8 @@ export interface CreateOrderInput {
   note?: string
   /** Idempotency key for this checkout attempt. */
   clientOrderId?: string
+  /** Marks an item checkout for the authenticated staff member, using admin policy. */
+  staffConsumption?: boolean
   /** Open table order being paid: its own items are not a competing reservation. */
   excludeOpenOrderId?: string
 }

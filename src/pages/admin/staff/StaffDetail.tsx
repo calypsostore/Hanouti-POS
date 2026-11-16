@@ -10,8 +10,9 @@ import ScheduleTab from './ScheduleTab'
 import StaffLogsTab from './StaffLogsTab'
 import { can } from '../../../lib/permissions'
 import CashDifferencesTab from './CashDifferencesTab'
+import StaffConsumptionTab from './StaffConsumptionTab'
 
-type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity' | 'cash'
+type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity' | 'cash' | 'items'
 
 const TABS: Array<{ value: DetailTab; label: string }> = [
   { value: 'overview', label: 'Overview' },
@@ -20,6 +21,7 @@ const TABS: Array<{ value: DetailTab; label: string }> = [
   { value: 'schedule', label: 'Schedule' },
   { value: 'activity', label: 'Activity log' },
   { value: 'cash', label: 'Cash differences' },
+  { value: 'items', label: 'Staff items' },
 ]
 
 export default function StaffDetail() {
@@ -101,6 +103,9 @@ export default function StaffDetail() {
             voidDifference={voidCashDifference}
             archive={archiveCashDifference}
             restore={restoreCashDifference}
+          />}
+          {tab === 'items' && <StaffConsumptionTab
+            orders={db.orders.filter((order) => order.storeId === store.id && order.staffId === member.id)}
           />}
         </div>
       </div>

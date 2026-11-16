@@ -4,6 +4,7 @@ export type Capability =
   | 'recordPurchases'
   | 'viewCosts'
   | 'manageStaffAllowances'
+  | 'useStaffAllowances'
   | 'approveOverrides'
   | 'viewReports'
   | 'manageProducts'
@@ -232,6 +233,20 @@ export interface AvailabilitySettings {
   showCountOnStationScreens: boolean
 }
 
+export interface CoffeeTrackingSettings {
+  enabled: boolean
+  inventoryItemId?: string
+  servingsPerKgMin: number
+  servingsPerKgMax: number
+}
+
+export interface StaffConsumptionSettings {
+  enabled: boolean
+  pricing: 'full_price' | 'discount' | 'free'
+  discountPercent: number
+  allowances: Array<{ productId: string; maxPerShift: number }>
+}
+
 export interface StoreSettings {
   posMode: PosMode
   currency: string
@@ -261,6 +276,8 @@ export interface StoreSettings {
   automation: AutomationSettings
   availability: AvailabilitySettings
   orderRules: OrderRulesSettings
+  coffeeTracking: CoffeeTrackingSettings
+  staffConsumption: StaffConsumptionSettings
 }
 
 export interface Store {
@@ -314,6 +331,7 @@ export interface User {
     recordPurchases?: boolean
     viewCosts?: boolean
     manageStaffAllowances?: boolean
+    useStaffAllowances?: boolean
     approveOverrides?: boolean
     viewReports?: boolean
     manageProducts?: boolean
@@ -685,6 +703,7 @@ export interface Order {
   tableHistory?: TableOrderEvent[]
   /** Idempotency key for checkout retries. */
   clientOrderId?: string
+  staffConsumption?: boolean
   /** Device-prefixed number shown offline until the hub assigns the real one. */
   provisionalNumber?: string
 }
@@ -869,6 +888,18 @@ export interface RegisterReportDetails {
     total: number
     items: string[]
   }>
+  staffConsumptions?: Array<{ staffName: string; itemName: string; quantity: number; retailValue: number; chargedValue: number }>
+  coffeeBeanSummary?: {
+    itemName: string
+    servingsSold: number
+    expectedUseMin: number
+    expectedUseMax: number
+    recipeUse: number
+    expectedRemainingMin?: number
+    expectedRemainingMax?: number
+    ledgerRemaining?: number
+    unit: InventoryUnit
+  }
 }
 
 export interface RegisterSession {

@@ -462,6 +462,28 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
       lines.push({ text: twoCol(`${category.name} (${category.qty})`, reportAmount(category.total), cols) })
     }
   }
+  if (details?.staffConsumptions?.length) {
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'STAFF ITEMS', bold: true })
+    for (const use of details.staffConsumptions) {
+      lines.push({ text: twoCol(`${use.staffName}: ${use.quantity} x ${use.itemName}`, reportAmount(use.chargedValue), cols) })
+      lines.push({ text: `  Retail ${reportAmount(use.retailValue)}` })
+    }
+  }
+  if (details?.coffeeBeanSummary) {
+    const beans = details.coffeeBeanSummary
+    lines.push({ text: divider(cols) })
+    lines.push({ text: 'COFFEE BEAN ESTIMATE', bold: true })
+    lines.push({ text: twoCol(`${beans.itemName} · servings sold`, String(beans.servingsSold), cols) })
+    lines.push({ text: twoCol('Expected bean use', `${beans.expectedUseMin}-${beans.expectedUseMax} ${beans.unit}`, cols) })
+    lines.push({ text: twoCol('Recipe-based bean use', `${beans.recipeUse} ${beans.unit}`, cols) })
+    if (beans.expectedRemainingMin !== undefined && beans.expectedRemainingMax !== undefined) {
+      lines.push({ text: twoCol('Expected remainder', `${beans.expectedRemainingMin}-${beans.expectedRemainingMax} ${beans.unit}`, cols) })
+    }
+    if (beans.ledgerRemaining !== undefined) {
+      lines.push({ text: twoCol('Tracked stock remainder', `${beans.ledgerRemaining} ${beans.unit}`, cols) })
+    }
+  }
   if (data.kind === 'Z') {
     lines.push({ text: divider(cols) })
     lines.push({ text: 'FINAL CLOSING SUMMARY', bold: true })

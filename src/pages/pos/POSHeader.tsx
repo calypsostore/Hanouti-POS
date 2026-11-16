@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Flag, LogOut, ReceiptText, Utensils, Users, Zap } from 'lucide-react'
+import { ArrowLeft, Coffee, Flag, LogOut, ReceiptText, Utensils, Users, Zap } from 'lucide-react'
 import type { Store, User } from '../../types'
 import { Avatar, Badge } from '../../components/ui'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { AppIcon } from '../../components/AppIcon'
 import { ReprintLastReceipt } from '../../components/ReprintLastReceipt'
+import { can } from '../../lib/permissions'
 
 type POSHeaderProps = {
   store: Store
@@ -16,10 +17,11 @@ type POSHeaderProps = {
   onLogout: () => void
   eightySixCount: number
   onShowEightySixList: () => void
+  onStaffItems: () => void
 }
 
 export function POSHeader({
-  store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout, eightySixCount, onShowEightySixList,
+  store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout, eightySixCount, onShowEightySixList, onStaffItems,
 }: POSHeaderProps) {
   const quick = store.settings.posMode === 'quick'
 
@@ -46,6 +48,17 @@ export function POSHeader({
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle accent={store.settings.accent} defaultMode={store.settings.colorMode} />
+          {store.settings.staffConsumption.enabled && store.settings.staffConsumption.allowances.length > 0 &&
+            can(user, 'useStaffAllowances') && (
+              <button
+                type="button"
+                onClick={onStaffItems}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-2.5 text-[12px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800"
+              >
+                <Coffee className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Staff items</span>
+              </button>
+            )}
           {store.settings.availability.enabled && store.settings.availability.showListButton && (
             <button
               type="button"

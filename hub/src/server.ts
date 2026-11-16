@@ -20,11 +20,12 @@ import { HubWebSocket } from './websocket.ts'
 import { logEvent } from './logger.ts'
 import { MAX_BODY_BYTES, record, requireString, validId, validateStoreDoc } from './validation.ts'
 import { mergeOpenOrderDocument, type SyncDocument } from '../../src/shared/sync.ts'
+import { planStockDeductions, stockKey } from '../../src/shared/orderRules.ts'
 import { stationBoardHtml } from './board.ts'
 import { validateOrderDocument } from './orderValidation.ts'
 import { validateLedgerEntry } from './ledgerValidation.ts'
 import { isUnavailable } from '../../src/shared/availability.ts'
-import type { InventoryItem, Product, Store } from '../../src/types.ts'
+import type { InventoryItem, OrderItem, Product, Store, StoreSettings } from '../../src/types.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -159,6 +160,75 @@ function normalizeHubOrderRules(value: unknown): Record<string, unknown> {
       staff: roles.staff === true,
     },
   }
+}
+
+function normalizeHubCoffeeTracking(value: unknown): StoreSettings['coffeeTracking'] {
+  const source = record(value) ? value : {}
+  const min = typeof source.servingsPerKgMin === 'number' && Number.isFinite(source.servingsPerKgMin)
+    ? Math.max(1, Math.min(1000, Math.round(source.servingsPerKgMin)))
+    : 50
+  return {
+    enabled: source.enabled === true,
+    inventoryItemId: typeof source.inventoryItemId === 'string' ? source.inventoryItemId.slice(0, 128) : undefined,
+    servingsPerKgMin: min,
+    servingsPerKgMax: typeof source.servingsPerKgMax === 'number' && Number.isFinite(source.servingsPerKgMax)
+      ? Math.max(min, Math.min(1000, Math.round(source.servingsPerKgMax)))
+      : Math.max(min, 70),
+  }
+}
+
+function normalizeHubStaffConsumption(value: unknown): StoreSettings['staffConsumption'] {
+  const source = record(value) ? value : {}
+  const seen = new Set<string>()
+  const allowances = Array.isArray(source.allowances)
+    ? source.allowances.flatMap((entry) => {
+        if (!record(entry) || typeof entry.productId !== 'string' ||
+          !Number.isSafeInteger(entry.maxPerShift) || Number(entry.maxPerShift) < 1 ||
+          Number(entry.maxPerShift) > 100) return []
+        const productId = entry.productId.trim().slice(0, 128)
+        if (!productId || seen.has(productId)) return []
+        seen.add(productId)
+        return [{ productId, maxPerShift: Number(entry.maxPerShift) }]
+      }).slice(0, 200)
+    : []
+  return {
+    enabled: source.enabled === true,
+    pricing: source.pricing === 'full_price' || source.pricing === 'free' ? source.pricing : 'discount',
+    discountPercent: typeof source.discountPercent === 'number' && Number.isFinite(source.discountPercent)
+      ? Math.max(0, Math.min(100, source.discountPercent))
+      : 0,
+    allowances,
+  }
+}
+
+function withoutProductAvailability(value: Record<string, unknown>): Record<string, unknown> {
+  const copy = structuredClone(value)
+  delete copy.eightySix
+  if (Array.isArray(copy.variants)) {
+    copy.variants = copy.variants.map((variant) => {
+      if (!record(variant)) return variant
+      const next = { ...variant }
+      delete next.eightySix
+      return next
+    })
+  }
+  return copy
+}
+
+function setExpectedProductStock(
+  expected: Map<string, number>,
+  products: Product[],
+  productId: string,
+  variantId: string | undefined,
+  quantity: number,
+): void {
+  const product = products.find((entry) => entry.id === productId)
+  if (!product) return
+  const key = stockKey(productId, variantId)
+  const current = expected.get(key) ?? (variantId
+    ? product.variants?.find((variant) => variant.id === variantId)?.stock
+    : product.stock) ?? 0
+  expected.set(key, Math.max(0, current - quantity))
 }
 
 function normalizeHubProduct(value: Record<string, unknown>): Record<string, unknown> {
@@ -394,6 +464,72 @@ export async function createHubServer(): Promise<HubRuntime> {
       .filter((entry) => entry.changeSet.deviceId !== raw.deviceId)
       .flatMap((entry) => entry.changeSet.ops.map((operation) => `${operation.collection}:${operation.id}`)))
     const conflicts: Array<{ collection: string; id: string; label: string }> = []
+    const projectedOrderState = structuredClone(validationState)
+    const projectedProducts = Object.values(projectedOrderState.collections.products ?? {}) as unknown as Product[]
+    const projectedInventory = Object.values(projectedOrderState.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
+    const productStockAfterSales = new Map<string, number>()
+    const inventoryStockAfterSales = new Map<string, number>()
+    const expectedSaleMovements = new Map<string, Record<string, unknown>>()
+    const claimedSaleMovements = new Set<string>()
+    for (const rawOperation of raw.ops) {
+      if (!record(rawOperation) || rawOperation.kind !== 'put' || rawOperation.collection !== 'orders' ||
+        !record(rawOperation.document) || projectedOrderState.collections.orders?.[String(rawOperation.id)]) continue
+      const incomingOrder = rawOperation.document
+      if (incomingOrder.status !== 'completed') continue
+      const checkedOrder = validateOrderDocument(incomingOrder, 'orders', projectedOrderState, actor)
+      const orderId = String(rawOperation.id)
+      projectedOrderState.collections.orders ??= {}
+      projectedOrderState.collections.orders[orderId] = checkedOrder as SyncDocument
+      const storeDoc = projectedOrderState.collections.stores?.[actor.storeId]
+      const settings = record(storeDoc) && record(storeDoc.settings)
+        ? storeDoc.settings as unknown as StoreSettings
+        : undefined
+      if (!settings) throw new Error('Store settings are unavailable for sale stock tracking.')
+      const deductIngredients = checkedOrder.staffConsumption === true || settings.orderRules.deductIngredientsOnSale
+      const plan = planStockDeductions(
+        checkedOrder.items as OrderItem[],
+        projectedProducts,
+        deductIngredients,
+      )
+      for (const deduction of plan.productStock.values()) {
+        const product = projectedProducts.find((entry) => entry.id === deduction.productId)
+        const variant = deduction.variantId
+          ? product?.variants?.find((entry) => entry.id === deduction.variantId)
+          : undefined
+        if (variant ? variant.trackStock : product?.trackStock) {
+          setExpectedProductStock(
+            productStockAfterSales,
+            projectedProducts,
+            deduction.productId,
+            deduction.variantId,
+            deduction.qty,
+          )
+        }
+      }
+      for (const ingredient of plan.ingredients.values()) {
+        const item = projectedInventory.find((entry) => entry.id === ingredient.itemId && entry.storeId === actor.storeId)
+        if (!item) continue
+        const onHand = inventoryStockAfterSales.get(item.id) ?? item.onHand
+        const deducted = Math.min(ingredient.qty, onHand)
+        if (deducted <= 0) continue
+        inventoryStockAfterSales.set(item.id, Math.max(0, onHand - deducted))
+        const type = checkedOrder.staffConsumption === true ? 'staff_use' : 'sale_use'
+        const orderLabel = String(incomingOrder.provisionalNumber ?? incomingOrder.number ?? checkedOrder.number)
+        const movementKey = `${orderId}:${item.id}`
+        expectedSaleMovements.set(movementKey, {
+          storeId: actor.storeId,
+          itemId: item.id,
+          type,
+          qtyDelta: -deducted,
+          unitCostSnapshot: item.avgCostPerBaseUnit,
+          reason: `${type === 'staff_use' ? 'Staff items' : 'Sale'} ${orderLabel}`,
+          userId: actor.userId,
+          userName: String(projectedOrderState.collections.users?.[actor.userId]?.name ?? ''),
+          refType: 'order',
+          refId: orderId,
+        })
+      }
+    }
     for (const operation of raw.ops) {
       if (!record(operation) || !['put', 'delete'].includes(String(operation.kind)) ||
         typeof operation.collection !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,40}$/.test(operation.collection) ||
@@ -411,7 +547,59 @@ export async function createHubServer(): Promise<HubRuntime> {
           actor.storeId,
           can(actor, 'manage86'),
         )
-      if (required && required !== 'ledger' && !availabilityOnly) requireCapability(actor, required)
+      let verifiedSaleMovement: string | undefined
+      let automaticSaleStockChange = false
+      if (actor.role === 'staff' && operation.kind === 'put' && incomingForPermission) {
+        if (operation.collection === 'inventoryItems' && record(previousForPermission)) {
+          const expectedOnHand = inventoryStockAfterSales.get(operation.id)
+          if (expectedOnHand !== undefined) {
+            const expected = { ...previousForPermission, onHand: expectedOnHand }
+            automaticSaleStockChange = isDeepStrictEqual(expected, incomingForPermission)
+          }
+        } else if (operation.collection === 'products' && record(previousForPermission)) {
+          const expected = structuredClone(previousForPermission)
+          let hasExpectedStock = false
+          for (const [key, stock] of productStockAfterSales) {
+            if (!key.startsWith(`${operation.id}:`)) continue
+            hasExpectedStock = true
+            const variantId = key.slice(operation.id.length + 1)
+            if (variantId === 'base') expected.stock = stock
+            else if (Array.isArray(expected.variants)) {
+              expected.variants = expected.variants.map((variant) =>
+                record(variant) && variant.id === variantId ? { ...variant, stock } : variant,
+              )
+            }
+          }
+          automaticSaleStockChange = hasExpectedStock &&
+            isDeepStrictEqual(withoutProductAvailability(expected), withoutProductAvailability(incomingForPermission))
+        } else if (operation.collection === 'stockMovements') {
+          const itemId = incomingForPermission.itemId
+          const refId = incomingForPermission.refId
+          const movementKey = typeof itemId === 'string' && typeof refId === 'string'
+            ? `${refId}:${itemId}`
+            : ''
+          const expected = expectedSaleMovements.get(movementKey)
+          if (expected && incomingForPermission.id === operation.id &&
+            Object.entries(expected).every(([key, value]) =>
+              key === 'qtyDelta' && typeof value === 'number' && typeof incomingForPermission[key] === 'number'
+                ? Math.abs((incomingForPermission[key] as number) - value) < 0.000001
+                : incomingForPermission[key] === value,
+            ) &&
+            typeof incomingForPermission.createdAt === 'string' &&
+            Number.isFinite(Date.parse(incomingForPermission.createdAt)) &&
+            Date.parse(incomingForPermission.createdAt) <= Date.now()) {
+            automaticSaleStockChange = true
+            verifiedSaleMovement = movementKey
+          }
+        }
+      }
+      if (required && required !== 'ledger' && !availabilityOnly && !automaticSaleStockChange) {
+        requireCapability(actor, required)
+      }
+      if (verifiedSaleMovement) {
+        if (claimedSaleMovements.has(verifiedSaleMovement)) throw new Error('Sale stock movement was recorded more than once.')
+        claimedSaleMovements.add(verifiedSaleMovement)
+      }
       if (hasAvailabilityChange) {
         const storeDoc = validationState.collections.stores?.[actor.storeId]
         const availability = record(storeDoc) && record(storeDoc.settings) && record(storeDoc.settings.availability)
@@ -515,7 +703,30 @@ export async function createHubServer(): Promise<HubRuntime> {
             ...settings,
             availability: normalizeHubAvailability(settings.availability),
             orderRules: normalizeHubOrderRules(settings.orderRules),
+            coffeeTracking: normalizeHubCoffeeTracking(settings.coffeeTracking),
+            staffConsumption: normalizeHubStaffConsumption(settings.staffConsumption),
             },
+          }
+          const normalizedSettings = (document.settings as Record<string, unknown>)
+          const coffeeTracking = normalizedSettings.coffeeTracking as StoreSettings['coffeeTracking']
+          if (coffeeTracking.enabled) {
+            const bean = coffeeTracking.inventoryItemId
+              ? validationState.collections.inventoryItems?.[coffeeTracking.inventoryItemId]
+              : undefined
+            if (!record(bean) || bean.storeId !== actor.storeId || bean.active !== true || bean.baseUnit !== 'g') {
+              throw new Error('Coffee yield tracking must reference active gram-based stock in this store.')
+            }
+          }
+          const staffConsumption = normalizedSettings.staffConsumption as StoreSettings['staffConsumption']
+          if (staffConsumption.enabled) {
+            if (!staffConsumption.allowances.length) throw new Error('Staff item tracking needs at least one allowance.')
+            for (const allowance of staffConsumption.allowances) {
+              const product = validationState.collections.products?.[allowance.productId]
+              if (!record(product) || product.storeId !== actor.storeId ||
+                Array.isArray(product.modifiers) && product.modifiers.some((group) => record(group) && group.required === true)) {
+                throw new Error('Staff allowances must reference products without required modifiers in this store.')
+              }
+            }
           }
         } else {
           validateStoreDoc(operation.document, actor.storeId)
@@ -601,6 +812,9 @@ export async function createHubServer(): Promise<HubRuntime> {
       } else {
         delete validationState.collections[operation.collection]?.[operation.id]
       }
+    }
+    if ([...expectedSaleMovements.keys()].some((key) => !claimedSaleMovements.has(key))) {
+      throw new Error('Sale stock tracking is incomplete; the inventory movement was not submitted.')
     }
     const changeSet = {
       opId: raw.opId, deviceId: raw.deviceId, storeId: actor.storeId,

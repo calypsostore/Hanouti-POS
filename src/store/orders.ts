@@ -11,6 +11,7 @@ import { openShiftForStaff } from '../lib/registerShifts'
 import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
 import { roundQuantity } from '../lib/inventory'
 import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
+import { staffConsumptionDiscount, staffConsumptionError } from '../lib/staffConsumption'
 import {
   planStockDeductions, resolveOrderLines, stockKey, stockOverrideAccepted, validateOrderLines,
 } from '../shared/orderRules'
@@ -27,12 +28,25 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (!seller.storeId) return { ok: false, error: 'No active store session.' }
       const current = dbRef.current
       if (!input || !Array.isArray(input.items)) return { ok: false, error: 'The order items are invalid.' }
+      if (input.staffConsumption !== undefined && typeof input.staffConsumption !== 'boolean') {
+        return { ok: false, error: 'Staff item checkout is invalid.' }
+      }
+      const staffConsumption = input.staffConsumption === true
+      if (staffConsumption && !can(seller, 'useStaffAllowances')) {
+        return { ok: false, error: 'You do not have permission to record staff items.' }
+      }
       if (!['cash', 'card', 'credit'].includes(input.paymentMethod) ||
         !['takeaway', 'dine-in', 'delivery'].includes(input.channel)) {
         return { ok: false, error: 'Choose a valid order type and payment method.' }
       }
+      if (staffConsumption && input.paymentMethod !== 'cash' && input.paymentMethod !== 'card') {
+        return { ok: false, error: 'Staff items must be paid by cash or card.' }
+      }
       const target = current.stores.find((s) => s.id === seller.storeId)
       if (!target) return { ok: false, error: 'Store not found.' }
+      if (staffConsumption && (seller.stationOnly || input.channel !== 'takeaway' || input.customerId)) {
+        return { ok: false, error: 'Staff items must be recorded for yourself as a takeaway order.' }
+      }
       if (input.channel === 'delivery' && !target.settings.features.delivery) {
         return { ok: false, error: 'Delivery orders are disabled for this store.' }
       }
@@ -62,8 +76,18 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       }
       if (!input.items.length) return { ok: false, error: 'Cart is empty.' }
       const shift = openShiftForStaff(current, target.id, seller.id)
-      if (target.settings.requireShiftForOrders && !shift) {
+      if ((target.settings.requireShiftForOrders || staffConsumption) && !shift) {
         return { ok: false, error: 'Open your shift before taking orders.' }
+      }
+      if (staffConsumption) {
+        const error = staffConsumptionError(
+          input.items,
+          target.settings.staffConsumption,
+          current.orders,
+          shift?.id,
+          seller.id,
+        )
+        if (error) return { ok: false, error }
       }
       const clientOrderId = typeof input.clientOrderId === 'string'
         ? input.clientOrderId.trim().slice(0, 128)
@@ -90,13 +114,24 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (input.customerId && !customer) {
         return { ok: false, error: 'That customer does not belong to this store.' }
       }
+      const rulesStore = staffConsumption
+        ? {
+            ...target,
+            settings: {
+              ...target.settings,
+              orderRules: { ...target.settings.orderRules, deductIngredientsOnSale: true },
+            },
+          }
+        : target
       const rulesContext = {
-        store: target,
+        store: rulesStore,
         products: current.products,
         inventoryItems: current.inventoryItems,
         openOrders: current.openOrders,
         excludeOpenOrderId: payingOpenOrder?.id,
-        actor: seller,
+        actor: staffConsumption
+          ? { ...seller, permissions: { ...seller.permissions, discount: true } }
+          : seller,
         users: current.users,
         validateSentItems: Boolean(payingOpenOrder),
       }
@@ -124,7 +159,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         if (!input.customerId) return { ok: false, error: 'Select a customer to add this order to a tab.' }
       }
 
-      const requestedDiscount = input.discount ?? 0
+      const requestedDiscount = staffConsumption
+        ? staffConsumptionDiscount(checkedItems, target.settings, target.settings.staffConsumption)
+        : input.discount ?? 0
       if (!Number.isFinite(requestedDiscount) || requestedDiscount < 0) {
         return { ok: false, error: 'Discount must be zero or a positive amount.' }
       }
@@ -221,6 +258,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         createdAt,
         tableHistory,
         clientOrderId,
+        staffConsumption: staffConsumption || undefined,
       }
 
       commitDb((prev) => {
@@ -239,7 +277,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         const plan = planStockDeductions(
           checkedItems,
           prev.products,
-          target.settings.orderRules.deductIngredientsOnSale,
+          staffConsumption || target.settings.orderRules.deductIngredientsOnSale,
         )
         const updatedProducts = prev.products.map((product) => {
           if (product.storeId !== target.id) return product
@@ -274,10 +312,10 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             id: uid('mov'),
             storeId: target.id,
             itemId: item.id,
-            type: 'sale_use' as const,
+            type: staffConsumption ? 'staff_use' as const : 'sale_use' as const,
             qtyDelta: -roundQuantity(deducted),
             unitCostSnapshot: item.avgCostPerBaseUnit,
-            reason: `Sale ${orderLabel}`,
+            reason: staffConsumption ? `Staff items ${orderLabel}` : `Sale ${orderLabel}`,
             userId: seller.id,
             userName: seller.name,
             refType: 'order',
@@ -362,7 +400,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           action: 'created',
           entity: 'order',
           entityId: order.id,
-          summary: `Created order #${orderLabel} for ${order.total.toFixed(3)} DT${table ? ` at ${table.name}` : ''}`,
+          summary: `${staffConsumption ? 'Recorded staff items' : 'Created order'} #${orderLabel} for ${order.total.toFixed(3)} DT${table ? ` at ${table.name}` : ''}`,
           after: {
             number: order.number,
             provisionalNumber: order.provisionalNumber ?? '',
@@ -371,6 +409,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             paymentMethod: order.paymentMethod,
             tableName: order.tableName ?? '',
             guests: order.guests ?? 0,
+            staffConsumption,
             stockChanges,
             overrides,
           },
@@ -475,7 +514,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         const restorePlan = planStockDeductions(
           order.items,
           prev.products,
-          store?.settings.orderRules.deductIngredientsOnSale === true,
+          order.staffConsumption === true || store?.settings.orderRules.deductIngredientsOnSale === true,
         )
         const restoredProducts = prev.products.map((product) => {
           if (product.storeId !== order.storeId) return product

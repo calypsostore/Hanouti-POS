@@ -14,6 +14,7 @@ import { POSHeader } from './POSHeader'
 import { POSWorkspace } from './POSWorkspace'
 import { ReceiptModal } from './ReceiptModal'
 import { ProductOptionsModal } from './ProductOptionsModal'
+import { StaffItemsModal } from './StaffItemsModal'
 import { createPOSActions } from './posActions'
 import { useProductCart } from './useProductCart'
 import { openShiftForStaff } from '../../lib/registerShifts'
@@ -21,6 +22,7 @@ import { buildStationTicketLines, buildStationTickets } from '../../lib/tickets'
 import { linesToEscpos } from '../../lib/escpos'
 import { filterPosProducts, shiftReminderDue as isShiftReminderDue } from '../../lib/automation'
 import { isUnavailable } from '../../lib/availability'
+import { enabledStaffProducts } from '../../lib/staffConsumption'
 import { validateOrderLines, computeReservations, availableStock } from '../../shared/orderRules'
 import { Button, Field, Input, Modal, Select, Textarea } from '../../components/ui'
 import type { OpenOrder, Product, ProductVariant, Station, Store } from '../../types'
@@ -97,6 +99,7 @@ export default function POS() {
   const [openDiscount, setOpenDiscount] = useState<number>()
   const [openNote, setOpenNote] = useState<string>()
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const [staffItemsOpen, setStaffItemsOpen] = useState(false)
   const [eightySixListOpen, setEightySixListOpen] = useState(false)
   const [eightySixTarget, setEightySixTarget] = useState<Product | null>(null)
   const [eightySixReason, setEightySixReason] = useState('')
@@ -428,6 +431,23 @@ export default function POS() {
     setVoidReason('')
   }
 
+  const submitStaffItems = (items: OrderItem[], method: 'cash' | 'card'): boolean => {
+    const result = createOrder({
+      items,
+      channel: 'takeaway',
+      paymentMethod: method,
+      staffConsumption: true,
+    })
+    if (!result.ok) {
+      push(result.error, 'error')
+      return false
+    }
+    setStaffItemsOpen(false)
+    setReceipt(result.order)
+    push('Staff items recorded and stock updated.', 'success')
+    return true
+  }
+
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.trim().toLowerCase()),
   )
@@ -595,10 +615,23 @@ export default function POS() {
         )}
         eightySixCount={eightySixProducts.length}
         onShowEightySixList={() => setEightySixListOpen(true)}
+        onStaffItems={() => setStaffItemsOpen(true)}
         onLogout={() => {
           logout()
           navigate('/login')
         }}
+      />
+
+      <StaffItemsModal
+        open={staffItemsOpen}
+        onClose={() => setStaffItemsOpen(false)}
+        products={enabledStaffProducts(db.products.filter((product) => product.storeId === store.id), store.settings.staffConsumption)}
+        orders={db.orders}
+        shiftId={currentShift?.id}
+        staffId={user.id}
+        settings={store.settings}
+        policy={store.settings.staffConsumption}
+        onSubmit={submitStaffItems}
       />
 
       <POSWorkspace

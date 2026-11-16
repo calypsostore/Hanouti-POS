@@ -6,6 +6,7 @@ import type {
   RegisterSnapshot,
 } from '../types'
 import { round } from './pricing-utils.ts'
+import { recipeFor } from '../shared/orderRules.ts'
 import { expectedShiftCash, orderPaidBy } from './shiftCash.ts'
 import {
   completedOrdersAt,
@@ -180,6 +181,7 @@ export const registerReportDetails = (
   const taxByRate = new Map<number | null, number>()
   const byEmployee = new Map<string, { count: number; total: number }>()
   const byCategory = new Map<string, { qty: number; total: number }>()
+  const staffUse = new Map<string, { staffName: string; itemName: string; quantity: number; retailValue: number; chargedValue: number }>()
   const items = registerSessionItems(db, session, endISO, staffId)
 
   for (const order of completed) {
@@ -204,8 +206,75 @@ export const registerReportDetails = (
         qty: round(categoryTotal.qty + item.qty),
         total: round(categoryTotal.total + lineTotal),
       })
+      if (order.staffConsumption && (!staffId || orderPaidBy(order) === staffId)) {
+        const itemName = [item.name, item.variantName].filter(Boolean).join(' · ')
+        const key = `${order.staffId}:${item.productId}:${item.variantId ?? ''}`
+        const currentUse = staffUse.get(key) ?? {
+          staffName: order.staffName,
+          itemName,
+          quantity: 0,
+          retailValue: 0,
+          chargedValue: 0,
+        }
+        const modifierValue = (item.modifiers ?? []).reduce((total, modifier) => total + modifier.priceDelta, 0)
+        const retailValue = round((item.price + modifierValue) * item.qty)
+        const orderRetail = order.items.reduce((total, line) =>
+          total + (line.price + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.priceDelta, 0)) * line.qty, 0)
+        const chargedValue = orderRetail > 0 ? round(order.total * retailValue / orderRetail) : 0
+        currentUse.quantity = round(currentUse.quantity + item.qty)
+        currentUse.retailValue = round(currentUse.retailValue + retailValue)
+        currentUse.chargedValue = round(currentUse.chargedValue + chargedValue)
+        staffUse.set(key, currentUse)
+      }
     }
   }
+
+  const beans = store.settings.coffeeTracking.enabled
+    ? db.inventoryItems.find((item) =>
+        item.id === store.settings.coffeeTracking.inventoryItemId &&
+        item.storeId === session.storeId && item.baseUnit === 'g',
+      )
+    : undefined
+  let coffeeServings = 0
+  let recipeBeanUse = 0
+  if (beans) {
+    for (const order of completed) {
+      if (staffId && orderPaidBy(order) !== staffId) continue
+      for (const item of order.items) {
+        const product = db.products.find((candidate) =>
+          candidate.id === item.productId && candidate.storeId === session.storeId,
+        )
+        if (!product) continue
+        const variant = product.variants?.find((candidate) => candidate.id === item.variantId)
+        const beanQtyPerServing = recipeFor(product, variant, item.modifiers)
+          .find((ingredient) => ingredient.inventoryItemId === beans.id)?.qtyPerUnit
+        if (!beanQtyPerServing) continue
+        coffeeServings = round(coffeeServings + item.qty)
+        recipeBeanUse = round(recipeBeanUse + beanQtyPerServing * item.qty)
+      }
+    }
+  }
+  const coffeeExpectedUseMin = beans
+    ? round(coffeeServings * 1000 / store.settings.coffeeTracking.servingsPerKgMax)
+    : 0
+  const coffeeExpectedUseMax = beans
+    ? round(coffeeServings * 1000 / store.settings.coffeeTracking.servingsPerKgMin)
+    : 0
+  const beanMovementsAfterOpen = beans
+    ? db.stockMovements.filter((movement) =>
+        movement.storeId === session.storeId && movement.itemId === beans.id &&
+        Date.parse(movement.createdAt) >= start,
+      )
+    : []
+  const openingBeanStock = beans
+    ? round(beans.onHand - sum(beanMovementsAfterOpen.map((movement) => movement.qtyDelta)))
+    : 0
+  const movementsByClose = beanMovementsAfterOpen.filter((movement) => Date.parse(movement.createdAt) <= end)
+  const nonSaleBeanMovements = movementsByClose.filter((movement) =>
+    movement.type !== 'sale_use' && movement.type !== 'staff_use' && movement.type !== 'count_correction',
+  )
+  const availableBeans = round(openingBeanStock + sum(nonSaleBeanMovements.map((movement) => movement.qtyDelta)))
+  const ledgerRemaining = round(openingBeanStock + sum(movementsByClose.map((movement) => movement.qtyDelta)))
 
   const voidedOrders = voidedOrdersForRegisterSession(db, session, endISO)
     .filter((order) => !staffId || order.voidedById === staffId)
@@ -282,6 +351,22 @@ export const registerReportDetails = (
     byCategory: [...byCategory.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.total - a.total),
+    staffConsumptions: [...staffUse.values()].sort((a, b) =>
+      a.staffName.localeCompare(b.staffName) || a.itemName.localeCompare(b.itemName),
+    ),
+    coffeeBeanSummary: beans
+      ? {
+          itemName: beans.name,
+          servingsSold: coffeeServings,
+          expectedUseMin: coffeeExpectedUseMin,
+          expectedUseMax: coffeeExpectedUseMax,
+          recipeUse: recipeBeanUse,
+          expectedRemainingMin: round(availableBeans - coffeeExpectedUseMax),
+          expectedRemainingMax: round(availableBeans - coffeeExpectedUseMin),
+          ledgerRemaining,
+          unit: 'g' as const,
+        }
+      : undefined,
     ...items,
     voidedOrders,
     cancelledItems,

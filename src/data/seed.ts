@@ -26,7 +26,7 @@ import type {
   User,
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
-import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../lib/defaults'
+import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION } from '../lib/defaults'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
@@ -70,6 +70,8 @@ const defaultSettings = (
   automation: { ...DEFAULT_AUTOMATION_SETTINGS },
   availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
   orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
+  coffeeTracking: { ...DEFAULT_COFFEE_TRACKING },
+  staffConsumption: { ...DEFAULT_STAFF_CONSUMPTION, allowances: [] },
   ...over,
 })
 

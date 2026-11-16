@@ -74,6 +74,58 @@ export const DEFAULT_ORDER_RULES: StoreSettings['orderRules'] = {
   stockOverrideRoles: { admin: true, manager: true, staff: false },
 }
 
+export const DEFAULT_COFFEE_TRACKING: StoreSettings['coffeeTracking'] = {
+  enabled: false,
+  servingsPerKgMin: 50,
+  servingsPerKgMax: 70,
+}
+
+export const DEFAULT_STAFF_CONSUMPTION: StoreSettings['staffConsumption'] = {
+  enabled: false,
+  pricing: 'discount',
+  discountPercent: 0,
+  allowances: [],
+}
+
+export const normalizeCoffeeTracking = (value?: Partial<StoreSettings['coffeeTracking']>): StoreSettings['coffeeTracking'] => {
+  const min = typeof value?.servingsPerKgMin === 'number' && Number.isFinite(value.servingsPerKgMin)
+    ? Math.max(1, Math.min(1000, Math.round(value.servingsPerKgMin)))
+    : DEFAULT_COFFEE_TRACKING.servingsPerKgMin
+  const max = typeof value?.servingsPerKgMax === 'number' && Number.isFinite(value.servingsPerKgMax)
+    ? Math.max(min, Math.min(1000, Math.round(value.servingsPerKgMax)))
+    : Math.max(min, DEFAULT_COFFEE_TRACKING.servingsPerKgMax)
+  return {
+    enabled: value?.enabled === true,
+    inventoryItemId: typeof value?.inventoryItemId === 'string' ? value.inventoryItemId.slice(0, 128) : undefined,
+    servingsPerKgMin: min,
+    servingsPerKgMax: max,
+  }
+}
+
+export const normalizeStaffConsumption = (value?: Partial<StoreSettings['staffConsumption']>): StoreSettings['staffConsumption'] => {
+  const pricing = value?.pricing === 'full_price' || value?.pricing === 'free' ? value.pricing : 'discount'
+  const seen = new Set<string>()
+  const allowances = Array.isArray(value?.allowances)
+    ? value.allowances.flatMap((entry) => {
+        if (!entry || typeof entry.productId !== 'string' || !entry.productId.trim() ||
+          !Number.isSafeInteger(entry.maxPerShift) || entry.maxPerShift < 1 || entry.maxPerShift > 100) return []
+        const productId = entry.productId.trim().slice(0, 128)
+        if (seen.has(productId)) return []
+        seen.add(productId)
+        return [{ productId, maxPerShift: entry.maxPerShift }]
+      }).slice(0, 200)
+    : []
+  const discountPercent = typeof value?.discountPercent === 'number' && Number.isFinite(value.discountPercent)
+    ? Math.max(0, Math.min(100, value.discountPercent))
+    : DEFAULT_STAFF_CONSUMPTION.discountPercent
+  return {
+    enabled: value?.enabled === true,
+    pricing,
+    discountPercent,
+    allowances,
+  }
+}
+
 const oneOf = <T extends string>(value: unknown, options: readonly T[], fallback: T): T =>
   options.includes(value as T) ? value as T : fallback
 
@@ -133,6 +185,7 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   openShift: role !== 'super',
   closeShift: role !== 'super',
   takeOverTables: role !== 'super',
+  useStaffAllowances: false,
   viewStation: role === 'manager',
   overrideStock: role === 'admin' || role === 'manager',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
@@ -148,6 +201,10 @@ export const normalizeUser = (u: User): User => {
     ? p[name] === true
     : name === 'openShift' || name === 'closeShift' || name === 'takeOverTables'
       ? typeof p[name] === 'boolean' ? p[name] : base[name]
+      : name === 'useStaffAllowances'
+        ? u.role === 'manager'
+          ? typeof p[name] === 'boolean' ? p[name] : MANAGER_DEFAULT_PERMISSIONS[name]
+          : p[name] === true
       : name === 'viewStation' && u.role === 'staff'
         ? p[name] === true
         : u.role === 'manager'
@@ -186,6 +243,7 @@ export const normalizeUser = (u: User): User => {
       recordPurchases: capability('recordPurchases'),
       viewCosts: capability('viewCosts'),
       manageStaffAllowances: capability('manageStaffAllowances'),
+      useStaffAllowances: capability('useStaffAllowances'),
       approveOverrides: capability('approveOverrides'),
       viewReports: capability('viewReports'),
       manageProducts: capability('manageProducts'),

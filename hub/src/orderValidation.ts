@@ -4,12 +4,15 @@ import { balanceFor } from '../../src/lib/selectors.ts'
 import { nextOrderNumber } from '../../src/lib/orderNumber.ts'
 import { resolveOrderLines, stockOverrideAccepted, validateOrderLines, type OrderRulesContext } from '../../src/shared/orderRules.ts'
 import type {
-  InventoryItem, LedgerEntry, OpenOrder, OrderItem, Product, Store, User,
+  InventoryItem, LedgerEntry, OpenOrder, Order, OrderItem, Product, Store, User,
 } from '../../src/types.ts'
 import { requireCapability } from './auth.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
+import { staffConsumptionDiscount, staffConsumptionError } from '../../src/lib/staffConsumption.ts'
 
 const VALID_ITEM_STATUSES = ['draft', 'sent', 'preparing', 'ready', 'served', 'void']
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export function validateOrderDocument(
   input: Record<string, unknown>,
@@ -20,6 +23,15 @@ export function validateOrderDocument(
   const store = state.collections.stores?.[actor.storeId] as unknown as Store | undefined
   const user = state.collections.users?.[actor.userId]
   if (!store?.settings || !user) throw new Error('Store settings or authenticated user are unavailable.')
+  if (input.staffConsumption !== undefined && typeof input.staffConsumption !== 'boolean') {
+    throw new Error('Staff item checkout is invalid.')
+  }
+  const staffConsumption = collection === 'orders' && input.staffConsumption === true
+  if (staffConsumption) requireCapability(actor, 'useStaffAllowances')
+  const previousOrder = state.collections.orders?.[String(input.id)]
+  if (isRecord(previousOrder) && Boolean(previousOrder.staffConsumption) !== staffConsumption) {
+    throw new Error('Staff item classification cannot be changed after checkout.')
+  }
   if (!Number.isFinite(store.settings.taxRate) || store.settings.taxRate < 0 ||
     !Number.isFinite(store.settings.serviceCharge) || store.settings.serviceCharge < 0 ||
     typeof store.settings.taxInclusive !== 'boolean') {
@@ -28,6 +40,19 @@ export function validateOrderDocument(
   if (!Array.isArray(input.items) || input.items.length > 300) throw new Error('Order must contain no more than 300 items.')
   const products = Object.values(state.collections.products ?? {}) as unknown as Product[]
   const requestedItems = input.items as OrderItem[]
+  if (staffConsumption) {
+    if (user.stationOnly || input.channel !== 'takeaway' || input.tableId !== undefined ||
+      input.tableName !== undefined || input.customerId !== undefined ||
+      (input.paymentMethod !== 'cash' && input.paymentMethod !== 'card') ||
+      input.staffId !== actor.userId || typeof input.shiftId !== 'string') {
+      throw new Error('Staff items must be recorded for the authenticated staff member as a paid takeaway order.')
+    }
+    const shift = state.collections.registerSessions?.[input.shiftId]
+    if (!shift || shift.status !== 'open' ||
+      (shift.staffId ?? shift.openedById) !== actor.userId || shift.storeId !== actor.storeId) {
+      throw new Error('Staff items require the authenticated staff member’s open shift.')
+    }
+  }
   const inventoryItems = Object.values(state.collections.inventoryItems ?? {}) as unknown as InventoryItem[]
   const users = Object.values(state.collections.users ?? {}) as unknown as User[]
   const openOrders = Object.values(state.collections.openOrders ?? {}) as unknown as OpenOrder[]
@@ -44,8 +69,17 @@ export function validateOrderDocument(
           : typeof input.tableName === 'string' && candidate.tableName === input.tableName,
       )
     : undefined
+  const rulesStore = staffConsumption
+    ? {
+        ...store,
+        settings: {
+          ...store.settings,
+          orderRules: { ...store.settings.orderRules, deductIngredientsOnSale: true },
+        },
+      }
+    : store
   const rulesContext: OrderRulesContext = {
-    store,
+    store: rulesStore,
     products: products.filter((product) => product.storeId === actor.storeId),
     inventoryItems: inventoryItems.filter((item) => item.storeId === actor.storeId),
     openOrders,
@@ -62,6 +96,7 @@ export function validateOrderDocument(
         register: rawPermissions.register === true,
         supervisor: rawPermissions.supervisor === true,
         ...capabilityPermissions,
+        ...(staffConsumption ? { discount: true } : {}),
       },
       stationOnly: Boolean(user.stationOnly),
     },
@@ -88,6 +123,17 @@ export function validateOrderDocument(
   })
   const resolved = resolveOrderLines(requested, rulesContext)
   if (!resolved.ok) throw new Error(resolved.error)
+  if (staffConsumption) {
+    const orders = Object.values(state.collections.orders ?? {}) as unknown as Order[]
+    const issue = staffConsumptionError(
+      resolved.items,
+      store.settings.staffConsumption,
+      orders,
+      String(input.shiftId),
+      actor.userId,
+    )
+    if (issue) throw new Error(issue)
+  }
   const unconfirmed = resolved.issues.find((issue) => {
     if (issue.code !== 'OVER_STOCK' && issue.code !== 'INGREDIENT_SHORT') return false
     const line = resolved.items.find((item) => item.lineId === issue.lineId)
@@ -166,7 +212,9 @@ export function validateOrderDocument(
       voidReason: typeof voidReason === 'string' ? voidReason : undefined,
     }
   })
-  const requestedDiscount = input.discount === undefined ? 0 : input.discount
+  const requestedDiscount = staffConsumption
+    ? staffConsumptionDiscount(items, store.settings, store.settings.staffConsumption)
+    : input.discount === undefined ? 0 : input.discount
   if (typeof requestedDiscount !== 'number' || !Number.isFinite(requestedDiscount) || requestedDiscount < 0) {
     throw new Error('Order discount must be a non-negative amount.')
   }
@@ -265,6 +313,7 @@ export function validateOrderDocument(
     discount: round(discount),
     ...totals,
     taxRate: store.settings.taxRate,
+    staffConsumption: staffConsumption || undefined,
     staffId: typeof previous?.staffId === 'string' ? previous.staffId : actor.userId,
     staffName: typeof previous?.staffName === 'string' ? previous.staffName : String(user.name),
     createdAt: typeof previous?.createdAt === 'string' ? previous.createdAt : new Date().toISOString(),

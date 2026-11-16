@@ -6,7 +6,7 @@ import type { Store, StoreSettings } from '../../../types'
 import { Button, Segmented } from '../../../components/ui'
 import { PrintModal } from '../../../components/PrintPreview'
 import { useToast } from '../../../components/toast'
-import { DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER } from '../../../lib/defaults'
+import { DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION } from '../../../lib/defaults'
 import { buildTestLines, linesToEscpos } from '../../../lib/escpos'
 import { connectPrinter, disconnectPrinter, onPrinterState, printerState as readPrinterState } from '../../../lib/printer'
 import type { PrinterState } from '../../../lib/printer'
@@ -93,6 +93,8 @@ export default function SettingsPage() {
         },
         availability: { ...DEFAULT_AVAILABILITY_SETTINGS, reasons: [...DEFAULT_AVAILABILITY_SETTINGS.reasons] },
         orderRules: { ...DEFAULT_ORDER_RULES, stockOverrideRoles: { ...DEFAULT_ORDER_RULES.stockOverrideRoles } },
+        coffeeTracking: { ...DEFAULT_COFFEE_TRACKING },
+        staffConsumption: { ...DEFAULT_STAFF_CONSUMPTION, allowances: [] },
       },
   )
   const [ownerPhoto, setOwnerPhoto] = useState(user?.photo)
@@ -243,7 +245,12 @@ export default function SettingsPage() {
       )}
       {activeTab === 'tables' && <TablesTab storeId={store.id} settings={settings} set={set} />}
       {activeTab === 'stations' && <StationsTab storeId={store.id} />}
-      {activeTab === 'service' && <ServiceTab settings={settings} set={set} />}
+      {activeTab === 'service' && <ServiceTab
+        settings={settings}
+        set={set}
+        products={db.products.filter((product) => product.storeId === store.id)}
+        inventoryItems={db.inventoryItems.filter((item) => item.storeId === store.id && item.active)}
+      />}
       {activeTab === 'devices' && <DevicesTab storeId={store.id} />}
       {activeTab === 'automation' && <AutomationTab
         settings={settings}

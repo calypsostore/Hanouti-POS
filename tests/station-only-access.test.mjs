@@ -14,6 +14,7 @@ const permissions = {
   recordPurchases: true,
   viewCosts: true,
   manageStaffAllowances: true,
+  useStaffAllowances: true,
   approveOverrides: true,
   viewReports: true,
   manageProducts: true,
@@ -39,7 +40,7 @@ const user = {
 test('station-only preset denies all capabilities except station viewing', () => {
   assert.equal(can(user, 'viewStation'), true)
   for (const capability of [
-    'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances',
+    'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances', 'useStaffAllowances',
     'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
     'manageStaff', 'manageSettings', 'managePayroll', 'manageTables',
     'manageSections', 'openShift', 'closeShift',

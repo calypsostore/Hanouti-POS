@@ -62,6 +62,7 @@ const stationOnlyPermissions = (): User['permissions'] => ({
   recordPurchases: false,
   viewCosts: false,
   manageStaffAllowances: false,
+  useStaffAllowances: false,
   approveOverrides: false,
   viewReports: false,
   manageProducts: false,

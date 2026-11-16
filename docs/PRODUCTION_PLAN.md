@@ -15,6 +15,25 @@ staff analytics and cash-difference flows are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
+### Coffee yield and staff items — implemented; browser verification pending
+
+- Admin → Settings → Service can enable coffee-bean tracking, select a gram-based
+  bean inventory item, and configure servings per kilogram. Shift and frozen Z
+  reports show coffee servings, recipe use, expected bean use/remainder, and
+  tracked inventory remainder. Coffee products need bean quantities in their
+  recipes. Automatic stock deduction also uses the existing Order rules →
+  Deduct ingredients on sale setting; otherwise, use Inventory stock counts to
+  compare actual bean stock with the yield estimate before shift close.
+- Admins configure staff-item pricing, permitted products, and per-shift
+  quantity limits. Authorized staff can record their own items during an open
+  shift. Checkouts use configured prices, force recipe stock deductions, and are
+  attributed to the staff member in inventory movements, Z reports, and staff
+  profiles. Access also requires the staff member's **Use staff items**
+  permission.
+- Still unverified: multi-device hub checkout races, physical Z receipt output,
+  staff self-service on a phone/tablet, and the stock-count-to-Z workflow in a
+  live browser.
+
 ### Unified order rules and stock — implemented; browser verification pending
 
 - Implemented: shared app/hub order-line validation, open-table reservations,
