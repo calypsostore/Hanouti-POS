@@ -10,6 +10,7 @@ import { addLog } from './audit'
 import { isCashDifferenceWithinTolerance, shiftCashDifference } from '../lib/shiftCash'
 import { cashDifferenceDeduction } from '../lib/payroll'
 import { clearManualAvailability } from './availabilityMaintenance'
+import { shiftOpenScheduleError } from '../lib/shiftAccess'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -17,7 +18,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
   const { dbRef, commitDb, requireActor, requireCapability } = dependencies
   const openRegister = useCallback<AppContextValue['openRegister']>(
     (storeId, openingCash) => {
-      const actorResult = requireActor(storeId)
+      const actorResult = requireActor(storeId, true)
       if (!actorResult.ok) return actorResult
       const actor = actorResult.actor
       if (!can(actor, 'openShift')) {
@@ -34,6 +35,26 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       if (openShiftForStaff(dbRef.current, storeId, actor.id)) {
         return { ok: false, error: 'You already have an open shift for this store.' }
       }
+      const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
+      if (actor.role === 'staff' && !actor.stationOnly) {
+        const scheduleError = shiftOpenScheduleError(
+          store.settings.shiftAccess,
+          dbRef.current.shifts,
+          storeId,
+          actor.id,
+          new Date(),
+        )
+        if (scheduleError) {
+          commitDb((prev) => addLog(prev, actor, {
+            storeId,
+            action: 'shift_access_denied',
+            entity: 'register',
+            summary: `Blocked shift opening: ${scheduleError}`,
+          }))
+          return { ok: false, error: scheduleError }
+        }
+      }
       const session: RegisterSession = {
         id: uid('reg'),
         storeId,
@@ -46,7 +67,6 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         openingCash: round(openingCash),
         openingFloat: round(openingCash),
       }
-      const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
       const firstShiftToday = !dbRef.current.registerSessions.some((candidate) =>
         candidate.storeId === storeId && dateKey(candidate.openedAt) === dateKey(session.openedAt),
       )

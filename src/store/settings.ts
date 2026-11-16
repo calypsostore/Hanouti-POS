@@ -5,10 +5,12 @@ import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
 import { hashSecret } from '../lib/hash'
 import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_INVENTORY_YIELD_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION, defaultPermissions, normalizeCoffeeTracking, normalizeInventoryYieldTracking, normalizeStaffConsumption } from '../lib/defaults'
+import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../lib/shiftAccess'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
 import { openShiftForStaff } from '../lib/registerShifts'
 import { validAutomationSettings } from '../lib/automation'
+import { validShiftAccessSettings } from '../lib/shiftAccess'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { CreateStoreInput } from './types'
@@ -35,6 +37,7 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   guestRequirement: settings.guestRequirement,
   staffPickSectionsOnShift: settings.staffPickSectionsOnShift,
   requireShiftForOrders: settings.requireShiftForOrders,
+  shiftAccess: { ...settings.shiftAccess },
   accent: settings.accent,
   colorMode: settings.colorMode,
   printer: { ...settings.printer },
@@ -213,6 +216,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (patch.requireShiftForOrders !== undefined &&
       typeof patch.requireShiftForOrders !== 'boolean') {
       return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
+    }
+    if (patch.shiftAccess !== undefined && !validShiftAccessSettings(patch.shiftAccess)) {
+      return { ok: false, error: 'Check the staff access and schedule settings.' }
     }
     if (patch.automation && !validAutomationSettings(patch.automation)) {
       return { ok: false, error: 'Check the automation settings and allowed values.' }
@@ -398,6 +404,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
           ...currentStore.settings,
           posMode: template.posMode,
           requireShiftForOrders: template.posMode === 'cashier',
+          shiftAccess: { ...currentStore.settings.shiftAccess },
           receiptFooter: template.receiptFooter,
           features: template.features,
         },
@@ -519,6 +526,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       settings: {
         posMode: template.posMode,
         requireShiftForOrders: template.posMode === 'cashier',
+        shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         currency: 'TND',
         taxRate: 0,
         taxInclusive: true,

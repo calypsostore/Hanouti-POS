@@ -27,6 +27,7 @@ import type {
 } from '../types'
 import { dateKey, isoDaysAgo, uid } from '../lib/utils'
 import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_INVENTORY_YIELD_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION } from '../lib/defaults'
+import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../lib/shiftAccess'
 import { businessTemplate } from '../lib/businessTemplates'
 import { computeTotals } from '../lib/pricing'
 import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
@@ -55,6 +56,7 @@ const defaultSettings = (
   guestRequirement: 'required',
   staffPickSectionsOnShift: false,
   requireShiftForOrders: (over.posMode ?? businessTemplate(businessType).posMode) === 'cashier',
+  shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
   accent: '7anouti',
   colorMode: 'system',
   printer: { ...DEFAULT_PRINTER },

@@ -7,7 +7,7 @@ import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../lib/aut
 type DbRef = { current: Database }
 type UserIdRef = { current: string | null }
 type CommitDb = (update: (prev: Database) => Database) => Database
-type RequireActor = (storeId?: string) => ActorResult
+type RequireActor = (storeId?: string, allowStaffWithoutShift?: boolean) => ActorResult
 type RequireAdmin = (storeId: string) => ActorResult
 type RequireCapability = (storeId: string, capability: Capability) => ActorResult
 

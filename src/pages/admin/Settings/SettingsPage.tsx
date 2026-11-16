@@ -22,6 +22,7 @@ import DevicesTab from './DevicesTab'
 import AutomationTab from './AutomationTab'
 import ConnectivityTab from './ConnectivityTab'
 import { readDeviceReceiptPolicy, saveDeviceReceiptPolicy } from '../../../lib/printPreferences'
+import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../../../lib/shiftAccess'
 
 type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'automation' | 'connectivity' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
@@ -72,6 +73,7 @@ export default function SettingsPage() {
         guestRequirement: 'required',
         staffPickSectionsOnShift: false,
         requireShiftForOrders: true,
+        shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         accent: '7anouti',
         colorMode: 'system',
         printer: { ...DEFAULT_PRINTER },

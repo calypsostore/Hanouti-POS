@@ -27,6 +27,7 @@ import SuperStores from './pages/super/Stores'
 import type { Role, User } from './types'
 import type { Capability } from './types'
 import { can } from './lib/permissions'
+import { openShiftForStaff } from './lib/registerShifts'
 import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
@@ -88,12 +89,26 @@ function CapabilityGate({ capability, children }: { capability: Capability; chil
 }
 
 function RegisterGate({ children }: { children: React.ReactNode }) {
-  const { user } = useApp()
+  const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
   if (!can(user, 'openShift') && !can(user, 'closeShift')) {
+    if (user.role === 'staff' && store?.settings.shiftAccess.requireOpenShiftForStoreAccess) {
+      return <div className="p-6 text-sm text-muted">Ask the store owner to enable shift access for your account.</div>
+    }
     return <Navigate to={user.role === 'staff' ? '/pos' : '/admin'} replace />
   }
   return <>{children}</>
+}
+
+function StaffShiftAccessGate({ children }: { children: React.ReactNode }) {
+  const { db, store, user } = useApp()
+  const { pathname } = useLocation()
+  if (!user || user.role !== 'staff' || user.stationOnly ||
+    !store?.settings.shiftAccess.requireOpenShiftForStoreAccess ||
+    openShiftForStaff(db, store.id, user.id) || pathname === '/admin/register') {
+    return <>{children}</>
+  }
+  return <Navigate to="/admin/register" replace />
 }
 
 function LoginRoute() {
@@ -137,6 +152,7 @@ export default function App() {
           <DeviceKioskGate>
           <StationOnlyGate>
           <SessionAutomationGuard>
+          <StaffShiftAccessGate>
           <Routes>
             <Route path="/pair" element={<PairStationDevice />} />
             <Route path="/kiosk" element={<StationDeviceKiosk />} />
@@ -320,6 +336,7 @@ export default function App() {
 
             <Route path="*" element={<HomeRoute />} />
           </Routes>
+          </StaffShiftAccessGate>
           </SessionAutomationGuard>
           </StationOnlyGate>
           </DeviceKioskGate>

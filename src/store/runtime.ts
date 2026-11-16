@@ -8,6 +8,7 @@ import { clearLocalDatabaseCopies, loadDb, DB_KEY } from './database'
 import { normalizeDb } from './database'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
+import { openShiftForStaff } from '../lib/registerShifts'
 import { mergeOpenOrderSnapshots } from '../lib/openOrderMerge'
 import { diffCollections, type SyncDocument } from '../shared/sync'
 import { detectDataProvider, LocalProvider, type DataProvider, type ProviderStatus } from './providers/DataProvider'
@@ -272,11 +273,19 @@ export function useDatabase(): DatabaseRuntime {
 export function useActorGuards({
   dbRef, ready, loadError, userIdRef,
 }: Pick<DatabaseRuntime, 'dbRef' | 'ready' | 'loadError'> & { userIdRef: { current: string | null } }) {
-  const requireActor = useCallback((storeId?: string): ActorResult => {
+  const requireActor = useCallback((storeId?: string, allowStaffWithoutShift = false): ActorResult => {
     if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
     const actor = dbRef.current.users.find((candidate) => candidate.id === userIdRef.current)
     if (!actor?.active) return { ok: false, error: 'No active session.' }
     if (storeId && actor.storeId !== storeId) return { ok: false, error: 'You can only manage your own store.' }
+    const store = actor.storeId
+      ? dbRef.current.stores.find((candidate) => candidate.id === actor.storeId)
+      : undefined
+    if (actor.role === 'staff' && !actor.stationOnly && !allowStaffWithoutShift &&
+      store?.settings.shiftAccess.requireOpenShiftForStoreAccess &&
+      !openShiftForStaff(dbRef.current, actor.storeId ?? '', actor.id)) {
+      return { ok: false, error: 'Open your shift before accessing store operations.' }
+    }
     return { ok: true, actor }
   }, [dbRef, ready, loadError, userIdRef])
 

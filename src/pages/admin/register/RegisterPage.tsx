@@ -12,6 +12,7 @@ import { dateKey, money } from '../../../lib/utils'
 import { can } from '../../../lib/permissions'
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { shiftCashDifference } from '../../../lib/shiftCash'
+import { shiftOpenScheduleError } from '../../../lib/shiftAccess'
 import { useApp } from '../../../store/AppStore'
 import { LiveRegister } from './LiveRegister'
 import { RegisterDialogs } from './RegisterDialogs'
@@ -166,6 +167,16 @@ export default function RegisterPage() {
   const expected = liveSnapshot?.expectedCash ?? 0
   const dayExpectedCash = dayCloseSnapshot?.expectedCash ?? 0
   const dayCashDifference = shiftCashDifference(Number(dayCountedInput) || 0, dayExpectedCash)
+  const ownScheduledShifts = db.shifts.filter((shift) =>
+    shift.storeId === store.id && shift.userId === user.id && shift.date === today,
+  )
+  const scheduleError = shiftOpenScheduleError(
+    store.settings.shiftAccess,
+    db.shifts,
+    store.id,
+    user.id,
+    now,
+  )
 
   const reportData = (
     kind: 'X' | 'Z',
@@ -313,6 +324,59 @@ export default function RegisterPage() {
       .sort((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''))[0]
     setOpeningInput(previous?.countedCash?.toFixed(3) ?? '100')
     setOpenModal(true)
+  }
+
+  if (user.role === 'staff' && store.settings.shiftAccess.requireOpenShiftForStoreAccess && !open) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4">
+        <div>
+          <h2 className="text-[20px] font-extrabold tracking-tight">Your shift</h2>
+          <p className="mt-1 text-[13px] text-muted">
+            Store orders, tables, reports, and other operations are hidden until you open your shift.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-line bg-white p-5">
+          <h3 className="text-sm font-bold">Your schedule today</h3>
+          {ownScheduledShifts.length ? (
+            <div className="mt-2 space-y-1 text-sm text-muted">
+              {ownScheduledShifts.map((shift) => (
+                <p key={shift.id}>{shift.startTime}–{shift.endTime}{shift.note ? ` · ${shift.note}` : ''}</p>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted">No shift is scheduled for you today.</p>
+          )}
+          {scheduleError && store.settings.shiftAccess.enforceScheduleForShiftOpen && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-950">{scheduleError}</p>
+          )}
+          <Button className="mt-4" onClick={beginOpen}>
+            <Play className="h-4 w-4" /> Open my shift
+          </Button>
+        </div>
+        <Modal
+          open={openModal}
+          onClose={() => setOpenModal(false)}
+          title="Open your shift"
+          subtitle="The store becomes available after your shift opens."
+          footer={(
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setOpenModal(false)}>Cancel</Button>
+              <Button onClick={handleOpenRegister}><Play className="h-4 w-4" /> Open shift</Button>
+            </div>
+          )}
+        >
+          <Field label="Opening cash">
+            <Input
+              type="number"
+              min={0}
+              step={0.001}
+              value={openingInput}
+              onChange={(event) => setOpeningInput(event.target.value)}
+            />
+          </Field>
+        </Modal>
+      </div>
+    )
   }
 
   return (

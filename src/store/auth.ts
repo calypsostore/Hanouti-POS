@@ -3,6 +3,8 @@ import type { Database } from '../types'
 import { verifySecret } from '../lib/hash'
 import { clockInAttendance, clockOutAttendance } from '../lib/payroll'
 import { addLog } from './audit'
+import { loginScheduleError } from '../lib/shiftAccess'
+import { openShiftForStaff } from '../lib/registerShifts'
 import type { LoginResult } from './types'
 import type { DataProvider } from './providers/DataProvider'
 import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
@@ -194,6 +196,25 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       if (store.status === 'suspended') {
         recordFailure(needle, found)
         return { ok: false, error: 'This store is suspended. Contact your manager.' }
+      }
+      if (found.role === 'staff') {
+        const scheduleError = loginScheduleError(
+          store.settings.shiftAccess,
+          current.shifts,
+          store.id,
+          found.id,
+          new Date(),
+          !!openShiftForStaff(current, store.id, found.id),
+        )
+        if (scheduleError) {
+          commitDb((prev) => addLog(prev, found, {
+            storeId: store.id,
+            action: 'shift_access_denied',
+            entity: 'auth',
+            summary: `Blocked sign-in: ${scheduleError}`,
+          }))
+          return { ok: false, error: scheduleError }
+        }
       }
       commitDb((prev) => {
         const logged = addLog(prev, found, {

@@ -87,6 +87,78 @@ export default function RegisterTab({
                 : 'Cashier mode requires staff to open their own shift before taking orders.'}
             />
           </div>
+          <div className="mt-3.5 border-t border-line pt-3.5">
+            <Toggle
+              checked={settings.shiftAccess.requireOpenShiftForStoreAccess}
+              onChange={(value) => set('shiftAccess', {
+                ...settings.shiftAccess,
+                requireOpenShiftForStoreAccess: value,
+              })}
+              label="Hide store operations until staff open a shift"
+              description="Before clock-in, staff can only access the shift screen and their own shift information."
+            />
+          </div>
+          <div className="mt-3.5 space-y-3.5 border-t border-line pt-3.5">
+            <Toggle
+              checked={settings.shiftAccess.enforceScheduleForShiftOpen}
+              onChange={(value) => set('shiftAccess', {
+                ...settings.shiftAccess,
+                enforceScheduleForShiftOpen: value,
+              })}
+              label="Require staff to open near their scheduled start"
+              description="When enabled, staff can open within the early and late limits below."
+            />
+            {settings.shiftAccess.enforceScheduleForShiftOpen && (
+              <>
+                <Toggle
+                  checked={settings.shiftAccess.allowUnscheduledShiftOpen}
+                  onChange={(value) => set('shiftAccess', {
+                    ...settings.shiftAccess,
+                    allowUnscheduledShiftOpen: value,
+                  })}
+                  label="Allow shift opening when no shift is scheduled"
+                  description="Turn off to require a manager to schedule every staff shift."
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Early opening limit" hint="minutes before start (0–180)">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={180}
+                      step={1}
+                      value={settings.shiftAccess.earlyOpenMinutes}
+                      onChange={(event) => set('shiftAccess', {
+                        ...settings.shiftAccess,
+                        earlyOpenMinutes: Number(event.target.value) || 0,
+                      })}
+                    />
+                  </Field>
+                  <Field label="Late opening limit" hint="minutes after start (0–180)">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={180}
+                      step={1}
+                      value={settings.shiftAccess.lateOpenMinutes}
+                      onChange={(event) => set('shiftAccess', {
+                        ...settings.shiftAccess,
+                        lateOpenMinutes: Number(event.target.value) || 0,
+                      })}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
+            <Toggle
+              checked={settings.shiftAccess.restrictLoginToSchedule}
+              onChange={(value) => set('shiftAccess', {
+                ...settings.shiftAccess,
+                restrictLoginToSchedule: value,
+              })}
+              label="Restrict staff sign-in to scheduled work hours"
+              description="Staff without an open shift can sign in only from the early limit until their scheduled end."
+            />
+          </div>
         </Card>
 
         <Card className="p-5">

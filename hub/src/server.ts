@@ -25,7 +25,8 @@ import { stationBoardHtml } from './board.ts'
 import { validateOrderDocument } from './orderValidation.ts'
 import { validateLedgerEntry } from './ledgerValidation.ts'
 import { isUnavailable } from '../../src/shared/availability.ts'
-import type { InventoryItem, OrderItem, Product, Store, StoreSettings } from '../../src/types.ts'
+import type { InventoryItem, OrderItem, Product, Shift, Store, StoreSettings } from '../../src/types.ts'
+import { shiftOpenScheduleError, normalizeShiftAccessSettings } from '../../src/lib/shiftAccess.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -571,9 +572,38 @@ export async function createHubServer(): Promise<HubRuntime> {
         typeof operation.collection !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,40}$/.test(operation.collection) ||
         !validId(operation.id)) throw new Error('Change set contains an invalid operation.')
       let operationId = operation.id as string
+      const storeForAccess = validationState.collections.stores?.[actor.storeId]
+      const accessSettings = normalizeShiftAccessSettings(
+        record(storeForAccess) && record(storeForAccess.settings)
+          ? storeForAccess.settings.shiftAccess
+          : undefined,
+      )
+      const hasOpenStaffShift = Object.values(validationState.collections.registerSessions ?? {}).some((session) =>
+        session.storeId === actor.storeId && session.status === 'open' &&
+        ((session.staffId as string | undefined) ?? (session.openedById as string | undefined)) === actor.userId,
+      )
+      const allowedBeforeShift = ['registerSessions', 'auditLogs', 'attendance'].includes(operation.collection)
+      if (actor.role === 'staff' && !actor.stationOnly &&
+        accessSettings.requireOpenShiftForStoreAccess && !hasOpenStaffShift && !allowedBeforeShift) {
+        const message = operation.collection === 'orders' || operation.collection === 'openOrders'
+          ? 'Open your shift before taking orders.'
+          : 'Open your shift before accessing store operations.'
+        throw Object.assign(new Error(message), { status: 403 })
+      }
       const required = PRIVATE_COLLECTIONS[operation.collection]
       const previousForPermission = validationState.collections[operation.collection]?.[operation.id]
       const incomingForPermission = operation.kind === 'put' && record(operation.document) ? operation.document : undefined
+      if (actor.role === 'staff' && !hasOpenStaffShift && operation.collection === 'auditLogs' &&
+        (operation.kind !== 'put' || incomingForPermission?.storeId !== actor.storeId ||
+          incomingForPermission.userId !== actor.userId || incomingForPermission.action !== 'shift_access_denied')) {
+        throw Object.assign(new Error('Before opening a shift, staff may only report their own blocked shift access.'), { status: 403 })
+      }
+      if (actor.role === 'staff' && !hasOpenStaffShift && operation.collection === 'attendance' &&
+        (operation.kind !== 'put' || incomingForPermission?.storeId !== actor.storeId ||
+          incomingForPermission.userId !== actor.userId ||
+          (record(previousForPermission) && previousForPermission.userId !== actor.userId))) {
+        throw Object.assign(new Error('Before opening a shift, staff may only update their own attendance.'), { status: 403 })
+      }
       const hasAvailabilityChange = operation.collection === 'products' && record(previousForPermission) &&
         incomingForPermission !== undefined && productAvailabilityChanged(previousForPermission, incomingForPermission)
       const availabilityOnly = operation.collection === 'products' && operation.kind === 'put' &&
@@ -725,6 +755,22 @@ export async function createHubServer(): Promise<HubRuntime> {
           if (typeof openedAt !== 'string' || !Number.isFinite(Date.parse(openedAt))) {
             throw new Error('Register shift opening time is invalid.')
           }
+          if (actor.role === 'staff' && !actor.stationOnly) {
+            const storeDoc = validationState.collections.stores?.[actor.storeId]
+            const settings = normalizeShiftAccessSettings(
+              record(storeDoc) && record(storeDoc.settings)
+                ? storeDoc.settings.shiftAccess
+                : undefined,
+            )
+            const scheduleError = shiftOpenScheduleError(
+              settings,
+              Object.values(validationState.collections.shifts ?? {}) as unknown as Shift[],
+              actor.storeId,
+              actor.userId,
+              new Date(),
+            )
+            if (scheduleError) throw new Error(scheduleError)
+          }
           if (Object.values(validationState.collections.registerDayReports ?? {}).some((report) =>
             report.storeId === actor.storeId && report.date === localDateKey(openedAt),
           )) {
@@ -786,6 +832,7 @@ export async function createHubServer(): Promise<HubRuntime> {
             ...settings,
             availability: normalizeHubAvailability(settings.availability),
             orderRules: normalizeHubOrderRules(settings.orderRules),
+            shiftAccess: normalizeShiftAccessSettings(settings.shiftAccess),
             coffeeTracking: normalizeHubCoffeeTracking(settings.coffeeTracking),
             inventoryYieldTracking: normalizeHubInventoryYieldTracking(settings.inventoryYieldTracking),
             staffConsumption: normalizeHubStaffConsumption(settings.staffConsumption),
@@ -1177,11 +1224,20 @@ export async function createHubServer(): Promise<HubRuntime> {
       if (path === '/api/sync/snapshot' && request.method === 'GET') {
         const actor = await actorFor(request)
         const state = await storage.readStore(actor.storeId)
+        const storeForAccess = state.collections.stores?.[actor.storeId] as unknown as Store | undefined
+        const shiftAccess = normalizeShiftAccessSettings(storeForAccess?.settings.shiftAccess)
+        const hasOpenStaffShift = Object.values(state.collections.registerSessions ?? {}).some((session) =>
+          session.storeId === actor.storeId && session.status === 'open' &&
+          ((session.staffId as string | undefined) ?? (session.openedById as string | undefined)) === actor.userId,
+        )
+        const waitingForShift = actor.role === 'staff' && !actor.stationOnly &&
+          shiftAccess.requireOpenShiftForStoreAccess && !hasOpenStaffShift
         const collections: Record<string, Array<Record<string, unknown>>> = {}
         for (const [name, documents] of Object.entries(state.collections)) {
+          if (waitingForShift && !['stores', 'users', 'shifts', 'registerSessions', 'attendance'].includes(name)) continue
           const permission = PRIVATE_COLLECTIONS[name]
           if (name !== 'stores') {
-            if (name === 'shifts' && !canManageSchedules(actor)) continue
+            if (name === 'shifts' && !canManageSchedules(actor) && actor.role !== 'staff') continue
             if (name === 'registerSessions' && !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
             if (name === 'registerDayReports' && actor.role !== 'admin') continue
             if (permission === 'ledger') {
@@ -1190,11 +1246,15 @@ export async function createHubServer(): Promise<HubRuntime> {
           }
           collections[name] = Object.values(documents).filter((document) => {
             if (name === 'stores' ? document.id !== actor.storeId : document.storeId !== actor.storeId) return false
+            if (waitingForShift && name === 'users' && document.id !== actor.userId) return false
             if (name === 'registerSessions' && actor.role === 'staff' && actor.permissions.supervisor !== true) {
               const session = document as Record<string, unknown>
               const ownerId = typeof session.staffId === 'string' ? session.staffId : session.openedById
               if (ownerId !== actor.userId) return false
             }
+            if (name === 'shifts' && actor.role === 'staff' && !canManageSchedules(actor) &&
+              document.userId !== actor.userId) return false
+            if (waitingForShift && name === 'attendance' && document.userId !== actor.userId) return false
             if (actor.stationOnly) {
               if (name === 'stores') return true
               return name === 'openOrders' && Array.isArray(document.items) &&

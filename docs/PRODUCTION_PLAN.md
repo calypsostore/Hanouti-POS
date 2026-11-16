@@ -23,6 +23,25 @@ analytics and cash differences are implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
+### Staff access and scheduled shifts — implemented; browser verification pending
+
+- Staff without an open shift are routed to a limited screen with only their
+  own schedule and shift-opening control. In hub mode, snapshots withhold store
+  operations and other staff profiles until the staff member opens a shift;
+  mutations are also blocked server-side. Standalone mode applies the same
+  route and store-mutation guards.
+- Admin → Settings → Register & checkout controls whether shifts are required
+  for store access, whether opening must match today's schedule, whether an
+  unscheduled shift is permitted, early/late opening windows, and whether login
+  is limited to scheduled hours. Schedule enforcement and login restriction
+  default off; shift access defaults on.
+- Blocked schedule logins and shift openings are recorded for the owner in
+  Shift alerts. Hub schedule checks currently use the hub machine's local time;
+  store-specific time zones are not configured.
+- Still unverified in a live browser: the complete pre-shift / open-shift route
+  transition, owner alert rendering, and schedule controls on phone/tablet
+  layouts.
+
 ### Inventory yield and staff items — implemented; browser verification pending
 
 - Admin → Settings → Service can configure yield tracking for multiple inventory

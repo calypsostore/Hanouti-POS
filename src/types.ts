@@ -75,6 +75,7 @@ export type AuditAction =
   | 'pin_reset'
   | 'register_opened'
   | 'register_closed'
+  | 'shift_access_denied'
   | 'cash_difference_resolved'
   | 'cash_difference_voided'
   | 'cash_difference_archived'
@@ -189,6 +190,15 @@ export interface AutomationSettings {
   backupHealthAlerts: boolean
 }
 
+export interface ShiftAccessSettings {
+  requireOpenShiftForStoreAccess: boolean
+  enforceScheduleForShiftOpen: boolean
+  allowUnscheduledShiftOpen: boolean
+  restrictLoginToSchedule: boolean
+  earlyOpenMinutes: number
+  lateOpenMinutes: number
+}
+
 export type StockOverflowMode = 'block' | 'warn' | 'allow'
 export type OpenOrderPricePolicy = 'keep' | 'current' | 'ask'
 export type OrderNumberFormat = 'plain' | 'daily' | 'prefix'
@@ -275,6 +285,7 @@ export interface StoreSettings {
   guestRequirement: GuestRequirement
   staffPickSectionsOnShift: boolean
   requireShiftForOrders: boolean
+  shiftAccess: ShiftAccessSettings
   accent: string
   colorMode: 'system' | 'light' | 'dark'
   printer: PrinterSettings

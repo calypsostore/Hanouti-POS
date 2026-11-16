@@ -394,10 +394,15 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       body: JSON.stringify({ storeCode: 'test-cafe', username: 'cashier', secret: 'cashier-password' }),
     })
     const staff = await staffLogin.json()
+    const scheduleNow = new Date()
+    const scheduleMinute = scheduleNow.getHours() * 60 + scheduleNow.getMinutes()
+    const scheduleStartMinute = scheduleMinute < 1350 ? scheduleMinute + 60 : scheduleMinute - 60
+    const formatTime = (minute) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
     const cashierShift = {
       id: 'cashier-shift', storeId: owner.actor.storeId, userId: staffUser.id,
-      date: '2026-11-16', startTime: '09:00', endTime: '17:00',
-      createdBy: owner.actor.userId, createdAt: new Date().toISOString(),
+      date: `${scheduleNow.getFullYear()}-${String(scheduleNow.getMonth() + 1).padStart(2, '0')}-${String(scheduleNow.getDate()).padStart(2, '0')}`,
+      startTime: formatTime(scheduleStartMinute), endTime: formatTime(scheduleStartMinute + 30),
+      createdBy: owner.actor.userId, createdAt: scheduleNow.toISOString(),
     }
     const addSchedule = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
@@ -414,8 +419,14 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const staffAuth = { Authorization: `Bearer ${staff.token}`, 'Content-Type': 'application/json' }
     const staffSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: staffAuth })).json()
     assert.equal(staffSnapshot.collections.stores[0].id, owner.actor.storeId)
+    assert.deepEqual(staffSnapshot.collections.users.map((user) => user.id), ['cashier'])
+    assert.equal(staffSnapshot.collections.products, undefined)
+    assert.equal(staffSnapshot.collections.orders, undefined)
     assert.equal(staffSnapshot.collections.registerSessions.length, 0)
-    assert.equal(staffSnapshot.collections.shifts, undefined)
+    assert.deepEqual(
+      staffSnapshot.collections.shifts.map((shift) => shift.id).sort(),
+      ['cashier-shift', 'shift-one'],
+    )
     const checkoutWithoutShift = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-checkout-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
@@ -436,7 +447,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
         } }],
       }),
     })
-    assert.equal(tableOrderWithoutShift.status, 400)
+    assert.equal(tableOrderWithoutShift.status, 403)
     assert.match((await tableOrderWithoutShift.json()).error, /open your shift before taking orders/i)
     const deleteSchedule = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
@@ -456,7 +467,86 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       }),
     })
     assert.equal(forgedRegister.status, 403)
+    const currentStoreSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
+    const currentStore = currentStoreSnapshot.collections.stores[0]
+    const restrictedStore = {
+      ...currentStore,
+      settings: {
+        ...currentStore.settings,
+        shiftAccess: {
+          ...currentStore.settings.shiftAccess,
+          enforceScheduleForShiftOpen: true,
+          allowUnscheduledShiftOpen: false,
+          restrictLoginToSchedule: true,
+          earlyOpenMinutes: 0,
+          lateOpenMinutes: 0,
+        },
+      },
+    }
+    const enableScheduleChecks = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'enable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'stores', id: owner.actor.storeId, document: restrictedStore }],
+      }),
+    })
+    assert.equal(enableScheduleChecks.status, 200)
+    const outOfScheduleLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'cashier', secret: 'cashier-password' }),
+    })
+    assert.equal(outOfScheduleLogin.status, 403)
+    assert.match((await outOfScheduleLogin.json()).error, /scheduled work hours/i)
+    const ownerSnapshotAfterDeniedLogin = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
+    assert.ok(ownerSnapshotAfterDeniedLogin.collections.auditLogs.some((entry) =>
+      entry.action === 'shift_access_denied' && entry.userId === staffUser.id,
+    ))
     const cashierOpenedAt = new Date().toISOString()
+    const deniedShiftOpen = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-open-shift-outside-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'registerSessions', id: 'cashier-register', document: {
+          id: 'cashier-register', storeId: owner.actor.storeId, status: 'open',
+          openedAt: cashierOpenedAt, openedById: staffUser.id,
+          openedByName: staffUser.name, staffId: staffUser.id, openingCash: 0,
+        } }],
+      }),
+    })
+    assert.equal(deniedShiftOpen.status, 400)
+    assert.match((await deniedShiftOpen.json()).error, /near its scheduled start time/i)
+    const deniedShiftAudit = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: staffAuth, body: JSON.stringify({
+        opId: 'staff-audit-denied-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'auditLogs', id: 'denied-shift-log', document: {
+          id: 'denied-shift-log', storeId: owner.actor.storeId, userId: staffUser.id,
+          userName: staffUser.name, role: 'staff', action: 'shift_access_denied',
+          entity: 'register', summary: 'Blocked shift opening: outside schedule',
+          createdAt: new Date().toISOString(),
+        } }],
+      }),
+    })
+    assert.equal(deniedShiftAudit.status, 200)
+    const ownerSnapshotAfterDeniedShift = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
+    assert.ok(ownerSnapshotAfterDeniedShift.collections.auditLogs.some((entry) =>
+      entry.id === 'denied-shift-log' && entry.userId === staffUser.id,
+    ))
+    const scheduleChecksDisabled = {
+      ...restrictedStore,
+      settings: {
+        ...restrictedStore.settings,
+        shiftAccess: {
+          ...restrictedStore.settings.shiftAccess,
+          enforceScheduleForShiftOpen: false,
+          restrictLoginToSchedule: false,
+        },
+      },
+    }
+    const disableScheduleChecks = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth, body: JSON.stringify({
+        opId: 'disable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        ops: [{ kind: 'put', collection: 'stores', id: owner.actor.storeId, document: scheduleChecksDisabled }],
+      }),
+    })
+    assert.equal(disableScheduleChecks.status, 200)
     const openOwnRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-open-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
@@ -468,6 +558,8 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       }),
     })
     assert.equal(openOwnRegister.status, 200)
+    const activeStaffSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: staffAuth })).json()
+    assert.ok(activeStaffSnapshot.collections.orders.length > 0)
     const checkoutWithShift = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
         opId: 'staff-checkout-with-open-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,

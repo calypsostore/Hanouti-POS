@@ -3,6 +3,13 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AuthenticatedActor, HubStoreState, HubUser } from './types.ts'
 import type { HubStorage } from './storage.ts'
+import type { AuditLog, Shift, StoreSettings } from '../../src/types.ts'
+import type { ChangeSet } from '../../src/shared/sync.ts'
+import {
+  DEFAULT_SHIFT_ACCESS_SETTINGS,
+  loginScheduleError,
+  normalizeShiftAccessSettings,
+} from '../../src/lib/shiftAccess.ts'
 
 const SESSION_MS = 12 * 60 * 60 * 1000
 const LOCK_MS = 15 * 60 * 1000
@@ -78,6 +85,30 @@ export class HubAuth {
       await this.persistFailures()
       throw Object.assign(new Error('Invalid store code, username, or password/PIN.'), { status: 401 })
     }
+    if (user.role === 'staff' && state) {
+      const store = state.collections.stores?.[storeId] as unknown as
+        { settings?: Pick<StoreSettings, 'shiftAccess'> } | undefined
+      const settings = normalizeShiftAccessSettings(store?.settings?.shiftAccess)
+      const shifts = Object.values(state.collections.shifts ?? {}) as unknown as Shift[]
+      const registerSessions = Object.values(state.collections.registerSessions ?? {}) as unknown as
+        Array<{ storeId: string; status: string; staffId?: string; openedById?: string }>
+      const hasOpenShift = registerSessions.some((session) =>
+        session.storeId === storeId && session.status === 'open' &&
+        (session.staffId ?? session.openedById) === user.id,
+      )
+      const scheduleError = loginScheduleError(
+        settings,
+        shifts,
+        storeId,
+        user.id,
+        new Date(),
+        hasOpenShift,
+      )
+      if (scheduleError) {
+        await this.recordShiftAccessDenied(storeId, user, scheduleError)
+        throw Object.assign(new Error(scheduleError), { status: 403 })
+      }
+    }
     delete this.failures[throttleKey]
     await this.persistFailures()
     const actor: AuthenticatedActor = {
@@ -87,6 +118,30 @@ export class HubAuth {
     const expiresAt = Date.now() + SESSION_MS
     this.sessions.set(hashToken(token), { actor, expiresAt })
     return { token, expiresAt: new Date(expiresAt).toISOString(), actor }
+  }
+
+  private async recordShiftAccessDenied(storeId: string, user: HubUser, reason: string): Promise<void> {
+    const state = await this.storage.readStore(storeId)
+    const id = `aud${randomBytes(12).toString('hex')}`
+    const entry: AuditLog = {
+      id,
+      storeId,
+      userId: user.id,
+      userName: user.name,
+      role: 'staff',
+      action: 'shift_access_denied',
+      entity: 'auth',
+      summary: `Blocked sign-in: ${reason}`,
+      createdAt: new Date().toISOString(),
+    }
+    const changeSet: ChangeSet = {
+      opId: `auth${randomBytes(12).toString('hex')}`,
+      deviceId: 'hub-auth',
+      storeId,
+      baseSeq: state.seq,
+      ops: [{ kind: 'put', collection: 'auditLogs', id, document: { ...entry } }],
+    }
+    await this.storage.transact(storeId, changeSet)
   }
 
   async verifyPin(actor: AuthenticatedActor, pin: string, ip: string): Promise<boolean> {
@@ -181,6 +236,7 @@ export class HubAuth {
       businessType: 'cafe', setupComplete: false, createdAt: now,
       settings: {
         taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false, features: { weightItems: false },
+        shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         availability: {
           enabled: true, autoEightySixAtZero: true, autoReturnOnRestock: true,
           requireReason: true, reasons: ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue'],
