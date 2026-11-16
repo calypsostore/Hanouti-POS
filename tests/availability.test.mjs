@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { clearManualFlags, clearReturnedFlags, isUnavailable } from '../src/lib/availability.ts'
+import { DEFAULT_AVAILABILITY_SETTINGS } from '../src/lib/defaults.ts'
 
 const settings = {
   enabled: true,
@@ -113,4 +114,24 @@ test('restock and elapsed return times persistently clear active 86 flags', () =
   assert.equal(result.changes.length, 2)
   assert.equal(result.products[0].eightySix.active, false)
   assert.equal(result.products[0].variants[0].eightySix.active, false)
+})
+
+test('default 86 return mode is restock and receiving inventory clears its active flag', () => {
+  assert.equal(DEFAULT_AVAILABILITY_SETTINGS.defaultReturnMode, 'on_restock')
+  const productWith86 = {
+    ...product,
+    eightySix: {
+      active: true,
+      at: '2026-01-01T10:00:00Z',
+      byId: 'staff',
+      returnMode: DEFAULT_AVAILABILITY_SETTINGS.defaultReturnMode,
+    },
+  }
+  const result = clearReturnedFlags(
+    [productWith86],
+    [{ id: 'beans', storeId: 'store', onHand: 12 }],
+    DEFAULT_AVAILABILITY_SETTINGS,
+  )
+
+  assert.equal(result.products[0].eightySix.active, false)
 })

@@ -23,7 +23,7 @@ const FALLBACK_SETTINGS: AvailabilitySettings = {
   autoReturnOnRestock: true,
   requireReason: true,
   reasons: [],
-  defaultReturnMode: 'manual',
+  defaultReturnMode: 'on_restock',
   resetManualAtDayStart: false,
   resetManualAtFirstShift: false,
   displayStyle: 'big_red_x',

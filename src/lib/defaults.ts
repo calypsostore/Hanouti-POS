@@ -54,7 +54,7 @@ export const DEFAULT_AVAILABILITY_SETTINGS: StoreSettings['availability'] = {
   autoReturnOnRestock: true,
   requireReason: true,
   reasons: ['Out of stock', 'Machine down', 'Not prepared today', 'Quality issue'],
-  defaultReturnMode: 'manual',
+  defaultReturnMode: 'on_restock',
   resetManualAtDayStart: false,
   resetManualAtFirstShift: false,
   displayStyle: 'big_red_x',

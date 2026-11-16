@@ -83,10 +83,12 @@ document.
 - Implemented: typed availability settings and migration defaults, a shared pure
   rule, local/hub order rejection, POS tile overlays and cart blocking, POS 86
   list, product-linked inventory, audited manual 86/return actions, and
-  `manage86` permissions. The Products page supports filtering, row toggles and
-  bulk return/86.
-- Still demo-only or incomplete: automatic restock does not persist clearing
-  every manual flag; bell and station-board count notifications, day/first-shift
+  `manage86` permissions. Restock is now the default return mode: receiving
+  stock through Purchases persists the return for linked products and variants.
+  Owners can still choose Manual or At a time in Settings or for an individual
+  86. The Products page supports filtering, row toggles and bulk return/86.
+- Still demo-only or incomplete: 86s explicitly set to Manual still require a
+  manual return; bell and station-board count notifications, day/first-shift
   reset behavior, and live multi-phone notification verification are absent.
   Browser flows remain **UNVERIFIED**.
 
