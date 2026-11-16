@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core'
 import { useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { PrintCodepage, PrintConnection, Printer } from '../../../types'
@@ -60,14 +61,16 @@ export default function PrinterManager({
       fallbackPrinterId: printer.fallbackPrinterId,
     })
   }
+  const isNativePlatform = Capacitor.isNativePlatform()
   const connectionOptions: Array<{ value: PrintConnection; label: string }> = [
     { value: 'browser-print', label: 'Browser print dialog' },
     ...(isWebSerialSupported() ? [{ value: 'browser-webserial' as const, label: 'This device · WebSerial' }] : []),
+    ...(isNativePlatform ? [{ value: 'hub-tcp' as const, label: 'LAN TCP printer' }] : []),
   ]
   const supportsHub = printers.some((printer) => printer.connection.startsWith('hub-'))
   if (supportsHub) {
     connectionOptions.push(
-      { value: 'hub-tcp', label: 'Shop hub · TCP' },
+      ...(!isNativePlatform ? [{ value: 'hub-tcp' as const, label: 'Shop hub · TCP' }] : []),
       { value: 'hub-usb', label: 'Shop hub · USB' },
       { value: 'hub-serial', label: 'Shop hub · Serial' },
       { value: 'hub-epson-epos', label: 'Shop hub · Epson ePOS' },

@@ -205,6 +205,37 @@ can be reset from **Settings → Demo tools**.
   `docs/PRODUCTION_PLAN.md` for the honest support matrix and hardware
   checklist.
 
+## Android and iOS apps
+
+Capacitor packages this same Vite app for phones. From a checkout with Node.js
+22+ and npm dependencies installed, build and synchronize the native projects:
+
+```bash
+npm run app:sync
+```
+
+For an Android debug APK, install Android Studio with its Android SDK and Java
+21, then run `android\gradlew.bat assembleDebug` on Windows (or
+`./gradlew assembleDebug` from `android/` on macOS/Linux). The APK is written to
+`android/app/build/outputs/apk/debug/app-debug.apk`. Alternatively open the
+project with `npm run app:android` and run it on a connected phone with USB
+debugging enabled. A phone can also install the generated debug APK after
+allowing installation from that source.
+
+On Android and iOS, add a printer under **Admin → Settings → Devices &
+printing**, choose **LAN TCP printer**, and enter its Wi-Fi IPv4 address and
+port (usually 9100). The **Test print** action sends ESC/POS directly from the
+app. The browser continues to use its existing print and shop-hub transports.
+
+iOS development requires a Mac with Xcode and an Apple account. Run
+`npm run app:sync`, open the project with `npm run app:ios`, select your Apple
+development team in Xcode's Signing & Capabilities, then run on a connected
+iPhone. Distribution builds need the matching Apple signing certificate and
+provisioning profile. The optional GitHub Actions iOS job is disabled until
+`IOS_SIGNING_ENABLED=true` and these repository secrets are configured:
+`APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_TEAM_ID`, and `KEYCHAIN_PASSWORD`.
+
 ## Notes for the next phase
 
 - Replace browser persistence with a real database + API (auth, hashed PINs,

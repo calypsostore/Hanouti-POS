@@ -1,0 +1,15 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.anouti.pos.tcpprinter'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+}

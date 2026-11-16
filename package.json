@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && tsc --noEmit -p hub/tsconfig.json && vite build",
     "lint": "oxlint",
+    "app:sync": "npm run build && npx cap sync",
+    "app:android": "npx cap open android",
+    "app:ios": "npx cap open ios",
     "hub": "node --experimental-strip-types hub/src/main.ts",
     "hub:sim": "node --experimental-strip-types hub/src/main.ts",
     "hub:doctor": "node --experimental-strip-types hub/src/doctor.ts",
@@ -15,6 +18,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
     "@tailwindcss/vite": "^4.3.5",
     "clsx": "^2.1.1",
     "lucide-react": "^1.72.0",
@@ -22,9 +28,11 @@
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
     "recharts": "^3.10.1",
-    "tailwindcss": "^4.3.5"
+    "tailwindcss": "^4.3.5",
+    "tcp-printer": "file:plugins/tcp-printer"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

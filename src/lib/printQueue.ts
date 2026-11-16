@@ -1,12 +1,71 @@
+import { Capacitor } from '@capacitor/core'
 import type { PrintJob, PrintLine, Printer } from '../types'
 import { linesToEscpos } from '../shared/escpos'
 import { isWebSerialSupported, printBytes } from './printer'
 import type { DevicePrintPreference } from '../types'
+import { TcpPrinter } from 'tcp-printer'
 
 export type PrintTransportResult = { ok: true } | { ok: false; error: string }
 
 export interface PrintTransport {
   send(job: PrintJob, printer: Printer): Promise<PrintTransportResult>
+}
+
+const isLanIpv4 = (host: string): boolean => {
+  const octets = host.split('.')
+  if (octets.length !== 4 || octets.some((octet) => !/^\d{1,3}$/.test(octet))) return false
+  const [first, second, third, fourth] = octets.map(Number)
+  if ([first, second, third, fourth].some((octet) => octet < 0 || octet > 255)) return false
+  return first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 169 && second === 254)
+}
+
+export const isNativeTcpPrinter = (printer: Printer): boolean =>
+  Capacitor.isNativePlatform() &&
+  printer.connection === 'hub-tcp' &&
+  typeof printer.host === 'string' &&
+  isLanIpv4(printer.host.trim())
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
+}
+
+export const NativeTcpTransport: PrintTransport = {
+  async send(job, printer) {
+    const host = printer.host?.trim()
+    if (!host) return { ok: false, error: 'Enter the printer LAN IP address.' }
+    const bytes = linesToEscpos(job.payload, printer.paperWidth, {
+      codepage: printer.codepage,
+      cutMode: printer.cutMode,
+      openDrawer: job.openDrawer,
+    })
+    const copies = new Uint8Array(bytes.length * job.copies)
+    for (let copy = 0; copy < job.copies; copy += 1) {
+      copies.set(bytes, copy * bytes.length)
+    }
+    try {
+      const result = await TcpPrinter.send({
+        host,
+        port: printer.port || 9100,
+        data: bytesToBase64(copies),
+      })
+      if (result.ok) return { ok: true }
+      return { ok: false, error: result.error ?? `Could not print to ${host}:${printer.port || 9100}.` }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'The native TCP printer plugin failed.',
+      }
+    }
+  },
 }
 
 export const HubTransport: PrintTransport = {
@@ -85,6 +144,7 @@ export const sendToPrintTransport = (
   printer: Printer,
   preference: DevicePrintPreference = 'this-device',
 ): Promise<PrintTransportResult> => {
+  if (isNativeTcpPrinter(printer)) return NativeTcpTransport.send(job, printer)
   if (preference === 'hub') return HubTransport.send(job, printer)
   if (preference === 'browser') return BrowserPrintTransport.send(job, printer)
   if (printer.connection.startsWith('hub-')) return HubTransport.send(job, printer)

@@ -5,7 +5,7 @@ import { uid } from '../lib/utils'
 import { addLog } from './audit'
 import type { AppContextValue, EnqueuePrintInput, PrintJobResult, PrinterInput, Result } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
-import { hasPrintCapability, sendToPrintTransport } from '../lib/printQueue'
+import { hasPrintCapability, isNativeTcpPrinter, sendToPrintTransport } from '../lib/printQueue'
 import { readDevicePrintPreference } from '../lib/printPreferences'
 import { resolvePrintPrinter } from '../lib/printRouting'
 import { automaticPrintRetryLimit } from '../lib/automation'
@@ -172,7 +172,7 @@ export function usePrintingSlice({ dbRef, commitDb, requireActor, requireCapabil
     if (actorResult.actor.id !== job.createdById && !can(actorResult.actor, 'manageSettings')) {
       return { ok: false, error: 'Only the print-job owner or a settings manager can retry this job.' }
     }
-    if (provider.mode === 'hub' && printer.connection.startsWith('hub-')) {
+    if (provider.mode === 'hub' && printer.connection.startsWith('hub-') && !isNativeTcpPrinter(printer)) {
       const queued = { ...job, status: 'queued' as const, lastError: undefined }
       commitDb((previous) => ({
         ...previous,

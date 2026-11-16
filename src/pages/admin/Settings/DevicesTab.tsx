@@ -55,13 +55,18 @@ export default function DevicesTab({
   const runTest = async (printerId?: string) => {
     if (!store || !user) return
     setBusy(true)
-    const result = await enqueuePrint({
-      type: 'test',
-      printerId,
-      payload: buildTestLines(store),
-    })
-    setBusy(false)
-    notify(result, 'Test print queued')
+    try {
+      const result = await enqueuePrint({
+        type: 'test',
+        printerId,
+        payload: buildTestLines(store),
+      })
+      notify(result, 'Test print sent')
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'The test print failed.', 'error')
+    } finally {
+      setBusy(false)
+    }
   }
   const connectSelectedPrinter = async () => {
     if (!testTarget) return

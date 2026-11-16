@@ -1,0 +1,80 @@
+name: Android debug APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run app:sync
+      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 7anouti-pos-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  ios:
+    if: ${{ vars.IOS_SIGNING_ENABLED == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run app:sync
+      - name: Install Apple signing assets
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > profile.mobileprovision
+          security cms -D -i profile.mobileprovision > decoded-profile.plist
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' decoded-profile.plist)
+          cp profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+      - name: Archive signed iOS app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/7anouti-pos.xcarchive" \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 7anouti-pos-ios-archive
+          path: ${{ runner.temp }}/7anouti-pos.xcarchive
+          if-no-files-found: error

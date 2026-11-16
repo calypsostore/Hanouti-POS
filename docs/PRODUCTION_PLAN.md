@@ -261,6 +261,21 @@ document.
 - Standalone printer jobs remain browser-local; hub-served jobs use the hub
   queue. Generic Bluetooth printer protocols are not configured.
 
+### Capacitor Android and iOS — implemented; device verification pending
+
+- Implemented: Capacitor Android/iOS projects, app sync/open scripts, and a
+  local `TcpPrinter` plugin that sends ESC/POS bytes to LAN TCP printers on
+  Android and iOS. Android includes internet/network-state permissions; iOS
+  includes the local-network privacy prompt.
+- Native devices can configure a LAN TCP printer and send a test print. The
+  web app keeps its existing browser and hub transports. Android debug APK
+  artifacts are built in GitHub Actions; the signed iOS archive job is
+  opt-in and requires Apple signing secrets.
+- Not yet verified: Gradle/Xcode builds and real receipt output on Android and
+  iOS hardware. Validate network permissions, printer reachability, timeout
+  behavior, codepage output and cut modes on supported devices before claiming
+  physical printer compatibility.
+
 ## Code organization update (2026-11-12)
 
 The POS, Customers, Orders, Products, Settings, Reports, and Register screens
