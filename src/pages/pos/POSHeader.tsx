@@ -129,7 +129,7 @@ export function POSHeader({
         </div>
       </header>
 
-      {!registerOpen && store.settings.requireShiftForOrders && (
+      {user.role === 'staff' && !registerOpen && store.settings.requireShiftForOrders && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-brand-amber/40 bg-brand-amber-soft px-4 py-2.5 text-[12.5px] text-brand-navy sm:px-5">
           <span>{canOpenRegister ? 'Open your shift before taking orders.' : 'Your shift is closed. Ask a manager to open one if you need access.'}</span>
           {canOpenRegister && (

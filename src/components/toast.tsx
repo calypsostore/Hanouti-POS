@@ -32,7 +32,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => [...prev.slice(-3), { id, message, tone }])
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 3800)
+    }, tone === 'error' ? 6500 : 3800)
   }, [])
 
   const remove = useCallback((id: string) => {

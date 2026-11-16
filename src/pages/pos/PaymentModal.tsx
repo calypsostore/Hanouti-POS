@@ -25,18 +25,20 @@ export function PaymentModal({
   setCustomerId: (id: string | undefined) => void
   ledger: Parameters<typeof balanceFor>[0]
   allowCredit: boolean
-  onConfirm: (method: PaymentMethod) => void
+  onConfirm: (method: PaymentMethod) => string | null
   orderNo: number | null
 }) {
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [received, setReceived] = useState('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
 
   useEffect(() => {
     if (open) {
       setMethod('cash')
       setReceived('')
       setBusy(false)
+      setError(undefined)
     }
   }, [open])
 
@@ -82,8 +84,12 @@ export function PaymentModal({
               onClick={() => {
                 if (busy) return
                 setBusy(true)
-                onConfirm(method)
-                window.setTimeout(() => setBusy(false), 1200)
+                setError(undefined)
+                const message = onConfirm(method)
+                if (message) {
+                  setError(message)
+                  setBusy(false)
+                }
               }}
             >
               <CheckCircle2 className="h-4 w-4" /> {busy ? 'Completing…' : `Complete · ${money(total)}`}
@@ -98,6 +104,12 @@ export function PaymentModal({
         </div>
         <div className="mt-1 text-[30px] font-extrabold tracking-tight tabular">{money(total)}</div>
       </div>
+
+      {error && (
+        <div role="alert" className="mt-3 rounded-xl border border-[var(--semantic-rose-border)] bg-[var(--semantic-rose-soft)] px-3.5 py-3 text-[12px] font-medium text-[var(--semantic-rose-text)]">
+          {error}
+        </div>
+      )}
 
       <div className="mt-4">
         <div className="glass-subtle grid grid-cols-3 gap-1 rounded-full p-1">

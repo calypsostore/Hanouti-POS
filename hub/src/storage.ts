@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { applyChangeSet } from '../../src/shared/sync.ts'
@@ -7,10 +7,24 @@ import type { HubStoreState, PersistedChange } from './types.ts'
 import { validId } from './validation.ts'
 
 const EMPTY = (storeId: string): HubStoreState => ({ storeId, seq: 0, collections: {}, appliedOpIds: [] })
+const COMPACT_AFTER_CHANGES = 100
+const COMPACT_AT_BYTES = 1_048_576
+
+interface CachedStore {
+  state: HubStoreState
+  snapshotSeq: number
+  changes: PersistedChange[]
+}
+
+interface ChangesSinceResult {
+  changes: PersistedChange[]
+  fullResyncRequired: boolean
+}
 
 export class HubStorage {
   readonly root: string
   private readonly queues = new Map<string, Promise<void>>()
+  private readonly cache = new Map<string, CachedStore>()
 
   constructor(root = process.env.HUB_DATA_DIR ?? fileURLToPath(new URL('../data/', import.meta.url))) {
     this.root = resolve(root)
@@ -32,41 +46,84 @@ export class HubStorage {
   }
 
   async readStore(storeId: string): Promise<HubStoreState> {
-    try {
-      const contents = await readFile(this.storePath(storeId), 'utf8')
-      const lines = contents.split(/\r?\n/).filter(Boolean)
-      if (!lines.length) return EMPTY(storeId)
-      for (let index = lines.length - 1; index >= 0; index -= 1) {
-        try {
-          const parsed = JSON.parse(lines[index]) as PersistedChange | { state: HubStoreState }
-          if (parsed.state?.storeId === storeId && Number.isSafeInteger(parsed.state.seq)) return parsed.state
-        } catch {
-          if (index === lines.length - 1) continue
-        }
-      }
-      throw new Error(`Invalid persisted hub state for store ${storeId}.`)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return EMPTY(storeId)
-      throw error
+    const cached = await this.loadStore(storeId)
+    return structuredClone(cached.state)
+  }
+
+  async changesSince(storeId: string, sequence: number): Promise<ChangesSinceResult> {
+    const cached = await this.loadStore(storeId)
+    if (sequence < cached.snapshotSeq) return { changes: [], fullResyncRequired: true }
+    return {
+      changes: cached.changes.filter((change) => change.seq > sequence),
+      fullResyncRequired: false,
     }
   }
 
-  async changesSince(storeId: string, sequence: number): Promise<PersistedChange[]> {
+  private async loadStore(storeId: string): Promise<CachedStore> {
+    const cached = this.cache.get(storeId)
+    if (cached) return cached
     try {
       const contents = await readFile(this.storePath(storeId), 'utf8')
-      return contents.split(/\r?\n/).filter(Boolean).flatMap((line): PersistedChange[] => {
+      const lines = contents.split(/\r?\n/)
+      const records: Array<{ index: number; value: Record<string, unknown> }> = []
+      let tornLastLine = false
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index]
+        if (!line) continue
         try {
-          const parsed = JSON.parse(line) as Partial<PersistedChange>
-          return Number.isSafeInteger(parsed.seq) && Number(parsed.seq) > sequence &&
-            parsed.changeSet && Array.isArray(parsed.changeSet.ops)
-            ? [parsed as PersistedChange]
-            : []
-        } catch {
-          return []
+          const parsed: unknown = JSON.parse(line)
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Invalid persisted hub record.')
+          }
+          records.push({ index, value: parsed as Record<string, unknown> })
+        } catch (error) {
+          if (index === lines.length - 1 && !/[\r\n]$/.test(contents)) {
+            tornLastLine = true
+            continue
+          }
+          throw new Error(`Invalid persisted hub record for store ${storeId}.`, { cause: error })
         }
-      })
+      }
+      let state = EMPTY(storeId)
+      let snapshotSeq = 0
+      let snapshotIndex = -1
+      for (const { index, value } of records) {
+        const candidate = value.state
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+        const snapshot = candidate as HubStoreState
+        if (snapshot.storeId !== storeId || !Number.isSafeInteger(snapshot.seq) ||
+          !snapshot.collections || typeof snapshot.collections !== 'object') continue
+        state = snapshot
+        snapshotSeq = snapshot.seq
+        snapshotIndex = index
+      }
+
+      const changes: PersistedChange[] = []
+      for (const { index, value } of records) {
+        if (index <= snapshotIndex || !Number.isSafeInteger(value.seq) ||
+          !value.changeSet || typeof value.changeSet !== 'object') continue
+        const changeSet = value.changeSet as PersistedChange['changeSet']
+        if (changeSet.storeId !== storeId || !Array.isArray(changeSet.ops)) continue
+        const next = applyChangeSet(state, changeSet) as HubStoreState
+        if (next.seq !== value.seq) throw new Error(`Invalid persisted hub sequence for store ${storeId}.`)
+        next.storeId = storeId
+        state = next
+        changes.push({ seq: next.seq, changeSet })
+      }
+      if (tornLastLine) {
+        await this.writeSnapshot(storeId, state)
+        snapshotSeq = state.seq
+        changes.length = 0
+      }
+      const loaded = { state, snapshotSeq, changes }
+      this.cache.set(storeId, loaded)
+      return loaded
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        const empty = { state: EMPTY(storeId), snapshotSeq: 0, changes: [] }
+        this.cache.set(storeId, empty)
+        return empty
+      }
       throw error
     }
   }
@@ -82,7 +139,7 @@ export class HubStorage {
       const next = applyChangeSet(state, changeSet) as HubStoreState
       if (next === state) return state
       next.storeId = storeId
-      const record: PersistedChange = { seq: next.seq, changeSet, state: next }
+      const record: PersistedChange = { seq: next.seq, changeSet }
       const file = this.storePath(storeId)
       await mkdir(dirname(file), { recursive: true })
       const handle = await open(file, 'a')
@@ -92,6 +149,14 @@ export class HubStorage {
       } finally {
         await handle.close()
       }
+      const cached = await this.loadStore(storeId)
+      cached.state = structuredClone(next)
+      cached.changes.push(record)
+      if (cached.changes.length >= COMPACT_AFTER_CHANGES || (await stat(file)).size >= COMPACT_AT_BYTES) {
+        await this.writeSnapshot(storeId, next)
+        cached.snapshotSeq = next.seq
+        cached.changes = []
+      }
       return next
     } finally {
       release()
@@ -99,10 +164,30 @@ export class HubStorage {
   }
 
   async replaceStore(storeId: string, state: HubStoreState): Promise<void> {
+    const previous = this.queues.get(storeId) ?? Promise.resolve()
+    let release: () => void = () => {}
+    const current = new Promise<void>((resolveQueue) => { release = resolveQueue })
+    this.queues.set(storeId, previous.then(() => current))
+    await previous
+    try {
+      await this.writeSnapshot(storeId, state)
+      this.cache.set(storeId, { state: structuredClone(state), snapshotSeq: state.seq, changes: [] })
+    } finally {
+      release()
+    }
+  }
+
+  private async writeSnapshot(storeId: string, state: HubStoreState): Promise<void> {
     const file = this.storePath(storeId)
     await mkdir(dirname(file), { recursive: true })
     const temp = `${file}.${process.pid}.tmp`
-    await writeFile(temp, `${JSON.stringify({ seq: state.seq, state })}\n`, { encoding: 'utf8', mode: 0o600 })
+    const handle = await open(temp, 'w', 0o600)
+    try {
+      await handle.writeFile(`${JSON.stringify({ type: 'snapshot', seq: state.seq, state })}\n`, 'utf8')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
     await rename(temp, file)
   }
 

@@ -24,6 +24,7 @@ import { InstallAppButton } from '../components/InstallAppButton'
 import { APP_BUILD_TIMESTAMP, APP_VERSION } from '../lib/appVersion'
 import { DB_KEY } from '../store/database'
 import type { User } from '../types'
+import { PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../shared/pin'
 
 type DemoAccount = {
   role: 'Super admin' | 'Store admin' | 'Staff'
@@ -288,7 +289,7 @@ export default function Login() {
                   />
                 </div>
               </Field>
-              <Field label="Password" hint="Demo: password">
+              <Field label="Password" hint={providerMode === 'local' ? 'Demo: password' : undefined}>
                 <div className="relative">
                   <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
                   <Input
@@ -320,7 +321,7 @@ export default function Login() {
                   <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toLowerCase())} placeholder="your-store-code" autoComplete="organization" required />
                 </Field>
               )}
-              <Field label="Username" hint="Demo: amine.yasmine">
+              <Field label="Username" hint={providerMode === 'local' ? 'Demo: amine.yasmine' : undefined}>
                 <Input
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase())}
@@ -329,10 +330,11 @@ export default function Login() {
                   required
                 />
               </Field>
-              <Field label="PIN" hint="4–6 digits · Demo: 1234">
+              <Field label="PIN" hint={providerMode === 'local' ? `${PIN_RANGE_HINT} · Demo: 1234` : PIN_RANGE_HINT}>
                 <Input
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  maxLength={PIN_MAX_LENGTH}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
                   placeholder="••••"
                   inputMode="numeric"
                   className="text-center text-lg font-bold tracking-[0.5em]"

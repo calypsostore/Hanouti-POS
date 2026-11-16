@@ -659,6 +659,7 @@ export interface OrderItem {
   status?: OrderItemStatus
   addedAt?: string
   updatedAt?: string
+  noteCorrectionAt?: string
   addedById?: string
   addedByName?: string
   voidReason?: string
@@ -882,6 +883,21 @@ export interface RegisterItemsReport {
   voidedItems: RegisterVoidedItemRow[]
 }
 
+export interface RegisterSessionBreakdown {
+  sessionId: string
+  name: string
+  role: Role | 'unknown'
+  orders: number
+  cash: number
+  card: number
+  credit: number
+  discounts: number
+  voids: number
+  staffItemOrders: number
+  staffItemTotal: number
+  expectedCash: number
+}
+
 export interface RegisterReportDetails {
   storeName: string
   storeAddress: string
@@ -898,6 +914,7 @@ export interface RegisterReportDetails {
   supplierCashPayments: number
   taxBreakdown: Array<{ rate: number | null; amount: number }>
   byEmployee: Array<{ name: string; count: number; total: number }>
+  sessionBreakdown?: RegisterSessionBreakdown[]
   byCategory: Array<{ name: string; qty: number; total: number }>
   itemsSold?: RegisterItemRow[]
   recordedItems?: RegisterItemRow[]
@@ -951,6 +968,7 @@ export interface RegisterSession {
   staffId?: string
   shiftNumber?: string
   openingCash: number
+  autoOpened?: boolean
   openingFloat?: number
   leaveFloatForNextShift?: boolean
   closedAt?: string

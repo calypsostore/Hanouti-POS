@@ -2,6 +2,7 @@ import type {
   AuditJsonValue,
   Database,
   RegisterReportDetails,
+  RegisterSessionBreakdown,
   RegisterSession,
   RegisterSnapshot,
 } from '../types'
@@ -183,6 +184,46 @@ export const registerReportDetails = (
   const byCategory = new Map<string, { qty: number; total: number }>()
   const staffUse = new Map<string, { staffName: string; itemName: string; quantity: number; retailValue: number; chargedValue: number }>()
   const items = registerSessionItems(db, session, endISO, staffId)
+  const breakdownSessions = session.id
+    ? [session]
+    : (db.registerSessions ?? []).filter((candidate) =>
+        candidate.storeId === session.storeId &&
+        Date.parse(candidate.openedAt) >= start &&
+        Date.parse(candidate.openedAt) <= end,
+      )
+  const sessionRows: RegisterSessionBreakdown[] = breakdownSessions.map((candidate) => {
+    const candidateEnd = candidate.status === 'closed' && candidate.closedAt &&
+      Date.parse(candidate.closedAt) < end ? candidate.closedAt : endISO
+    const totals = computeRegisterTotals(
+      db,
+      candidate.storeId,
+      candidate.openedAt,
+      candidateEnd,
+      candidate.openingFloat ?? candidate.openingCash,
+      candidate.id,
+    )
+    const ownerId = candidate.staffId ?? candidate.openedById
+    const owner = db.users?.find((user) => user.id === ownerId && user.storeId === candidate.storeId)
+    const sessionOrders = completedOrdersAt(
+      ordersForRegisterSession(db, candidate, candidateEnd),
+      Date.parse(candidateEnd),
+    )
+    const staffItemOrders = sessionOrders.filter((order) => order.staffConsumption)
+    return {
+      sessionId: candidate.id,
+      name: owner?.name ?? candidate.openedByName,
+      role: owner?.role ?? 'unknown',
+      orders: totals.ordersCount,
+      cash: round(totals.cashSales + totals.cashSettlements),
+      card: round(totals.cardSales + totals.cardSettlements),
+      credit: totals.creditSales,
+      discounts: totals.discounts,
+      voids: totals.voidedCount,
+      staffItemOrders: staffItemOrders.length,
+      staffItemTotal: sum(staffItemOrders.map((order) => order.total)),
+      expectedCash: totals.expectedCash,
+    }
+  })
 
   for (const order of completed) {
     const taxRate = typeof order.taxRate === 'number' && Number.isFinite(order.taxRate) ? order.taxRate : null
@@ -398,6 +439,7 @@ export const registerReportDetails = (
     byEmployee: [...byEmployee.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.total - a.total),
+    sessionBreakdown: sessionRows,
     byCategory: [...byCategory.entries()]
       .map(([name, value]) => ({ name, ...value }))
       .sort((a, b) => b.total - a.total),
@@ -440,6 +482,35 @@ export const sessionSnapshot = (
     session.openingFloat ?? session.openingCash,
     session.id,
   )
+}
+
+export const autoCloseRegisterSessionForZ = (
+  db: Database,
+  session: RegisterSession,
+  closedAt: string,
+  closedBy: { id: string; name: string },
+): RegisterSession => {
+  const snapshot = computeRegisterTotals(
+    db,
+    session.storeId,
+    session.openedAt,
+    closedAt,
+    session.openingFloat ?? session.openingCash,
+    session.id,
+  )
+  return {
+    ...session,
+    status: 'closed',
+    closeType: 'shift',
+    closedAt,
+    closedById: closedBy.id,
+    closedByName: closedBy.name,
+    countedCash: snapshot.expectedCash,
+    difference: 0,
+    leaveFloatForNextShift: false,
+    snapshot,
+    reportDetails: registerReportDetails(db, session, closedAt),
+  }
 }
 
 export interface RegisterBreakdown {

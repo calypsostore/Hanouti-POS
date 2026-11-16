@@ -133,7 +133,14 @@ export default function RegisterPage() {
   const dayCloseSnapshot = todaySessions.length && Number.isFinite(staffFloatValue) && staffFloatValue >= 0
     ? computeRegisterTotals(db, store.id, todayStart, nowISO, staffFloatValue)
     : null
-  const canCloseDay = user.role === 'admin' && !todayDayReport && todaySessions.length > 0 && !anyOpen
+  const canCloseDay = user.role === 'admin' && !todayDayReport && todaySessions.length > 0 &&
+    allSessions.filter((session) => session.status === 'open').every((session) => {
+      if (!session.autoOpened) return false
+      const owner = db.users.find((candidate) =>
+        candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
+      )
+      return owner?.role === 'admin' || owner?.role === 'manager'
+    })
   const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
   const liveBreakdown = open ? registerBreakdown(db, open, nowISO, itemScope) : null
@@ -402,6 +409,20 @@ export default function RegisterPage() {
             >
               <Square className="h-4 w-4" /> Close shift
             </Button>
+            {user.role === 'admin' && (
+              <Button
+                variant="secondary"
+                disabled={!canCloseDay}
+                onClick={() => {
+                  setDayStaffFloatInput(dayOpeningCash.toFixed(3))
+                  setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
+                  setDayCloseNote('')
+                  setDayCloseModal(true)
+                }}
+              >
+                <Square className="h-4 w-4" /> Close day (Z)
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -459,6 +480,9 @@ export default function RegisterPage() {
       <SessionHistory
         closed={closed}
         canSeeAll={canSeeAll}
+        roleForSession={(session) => db.users.find((candidate) =>
+          candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
+        )?.role ?? 'unknown'}
         itemsForSession={(session) => itemDetailsForSession(
           session,
           session.closedAt ?? session.openedAt,

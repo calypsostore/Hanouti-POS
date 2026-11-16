@@ -48,7 +48,9 @@ export const ordersForRegisterSession = (
   return db.orders.filter((order) =>
     order.storeId === session.storeId &&
     isInWindow(order.createdAt, start, end) &&
-    (ownerScoped ? orderPaidBy(order) === staffId : !session.id || order.shiftId === session.id || order.shiftId === undefined) &&
+    (ownerScoped
+      ? order.shiftId ? order.shiftId === session.id : orderPaidBy(order) === staffId
+      : !session.id || order.shiftId === session.id || order.shiftId === undefined) &&
     (order.status === 'completed' || order.status === 'recorded' || order.status === 'void'),
   )
 }

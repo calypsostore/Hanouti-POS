@@ -1,6 +1,7 @@
 import { can, canOverrideStock } from './permissions.ts'
 import { verifySecret } from './hash.ts'
 import type { OrderRulesSettings, User } from '../types.ts'
+import { isValidPin } from '../shared/pin.ts'
 
 export type AuthorizationPinPurpose = 'void-order' | 'cancel-table' | 'override-stock'
 export type PinConfirmer = Pick<User, 'id' | 'name'>
@@ -15,7 +16,7 @@ export async function findPinConfirmer(
   purpose: AuthorizationPinPurpose,
   orderRules: OrderRulesSettings,
 ): Promise<PinConfirmer | undefined> {
-  if (!/^\d{4,12}$/.test(pin)) return undefined
+  if (!isValidPin(pin)) return undefined
 
   for (const user of users) {
     if (!user.active || user.storeId !== storeId || user.stationOnly) continue

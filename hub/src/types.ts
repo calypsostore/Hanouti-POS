@@ -32,7 +32,7 @@ export interface AuthenticatedActor {
 export interface PersistedChange {
   seq: number
   changeSet: ChangeSet
-  state: HubStoreState
+  state?: HubStoreState
 }
 
 export type JsonRecord = SyncDocument & { storeId: string }

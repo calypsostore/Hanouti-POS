@@ -129,9 +129,10 @@ export default function POS() {
     items: OrderItem[],
     kind: TicketKind,
   ) => {
-    if (!store || store.settings.stationTicketPrintPolicy === 'never') return
+    if (!store) return
     const stations = db.stations.filter((station) => station.storeId === store.id)
     const tickets = buildStationTickets(order, items, stations, kind)
+    if (!tickets.length) return
     const previewStationIds = new Set<string>()
     for (const ticket of tickets) {
       const station = stations.find((entry) => entry.id === ticket.stationId)
@@ -143,14 +144,24 @@ export default function POS() {
         entry.id === (route?.printerId ?? station?.printerId),
       )
       if (store.settings.stationTicketPrintPolicy === 'automatic' && printer) {
+        const preview = station
+          ? stationTicketJob(order, ticket.items, [station], store, kind)
+          : null
         void enqueuePrint({
           type: 'kitchen',
           stationId: ticket.stationId,
           printerId: printer.id,
           payload: buildStationTicketLines(ticket),
         }).then((result) => {
-          if (result.ok) push(`${station?.name ?? 'Station'} ticket sent`, 'success')
-          else push(result.error, 'error')
+          if (result.ok) {
+            push('Ticket printed', 'success')
+          } else {
+            push(result.error, 'error')
+            if (preview) setKitchenJob({ ...preview, reprint: true })
+          }
+        }).catch((error: unknown) => {
+          push(error instanceof Error ? error.message : 'Ticket printing failed.', 'error')
+          if (preview) setKitchenJob({ ...preview, reprint: true })
         })
       } else {
         previewStationIds.add(ticket.stationId)
@@ -165,9 +176,12 @@ export default function POS() {
         store,
         kind,
       )
-      if (job) setKitchenJob(job)
+      if (job) {
+        setKitchenJob(job)
+        push('Ticket preview is ready.', 'info')
+      }
     }
-  }, [db.printRoutes, db.printers, db.stations, enqueuePrint, push, store])
+  }, [db.printRoutes, db.printers, db.stations, enqueuePrint, push, setKitchenJob, store])
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
@@ -427,6 +441,36 @@ export default function POS() {
     const result = updateOpenOrderItem(order.id, lineId, { qty })
     if (!result.ok) push(result.error, 'error')
   }
+  const updateSentItemNote = (lineId: string, note: string): boolean => {
+    if (!openOrder || !store) return false
+    const item = openOrder.items.find((candidate) => candidate.lineId === lineId)
+    if (!item) return false
+    if (item.note === note) return true
+    const result = updateOpenOrderItem(openOrder.id, lineId, { note })
+    if (!result.ok) {
+      push(result.error, 'error')
+      return false
+    }
+    const updatedAt = new Date().toISOString()
+    const correctedItem = {
+      ...item,
+      note,
+      updatedAt,
+      noteCorrectionAt: updatedAt,
+    }
+    const correctedOrder = {
+      ...openOrder,
+      items: openOrder.items.map((candidate) => candidate.lineId === lineId ? correctedItem : candidate),
+    }
+    if (!correctedItem.stationId || !db.stations.some((station) =>
+      station.id === correctedItem.stationId && station.storeId === store.id,
+    )) {
+      push(`No station assigned to ${correctedItem.name}; the note correction was not sent.`, 'error')
+    } else {
+      dispatchStationTickets(correctedOrder, [correctedItem], 'ADDITION')
+    }
+    return true
+  }
   const confirmVoidSentItem = () => {
     if (!openOrder || !voidTarget) return
     const result = voidSentOrderItem(openOrder.id, voidTarget, voidReason)
@@ -605,6 +649,7 @@ export default function POS() {
       setVoidTarget(lineId)
       setVoidReason('')
     },
+    onUpdateSentItemNote: updateSentItemNote,
     onDone: doneOpenOrder,
     onOpenFloor: () => navigate('/pos/floor'),
   }
@@ -637,6 +682,7 @@ export default function POS() {
         products={enabledStaffProducts(db.products.filter((product) => product.storeId === store.id), store.settings.staffConsumption)}
         orders={db.orders}
         shiftId={currentShift?.id}
+        canAutoOpenShift={user.role === 'admin' || user.role === 'manager'}
         staffId={user.id}
         settings={store.settings}
         policy={store.settings.staffConsumption}

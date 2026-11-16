@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Field, Input, Modal } from '../../components/ui'
 import type { CreateStoreInput, Result } from '../../store/types'
+import { isValidPin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../../shared/pin'
 
 const initialForm: CreateStoreInput = {
   name: '',
@@ -30,7 +31,7 @@ export function NewStoreModal({
   const set = (key: keyof CreateStoreInput, value: string) =>
     setForm((current) => ({ ...current, [key]: value }))
   const valid = form.name.trim() && form.slug.trim() && form.adminName.trim() &&
-    form.adminEmail.trim() && form.adminPassword && /^\d{4,6}$/.test(form.adminPin)
+    form.adminEmail.trim() && form.adminPassword && isValidPin(form.adminPin)
 
   const save = async () => {
     setSaving(true)
@@ -72,7 +73,7 @@ export function NewStoreModal({
         <Field label="Name"><Input value={form.adminName} onChange={(event) => set('adminName', event.target.value)} /></Field>
         <Field label="Email"><Input type="email" value={form.adminEmail} onChange={(event) => set('adminEmail', event.target.value)} /></Field>
         <Field label="Initial password"><Input type="password" value={form.adminPassword} onChange={(event) => set('adminPassword', event.target.value)} /></Field>
-        <Field label="Initial PIN" hint="4–6 digits"><Input inputMode="numeric" value={form.adminPin} onChange={(event) => set('adminPin', event.target.value)} /></Field>
+        <Field label="Initial PIN" hint={PIN_RANGE_HINT}><Input inputMode="numeric" maxLength={PIN_MAX_LENGTH} value={form.adminPin} onChange={(event) => set('adminPin', event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))} /></Field>
       </div>
     </Modal>
   )

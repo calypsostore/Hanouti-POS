@@ -57,7 +57,8 @@ export default function TableFloor() {
     .filter((section) => section.storeId === store.id && section.active)
     .sort((a, b) => a.sort - b.sort)
   const orders = db.openOrders.filter((order) => order.storeId === store.id)
-  const canTakeHandover = can(user, 'takeOverTables') && !!openShiftForStaff(db, store.id, user.id)
+  const canTakeHandover = can(user, 'takeOverTables') &&
+    (user.role === 'admin' || user.role === 'manager' || !!openShiftForStaff(db, store.id, user.id))
   const manualMode = store.settings.tableMode === 'manual'
   const tableFilter = (item: FloorItem) =>
     sectionFilter === 'all' || item.sectionId === sectionFilter

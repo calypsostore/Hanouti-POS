@@ -7,11 +7,13 @@ import { fmtDate, fmtTime, money } from '../../../lib/utils'
 export function SessionHistory({
   closed,
   canSeeAll,
+  roleForSession,
   itemsForSession,
   onPrint,
 }: {
   closed: RegisterSession[]
   canSeeAll: boolean
+  roleForSession: (session: RegisterSession) => string
   itemsForSession: (session: RegisterSession) => {
     report: RegisterItemsReport
     rebuiltFromOrders: boolean
@@ -24,7 +26,7 @@ export function SessionHistory({
         <div className="mb-2 flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-muted" />
           <h3 className="text-[13.5px] font-bold text-ink">
-            {canSeeAll ? 'Closed staff shifts' : 'Your closed shifts'}
+            {canSeeAll ? 'Closed register shifts' : 'Your closed shifts'}
           </h3>
           <Badge tone="neutral">{closed.length}</Badge>
         </div>
@@ -48,7 +50,7 @@ export function SessionHistory({
                         {fmtTime(session.closedAt ?? session.openedAt)}
                       </div>
                       <div className="text-[10.5px] text-muted">
-                        {session.closedByName ?? ''} · expected {money(session.snapshot?.expectedCash ?? 0)} · counted{' '}
+                        {session.openedByName} ({roleForSession(session)}) · closed by {session.closedByName ?? ''} · expected {money(session.snapshot?.expectedCash ?? 0)} · counted{' '}
                         {money(session.countedCash ?? 0)}
                       </div>
                     </div>

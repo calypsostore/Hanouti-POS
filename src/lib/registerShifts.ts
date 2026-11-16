@@ -1,4 +1,5 @@
-import type { Database, RegisterSession } from '../types'
+import type { Database, RegisterSession, User } from '../types'
+import { uid } from './utils.ts'
 
 export const openShiftForStaff = (
   db: Pick<Database, 'registerSessions'>,
@@ -10,6 +11,33 @@ export const openShiftForStaff = (
     session.status === 'open' &&
     (session.staffId ?? session.openedById) === staffId,
   )
+
+export const ensureShiftForActor = (
+  db: Pick<Database, 'registerSessions'>,
+  storeId: string,
+  actor: Pick<User, 'id' | 'name' | 'role'>,
+): { shift: RegisterSession | undefined; autoOpened: boolean } => {
+  const existing = openShiftForStaff(db, storeId, actor.id)
+  if (existing || (actor.role !== 'admin' && actor.role !== 'manager')) {
+    return { shift: existing, autoOpened: false }
+  }
+  const openedAt = new Date().toISOString()
+  return {
+    shift: {
+      id: uid('reg'),
+      storeId,
+      status: 'open',
+      openedAt,
+      openedById: actor.id,
+      openedByName: actor.name,
+      staffId: actor.id,
+      shiftNumber: nextShiftNumber(db.registerSessions, storeId),
+      openingCash: 0,
+      autoOpened: true,
+    },
+    autoOpened: true,
+  }
+}
 
 export const nextShiftNumber = (
   sessions: RegisterSession[],

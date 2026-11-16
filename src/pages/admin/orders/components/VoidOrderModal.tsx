@@ -3,6 +3,7 @@ import type { Order } from '../../../../types'
 import { Button, Field, Input, Modal, Textarea } from '../../../../components/ui'
 import { money } from '../../../../lib/utils'
 import { orderNumberLabel } from '../../../../lib/orderNumber'
+import { isValidPin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../../../../shared/pin'
 
 type Props = {
   order: Order | null
@@ -39,7 +40,7 @@ export default function VoidOrderModal({
           </Button>
           <Button
             variant="danger"
-            disabled={!reason.trim() || (!isAdmin && !/^\d{4,6}$/.test(pin.trim()))}
+            disabled={!reason.trim() || (!isAdmin && !isValidPin(pin.trim()))}
             onClick={onConfirm}
           >
             <Trash2 className="h-4 w-4" /> Void order
@@ -67,10 +68,11 @@ export default function VoidOrderModal({
             You are the store admin — the void is recorded under your name.
           </div>
         ) : (
-          <Field label="Manager PIN" hint="Ask a manager to authorize this void">
+          <Field label="Manager PIN" hint={`Ask a manager to authorize this void · ${PIN_RANGE_HINT}`}>
             <Input
               value={pin}
-              onChange={(event) => onPinChange(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              maxLength={PIN_MAX_LENGTH}
+              onChange={(event) => onPinChange(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
               inputMode="numeric"
               placeholder="••••"
               className="font-mono text-center text-lg tracking-[0.4em]"

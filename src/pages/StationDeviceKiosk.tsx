@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Button, Field, Input } from '../components/ui'
 import { useApp } from '../store/AppStore'
 import { verifySecret } from '../lib/hash'
+import { isValidPin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../shared/pin'
 import { parseStationDeviceSession, STATION_DEVICE_SESSION_KEY, type StationDeviceSession } from '../lib/stationDeviceSession'
 import StationBoard from './pos/StationBoard'
 
@@ -108,7 +109,7 @@ export default function StationDeviceKiosk() {
       (!sessionStoreId || candidate.storeId === sessionStoreId),
     )
     let valid = false
-    if (/^\d{4,6}$/.test(managerPin)) {
+    if (isValidPin(managerPin)) {
       for (const candidate of managers) {
         if (await verifySecret(managerPin, candidate.pin)) {
           valid = true
@@ -153,13 +154,14 @@ export default function StationDeviceKiosk() {
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
             <form onSubmit={exitKiosk} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 shadow-xl">
               <h2 className="text-lg font-bold text-ink">Unlock station kiosk</h2>
-              <Field label="Owner or manager PIN">
+              <Field label="Owner or manager PIN" hint={PIN_RANGE_HINT}>
                 <Input
                   autoFocus
                   type="password"
                   inputMode="numeric"
+                  maxLength={PIN_MAX_LENGTH}
                   value={managerPin}
-                  onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
                 />
               </Field>
               {exitError && <p role="alert" className="text-xs text-red-600">{exitError}</p>}
@@ -189,13 +191,14 @@ export default function StationDeviceKiosk() {
               <h2 className="text-lg font-bold text-ink">Exit station kiosk</h2>
               <p className="mt-1 text-xs text-muted">Enter an owner or manager PIN to unlock this device.</p>
             </div>
-            <Field label="Manager PIN">
+            <Field label="Manager PIN" hint={PIN_RANGE_HINT}>
               <Input
                 autoFocus
                 type="password"
                 inputMode="numeric"
+                maxLength={PIN_MAX_LENGTH}
                 value={managerPin}
-                onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
               />
             </Field>
             {exitError && <p role="alert" className="text-xs text-red-600">{exitError}</p>}

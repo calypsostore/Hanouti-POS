@@ -27,6 +27,7 @@ import { validateLedgerEntry } from './ledgerValidation.ts'
 import { isUnavailable } from '../../src/shared/availability.ts'
 import type { InventoryItem, OrderItem, Product, Shift, Store, StoreSettings } from '../../src/types.ts'
 import { shiftOpenScheduleError, normalizeShiftAccessSettings } from '../../src/lib/shiftAccess.ts'
+import { PIN_MAX_LENGTH } from '../../src/shared/pin.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -486,6 +487,7 @@ export async function createHubServer(): Promise<HubRuntime> {
     seq: number
     duplicate: boolean
     conflicts: Array<{ collection: string; id: string; label: string }>
+    fullResyncRequired?: boolean
   }> {
     if (actor.deviceToken) throw new Error('Station devices cannot submit general sync operations.')
     if (!record(raw) || !Array.isArray(raw.ops) || raw.ops.length > 2000 ||
@@ -497,7 +499,11 @@ export async function createHubServer(): Promise<HubRuntime> {
     const state = await storage.readStore(actor.storeId)
     if (state.appliedOpIds.includes(raw.opId)) return { seq: state.seq, duplicate: true, conflicts: [] }
     const validationState = structuredClone(state)
-    const changedDocuments = new Set((await storage.changesSince(actor.storeId, raw.baseSeq as number))
+    const changesSince = await storage.changesSince(actor.storeId, raw.baseSeq as number)
+    if (changesSince.fullResyncRequired) {
+      return { seq: state.seq, duplicate: false, conflicts: [], fullResyncRequired: true }
+    }
+    const changedDocuments = new Set(changesSince.changes
       .filter((entry) => entry.changeSet.deviceId !== raw.deviceId)
       .flatMap((entry) => entry.changeSet.ops.map((operation) => `${operation.collection}:${operation.id}`)))
     const conflicts: Array<{ collection: string; id: string; label: string }> = []
@@ -566,6 +572,15 @@ export async function createHubServer(): Promise<HubRuntime> {
           refId: orderId,
         })
       }
+    }
+    const paidOpenOrderIds = new Set<string>()
+    for (const candidate of raw.ops) {
+      if (!record(candidate) || candidate.kind !== 'put' || candidate.collection !== 'orders' ||
+        !record(candidate.document) || candidate.document.storeId !== actor.storeId ||
+        candidate.document.status !== 'completed' ||
+        typeof candidate.document.clientOrderId !== 'string' ||
+        !candidate.document.clientOrderId.startsWith('pay:')) continue
+      paidOpenOrderIds.add(candidate.document.clientOrderId.slice(4))
     }
     for (const operation of raw.ops) {
       if (!record(operation) || !['put', 'delete'].includes(String(operation.kind)) ||
@@ -714,7 +729,11 @@ export async function createHubServer(): Promise<HubRuntime> {
         if (!record(operation.document)) throw new Error('Ledger entry must be an object.')
       }
       if (ORDER_COLLECTIONS.has(operation.collection) && operation.kind === 'delete') {
-        requireCapability(actor, 'voidOrders')
+        if (operation.collection === 'openOrders' && paidOpenOrderIds.has(operation.id)) {
+          requireCapability(actor, 'register')
+        } else {
+          requireCapability(actor, 'voidOrders')
+        }
       }
       if (ORDER_COLLECTIONS.has(operation.collection) && operation.kind === 'put') {
         requireCapability(actor, 'register')
@@ -735,7 +754,7 @@ export async function createHubServer(): Promise<HubRuntime> {
           if (actor.role !== 'admin' && ownerId(previous) !== actor.userId) {
             throw Object.assign(new Error('You can only change your own register session.'), { status: 403 })
           }
-          for (const field of ['id', 'storeId', 'openedAt', 'openedById', 'openedByName', 'staffId', 'shiftNumber', 'openingCash']) {
+          for (const field of ['id', 'storeId', 'openedAt', 'openedById', 'openedByName', 'staffId', 'shiftNumber', 'openingCash', 'autoOpened']) {
             if (doc[field] !== previous[field]) {
               throw new Error('Register session opening details cannot be changed.')
             }
@@ -1154,7 +1173,8 @@ export async function createHubServer(): Promise<HubRuntime> {
       }
       if (path === '/api/auth/setup' && request.method === 'POST') {
         const body = await readJson(request)
-        const result = await auth.setupOwner(body)
+        const setupToken = request.headers['x-setup-token'] ?? body.setupToken
+        const result = await auth.setupOwner(body, setupToken, ip)
         return sendJson(response, 201, result)
       }
       if (path === '/api/auth/login' && request.method === 'POST') {
@@ -1168,7 +1188,7 @@ export async function createHubServer(): Promise<HubRuntime> {
         const actor = await actorFor(request)
         if (actor.stationOnly) throw Object.assign(new Error('Station devices cannot verify staff PINs.'), { status: 403 })
         const body = await readJson(request)
-        const pin = requireString(body.pin, 'PIN', 12)
+        const pin = requireString(body.pin, 'PIN', PIN_MAX_LENGTH)
         return sendJson(response, 200, { verified: await auth.verifyPin(actor, pin, ip) })
       }
       if (path === '/api/auth/verify-authorization-pin' && request.method === 'POST') {
@@ -1176,7 +1196,7 @@ export async function createHubServer(): Promise<HubRuntime> {
         const storeId = requireString(body.storeId, 'store ID', 80)
         const actor = await actorFor(request, storeId)
         if (actor.stationOnly) throw Object.assign(new Error('Station devices cannot verify staff PINs.'), { status: 403 })
-        const pin = requireString(body.pin, 'PIN', 12)
+        const pin = requireString(body.pin, 'PIN', PIN_MAX_LENGTH)
         if (body.purpose !== 'void-order' && body.purpose !== 'cancel-table' && body.purpose !== 'override-stock') {
           throw Object.assign(new Error('Choose a valid PIN authorization purpose.'), { status: 400 })
         }
@@ -1193,10 +1213,22 @@ export async function createHubServer(): Promise<HubRuntime> {
         return sendJson(response, 200, await auth.pair(requireString(body.storeCode, 'store code', 40), requireString(body.pairingCode, 'pairing code', 6), ip))
       }
       if (path === '/api/setup/import-backup' && request.method === 'POST') {
-        if ((await storage.listStoreIds()).length) throw Object.assign(new Error('Backup bootstrap is available only on an empty hub.'), { status: 409 })
         const body = await readJson(request, 50 * 1024 * 1024)
-        const ids = await storage.importAppBackup(body.backup)
-        return sendJson(response, 201, { stores: ids })
+        const setupToken = request.headers['x-setup-token'] ?? body.setupToken
+        auth.beginSetup(setupToken, ip)
+        let succeeded = false
+        try {
+          if ((await storage.listStoreIds()).length) {
+            throw Object.assign(new Error('Backup bootstrap is available only on an empty hub.'), { status: 409 })
+          }
+          const ids = await storage.importAppBackup(body.backup)
+          await auth.reindexDevices()
+          auth.finishSetup(true)
+          succeeded = true
+          return sendJson(response, 201, { stores: ids })
+        } finally {
+          if (!succeeded) auth.finishSetup(false)
+        }
       }
       if (path === '/api/backup' && request.method === 'POST') {
         const { actor, storeId } = await authorizedStore(request)
@@ -1214,6 +1246,7 @@ export async function createHubServer(): Promise<HubRuntime> {
         requireCapability(actor, 'manageSettings')
         const filename = requireString(body.filename, 'backup filename', 64)
         const restored = await storage.restoreSnapshot(filename, actor.storeId)
+        await auth.reindexDevices()
         return sendJson(response, 200, { restored })
       }
       if (path === '/api/sync' && request.method === 'POST') {
@@ -1237,8 +1270,10 @@ export async function createHubServer(): Promise<HubRuntime> {
           if (waitingForShift && !['stores', 'users', 'shifts', 'registerSessions', 'attendance'].includes(name)) continue
           const permission = PRIVATE_COLLECTIONS[name]
           if (name !== 'stores') {
-            if (name === 'shifts' && !canManageSchedules(actor) && actor.role !== 'staff') continue
-            if (name === 'registerSessions' && !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
+            if (name === 'shifts' && !canManageSchedules(actor) &&
+              actor.role !== 'staff' && actor.role !== 'admin' && actor.role !== 'manager') continue
+            if (name === 'registerSessions' && actor.role !== 'admin' && actor.role !== 'manager' &&
+              !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
             if (name === 'registerDayReports' && actor.role !== 'admin') continue
             if (permission === 'ledger') {
               if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { inactivityAction } from '../lib/automation'
+import { isValidPin } from '../shared/pin'
 import { useApp } from '../store/AppStore'
 import { Button, Input } from './ui'
 import { useToast } from './toast'
@@ -49,7 +50,7 @@ export function SessionAutomationGuard({ children }: { children: ReactNode }) {
 
   const unlock = async (event: FormEvent) => {
     event.preventDefault()
-    if (!user || !/^\d{4,12}$/.test(pin)) {
+    if (!user || !isValidPin(pin)) {
       push('Enter your 4–12 digit staff PIN.', 'error')
       return
     }

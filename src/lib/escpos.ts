@@ -458,6 +458,20 @@ export const buildReportLines = (data: ReportData): ReceiptLine[] => {
     for (const employee of details.byEmployee) {
       lines.push({ text: twoCol(`${employee.name} (${employee.count})`, reportAmount(employee.total), cols) })
     }
+    if (details?.sessionBreakdown?.length) {
+      lines.push({ text: divider(cols) })
+      lines.push({ text: 'BY SHIFT / PERSON', bold: true })
+      for (const person of details.sessionBreakdown) {
+        lines.push({ text: `${person.name} (${person.role}) · ${person.orders} orders` })
+        lines.push({ text: twoCol('Cash / card / credit',
+          `${reportAmount(person.cash)} / ${reportAmount(person.card)} / ${reportAmount(person.credit)}`, cols) })
+        lines.push({ text: twoCol('Discounts / voids',
+          `${reportAmount(person.discounts)} / ${person.voids}`, cols) })
+        lines.push({ text: twoCol('Staff items',
+          `${person.staffItemOrders} / ${reportAmount(person.staffItemTotal)}`, cols) })
+        lines.push({ text: twoCol('Expected cash', reportAmount(person.expectedCash), cols) })
+      }
+    }
   }
   if (details?.byCategory.length) {
     lines.push({ text: divider(cols) })

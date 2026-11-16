@@ -4,10 +4,12 @@ import { verifySecret } from '../lib/hash'
 import { clockInAttendance, clockOutAttendance } from '../lib/payroll'
 import { addLog } from './audit'
 import { loginScheduleError } from '../lib/shiftAccess'
+import { isValidPin } from '../shared/pin'
+import { lockoutSeconds, recordLoginFailure } from '../lib/localAuthLockouts'
 import { openShiftForStaff } from '../lib/registerShifts'
 import type { LoginResult } from './types'
 import type { DataProvider } from './providers/DataProvider'
-import { LEGACY_SESSION_KEYS, SESSION_KEY } from './database'
+import { LEGACY_SESSION_KEYS, loadLocalAuthFailures, saveLocalAuthFailures, SESSION_KEY } from './database'
 
 const readStoredUserId = () => {
   try {
@@ -40,7 +42,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
   const { dbRef, ready, loadError, commitDb, provider, applyProviderSnapshot } = dependencies
   const [userId, setStoredUserId] = useState<string | null>(readStoredUserId)
   const userIdRef = useRef<string | null>(userId)
-  const pinFailures = useRef(new Map<string, { count: number; lockedUntil: number }>())
+  const [authFailures] = useState(loadLocalAuthFailures)
   const setSessionUserId = useCallback((next: string | null) => {
     userIdRef.current = next
     setStoredUserId(next)
@@ -70,6 +72,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
       const normalizedEmail = email.trim().toLowerCase()
       if (!normalizedEmail) return { ok: false, error: 'Enter your email address.' }
+      let localAuthentication = provider.mode === 'local'
       if (provider.mode === 'hub') {
         const cachedUser = dbRef.current.users.find((u) =>
           u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
@@ -88,14 +91,38 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
           return { ok: true, user }
         }
         if (!hubResult.offline) return { ok: false, error: hubResult.error }
+        localAuthentication = true
       }
       const current = dbRef.current
       const found = current.users.find((u) =>
         u.role !== 'staff' && u.email?.toLowerCase() === normalizedEmail,
       )
-      if (!found || !(await verifySecret(password, found.password))) {
+      const failureKey = `email:${normalizedEmail}`
+      const remainingSeconds = localAuthentication
+        ? lockoutSeconds(authFailures.get(failureKey))
+        : 0
+      if (remainingSeconds > 0) {
         recordFailure(normalizedEmail, found)
-        return { ok: false, error: 'Incorrect email or password.' }
+        return { ok: false, error: `Too many failed sign-in attempts. Try again in ${remainingSeconds} seconds.` }
+      }
+      if (!found || !(await verifySecret(password, found.password))) {
+        const attempts = localAuthentication
+          ? recordLoginFailure(authFailures, failureKey)
+          : 0
+        if (localAuthentication) {
+          saveLocalAuthFailures(authFailures)
+        }
+        recordFailure(normalizedEmail, found)
+        return {
+          ok: false,
+          error: localAuthentication && attempts >= 5
+            ? 'Too many failed sign-in attempts. Try again in 30 seconds.'
+            : 'Incorrect email or password.',
+        }
+      }
+      if (localAuthentication) {
+        authFailures.delete(failureKey)
+        saveLocalAuthFailures(authFailures)
       }
       if (!found.active) {
         recordFailure(normalizedEmail, found)
@@ -119,7 +146,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       setSessionUserId(found.id)
       return { ok: true, user: found }
     },
-    [dbRef, ready, loadError, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
+    [dbRef, ready, loadError, authFailures, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
   )
 
   const loginPin = useCallback(
@@ -127,6 +154,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       const needle = username.trim().toLowerCase()
       if (!ready) return { ok: false, error: loadError || 'The local database is still loading.' }
       if (!needle) return { ok: false, error: 'Enter your username.' }
+      let localAuthentication = provider.mode === 'local'
       if (provider.mode === 'hub') {
         const cachedUser = dbRef.current.users.find((user) =>
           (user.role === 'staff' || user.role === 'manager') && user.username?.toLowerCase() === needle,
@@ -145,43 +173,40 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
           return { ok: true, user }
         }
         if (!hubResult.offline) return { ok: false, error: hubResult.error }
+        localAuthentication = true
       }
       const current = dbRef.current
       const found = current.users.find(
         (user) => (user.role === 'staff' || user.role === 'manager') &&
           user.username?.toLowerCase() === needle,
       )
-      const failure = pinFailures.current.get(needle)
-      if (failure?.lockedUntil && failure.lockedUntil > Date.now()) {
-        const seconds = Math.ceil((failure.lockedUntil - Date.now()) / 1000)
+      const failureKey = `pin:${needle}`
+      const failure = authFailures.get(failureKey)
+      const remainingSeconds = localAuthentication ? lockoutSeconds(failure) : 0
+      if (remainingSeconds > 0) {
+        const seconds = remainingSeconds
         recordFailure(needle, found)
         return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
       }
       const enteredPin = pin.trim()
-      const validPin = found && /^\d{4,6}$/.test(enteredPin)
+      const validPin = found && isValidPin(enteredPin)
         ? await verifySecret(enteredPin, found.pin)
         : false
       if (!found || !validPin) {
-        const latestFailure = pinFailures.current.get(needle)
-        if (latestFailure?.lockedUntil && latestFailure.lockedUntil > Date.now()) {
-          const seconds = Math.ceil((latestFailure.lockedUntil - Date.now()) / 1000)
-          recordFailure(needle, found)
-          return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
-        }
-        const attempts = (latestFailure?.count ?? 0) + 1
-        pinFailures.current.set(needle, {
-          count: attempts >= 5 ? 0 : attempts,
-          lockedUntil: attempts >= 5 ? Date.now() + 30_000 : 0,
-        })
+        const attempts = localAuthentication ? recordLoginFailure(authFailures, failureKey) : 0
+        if (localAuthentication) saveLocalAuthFailures(authFailures)
         recordFailure(needle, found)
         return {
           ok: false,
-          error: attempts >= 5
+          error: localAuthentication && attempts >= 5
             ? 'Too many failed PIN attempts. Try again in 30 seconds.'
             : 'Username or PIN not recognised.',
         }
       }
-      pinFailures.current.delete(needle)
+      if (localAuthentication) {
+        authFailures.delete(failureKey)
+        saveLocalAuthFailures(authFailures)
+      }
       if (!found.active) {
         recordFailure(needle, found)
         return { ok: false, error: 'This account has been deactivated.' }
@@ -230,7 +255,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
       setSessionUserId(found.id)
       return { ok: true, user: found }
     },
-    [dbRef, ready, loadError, pinFailures, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
+    [dbRef, ready, loadError, authFailures, recordFailure, commitDb, setSessionUserId, provider, applyProviderSnapshot],
   )
 
   const logout = useCallback(() => {

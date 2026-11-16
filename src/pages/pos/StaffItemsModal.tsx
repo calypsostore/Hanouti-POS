@@ -11,6 +11,7 @@ export function StaffItemsModal({
   products,
   orders,
   shiftId,
+  canAutoOpenShift,
   staffId,
   settings,
   policy,
@@ -21,6 +22,7 @@ export function StaffItemsModal({
   products: Product[]
   orders: Order[]
   shiftId?: string
+  canAutoOpenShift: boolean
   staffId: string
   settings: StoreSettings
   policy: StaffConsumptionSettings
@@ -107,7 +109,7 @@ export function StaffItemsModal({
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={close}>Cancel</Button>
-              <Button disabled={!items.length || !shiftId || (method === 'cash' && !cashReady) ||
+              <Button disabled={!items.length || (!shiftId && !canAutoOpenShift) || (method === 'cash' && !cashReady) ||
                 (method === 'card' && !cardConfirmed)} onClick={submit}>
                 Record items
               </Button>
@@ -116,7 +118,7 @@ export function StaffItemsModal({
         </div>
       )}
     >
-      {!shiftId ? (
+      {!shiftId && !canAutoOpenShift ? (
         <p className="rounded-xl bg-brand-amber-soft p-3 text-sm text-brand-navy">Open your shift before recording staff items.</p>
       ) : products.length === 0 ? (
         <p className="text-sm text-muted">The administrator has not allowed any staff items for this shift.</p>

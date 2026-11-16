@@ -8,10 +8,12 @@ import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COF
 import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../lib/shiftAccess'
 import { businessTemplate } from '../lib/businessTemplates'
 import { defaultStationsForStore } from '../lib/stations'
-import { openShiftForStaff } from '../lib/registerShifts'
+import { ensureShiftForActor } from '../lib/registerShifts'
 import { validAutomationSettings } from '../lib/automation'
 import { validShiftAccessSettings } from '../lib/shiftAccess'
+import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 import { addLog, changedAuditFields } from './audit'
+import { withEnsuredShift } from './registerShiftHelpers'
 import type { AppContextValue } from './types'
 import type { CreateStoreInput } from './types'
 import type { SettingsSliceDependencies } from './sliceTypes'
@@ -117,6 +119,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const timestamp = datePart === dateKey(new Date())
       ? new Date().toISOString()
       : date.toISOString()
+    const ensuredShift = ensureShiftForActor(dbRef.current, storeId, actorResult.actor)
     const expense: Expense = {
       id: uid('exp'),
       storeId,
@@ -126,12 +129,12 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       date: timestamp,
       createdAt: new Date().toISOString(),
       createdBy: actorResult.actor.id,
-      shiftId: openShiftForStaff(dbRef.current, storeId, actorResult.actor.id)?.id,
+      shiftId: ensuredShift.shift?.id,
     }
-    commitDb((prev) => addLog({
+    commitDb((prev) => addLog(withEnsuredShift({
       ...prev,
       expenses: [expense, ...prev.expenses],
-    }, actorResult.actor, {
+    }, ensuredShift, actorResult.actor, storeId), actorResult.actor, {
       storeId,
       action: 'created',
       entity: 'expense',
@@ -466,7 +469,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
       return { ok: false, error: 'Store code can use lowercase letters, numbers and hyphens.' }
     }
-    if (!/^\d{4,6}$/.test(data.adminPin)) return { ok: false, error: 'PIN must contain 4–6 digits.' }
+    if (!isValidPin(data.adminPin)) return { ok: false, error: `PIN must contain ${PIN_RANGE_HINT}.` }
     const latest = dbRef.current
     if (latest.stores.some((store) => store.slug.toLowerCase() === slug)) {
       return { ok: false, error: 'That store code is already in use.' }

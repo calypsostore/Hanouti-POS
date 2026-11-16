@@ -1,5 +1,5 @@
 import type { AuditAction, AuditEntity, AuditJsonValue, AuditLog, Database, Role } from '../types'
-import { uid } from '../lib/utils'
+import { uid } from '../lib/utils.ts'
 
 export type AuditActor = { id: string; name: string; role: Role | 'unknown' }
 

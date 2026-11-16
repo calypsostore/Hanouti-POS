@@ -6,15 +6,18 @@ import { uid } from '../lib/utils'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { guestCountError } from '../lib/tableService'
-import { openShiftForStaff } from '../lib/registerShifts'
+import { ensureShiftForActor, openShiftForStaff } from '../lib/registerShifts'
 import { buildUpdatedOpenOrder, openOrderSnapshot } from './openOrderHelpers'
 import { resolveOpenOrderItems } from '../lib/openOrderItems'
 import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
-import { canTransitionStationItem } from '../lib/orderItemLifecycle'
+import { canTransitionStationItem, isNoteOnlyStationUpdate } from '../lib/orderItemLifecycle'
 import { handoverOpenOrder } from '../lib/shiftCash'
+import { completeOpenOrderPayment } from '../lib/openOrderPayment'
+import { withEnsuredShift } from './registerShiftHelpers'
 import { resolveOrderLines, stockOverrideAccepted } from '../shared/orderRules'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
+import type { BuildCreateOrder } from './orders'
 
 const recordedOrderFromOpenOrder = (
   openOrder: OpenOrder,
@@ -52,7 +55,7 @@ const recordedOrderFromOpenOrder = (
 
 export function useOpenOrdersSlice(
   dependencies: StoreSliceDependencies,
-  createOrder: AppContextValue['createOrder'],
+  buildCreateOrder: BuildCreateOrder,
 ) {
   const { dbRef, commitDb, provider, requireActor, requireCapability, verifyAuthorizationPin } = dependencies
 
@@ -60,7 +63,8 @@ export function useOpenOrdersSlice(
     const actorResult = requireActor(storeId)
     if (!actorResult.ok) return actorResult
     const current = dbRef.current
-    const shift = openShiftForStaff(current, storeId, actorResult.actor.id)
+    const ensuredShift = ensureShiftForActor(current, storeId, actorResult.actor)
+    const shift = ensuredShift.shift
     const store = current.stores.find((item) => item.id === storeId)
     if (!store?.settings.features.tables) return { ok: false, error: 'Tables are disabled for this store.' }
     const manualTables = store.settings.tableMode === 'manual'
@@ -139,10 +143,10 @@ export function useOpenOrdersSlice(
       createdAt: now,
       updatedAt: now,
     }
-    commitDb((prev) => addLog({
+    commitDb((prev) => addLog(withEnsuredShift({
       ...prev,
       openOrders: [order, ...prev.openOrders],
-    }, actor, {
+    }, ensuredShift, actor, storeId), actor, {
       storeId,
       action: 'created',
       entity: 'order',
@@ -162,7 +166,8 @@ export function useOpenOrdersSlice(
       if (!actorResult.ok) return actorResult
       const store = current.stores.find((item) => item.id === order.storeId)
       if (!store) return { ok: false, error: 'Store not found.' }
-      const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+      const ensuredShift = ensureShiftForActor(current, order.storeId, actorResult.actor)
+      const shift = ensuredShift.shift
       if (store?.settings.requireShiftForOrders && !shift) {
         return { ok: false, error: 'Open your shift before adding items to table orders.' }
       }
@@ -175,7 +180,7 @@ export function useOpenOrdersSlice(
       const recordedOrder = order.recordedOrderId
         ? current.orders.find((item) => item.id === order.recordedOrderId)
         : undefined
-      commitDb((prev) => addLog({
+      commitDb((prev) => addLog(withEnsuredShift({
         ...prev,
         openOrders: prev.openOrders.map((item) => item.id === order.id ? result.order : item),
         orders: recordedOrder
@@ -183,7 +188,7 @@ export function useOpenOrdersSlice(
               ? recordedOrderFromOpenOrder(result.order, recordedOrder, recordedOrder.number, shift?.id)
               : item)
           : prev.orders,
-      }, actorResult.actor, {
+      }, ensuredShift, actorResult.actor, order.storeId), actorResult.actor, {
         storeId: order.storeId,
         action: 'edited',
         entity: 'order',
@@ -205,7 +210,8 @@ export function useOpenOrdersSlice(
       const actorResult = requireActor(order.storeId)
       if (!actorResult.ok) return actorResult
       const store = current.stores.find((item) => item.id === order.storeId)
-      const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+      const ensuredShift = ensureShiftForActor(current, order.storeId, actorResult.actor)
+      const shift = ensuredShift.shift
       if (store?.settings.requireShiftForOrders && !shift) {
         return { ok: false, error: 'Open your shift before sending table items to stations.' }
       }
@@ -243,7 +249,7 @@ export function useOpenOrdersSlice(
           : item),
         updatedAt: sentAt,
       }
-      commitDb((prev) => addLog({
+      commitDb((prev) => addLog(withEnsuredShift({
         ...prev,
         openOrders: prev.openOrders.map((item) => item.id === order.id ? updated : item),
         orders: order.recordedOrderId
@@ -251,7 +257,7 @@ export function useOpenOrdersSlice(
               ? recordedOrderFromOpenOrder(updated, item, item.number, shift?.id)
               : item)
           : prev.orders,
-      }, actorResult.actor, {
+      }, ensuredShift, actorResult.actor, order.storeId), actorResult.actor, {
         storeId: order.storeId,
         action: 'edited',
         entity: 'order',
@@ -277,7 +283,8 @@ export function useOpenOrdersSlice(
     if (!actorResult.ok) return actorResult
     const item = order.items.find((candidate) => candidate.lineId === lineId)
     if (!item) return { ok: false, error: 'Table item not found.' }
-    if (item.status !== 'draft' && patch.useCurrentPrice !== true) {
+    const sentNoteUpdate = isNoteOnlyStationUpdate(item.status, patch)
+    if (item.status !== 'draft' && !sentNoteUpdate) {
       return { ok: false, error: 'Only draft items can be edited.' }
     }
     if (patch.note !== undefined && (typeof patch.note !== 'string' || patch.note.trim().length > 240)) {
@@ -289,6 +296,7 @@ export function useOpenOrdersSlice(
     if (patch.qty !== undefined && (!Number.isFinite(patch.qty) || patch.qty < 0)) {
       return { ok: false, error: 'Enter a valid item quantity.' }
     }
+    if (sentNoteUpdate && patch.note === item.note) return { ok: true }
     const store = current.stores.find((candidate) => candidate.id === order.storeId)
     if (!store) return { ok: false, error: 'Store not found.' }
     const editedAt = new Date().toISOString()
@@ -307,7 +315,8 @@ export function useOpenOrdersSlice(
         users: current.users,
       })
       if (!resolved.ok) return resolved
-      const currentPrice = patch.useCurrentPrice || store.settings.orderRules.openOrderPricePolicy === 'current'
+      const currentPrice = !sentNoteUpdate &&
+        (patch.useCurrentPrice || store.settings.orderRules.openOrderPricePolicy === 'current')
         ? resolved.items[0].price
         : item.price
       updatedItem = {
@@ -318,6 +327,7 @@ export function useOpenOrdersSlice(
         status: item.status ?? 'draft',
         addedAt: item.addedAt,
         updatedAt: editedAt,
+        noteCorrectionAt: sentNoteUpdate ? editedAt : item.noteCorrectionAt,
         addedById: item.addedById,
         addedByName: item.addedByName,
       }
@@ -327,15 +337,28 @@ export function useOpenOrdersSlice(
     )
     const totals = computeTotals(items.filter((candidate) => candidate.status !== 'void'), store.settings, order.discount)
     const updated = { ...order, items, ...totals, updatedAt: editedAt }
-    commitDb((prev) => ({
-      ...prev,
-      openOrders: prev.openOrders.map((candidate) => candidate.id === orderId ? updated : candidate),
-      orders: order.recordedOrderId
-        ? prev.orders.map((recorded) => recorded.id === order.recordedOrderId
-            ? recordedOrderFromOpenOrder(updated, recorded, recorded.number)
-            : recorded)
-        : prev.orders,
-    }))
+    commitDb((prev) => {
+      const next = {
+        ...prev,
+        openOrders: prev.openOrders.map((candidate) => candidate.id === orderId ? updated : candidate),
+        orders: order.recordedOrderId
+          ? prev.orders.map((recorded) => recorded.id === order.recordedOrderId
+              ? recordedOrderFromOpenOrder(updated, recorded, recorded.number)
+              : recorded)
+          : prev.orders,
+      }
+      return sentNoteUpdate
+        ? addLog(next, actorResult.actor, {
+            storeId: order.storeId,
+            action: 'edited',
+            entity: 'order',
+            entityId: order.id,
+            summary: `Updated kitchen note for ${item.name}`,
+            before: { lineId, note: item.note ?? '' },
+            after: { lineId, note: updatedItem?.note ?? '', noteCorrectionAt: editedAt },
+          })
+        : next
+    })
     return { ok: true }
   }, [commitDb, dbRef, requireActor])
 
@@ -434,13 +457,56 @@ export function useOpenOrdersSlice(
       const existing = current.orders.find((item) =>
         item.storeId === actor.storeId && item.clientOrderId === `pay:${orderId}`,
       )
-      if (existing) return { ok: true, order: existing, alreadyPaid: true }
+      const finishAlreadyPaid = (paidOrder: Order) => {
+        const openOrder = dbRef.current.openOrders.find((item) =>
+          item.id === orderId && item.storeId === actor.storeId,
+        )
+        if (openOrder) {
+          const paidAt = new Date().toISOString()
+          const tableHistory = paidOrder.tableHistory?.some((event) => event.type === 'closed')
+            ? paidOrder.tableHistory
+            : [
+                ...(openOrder.tableHistory ?? []),
+                {
+                  id: uid('evt'),
+                  type: 'payment' as const,
+                  actorId: actor.id,
+                  actorName: actor.name,
+                  at: paidAt,
+                  details: `${paidOrder.paymentMethod} · ${paidOrder.total.toFixed(3)} DT`,
+                },
+                {
+                  id: uid('evt'),
+                  type: 'closed' as const,
+                  actorId: actor.id,
+                  actorName: actor.name,
+                  at: paidAt,
+                },
+              ]
+          commitDb((prev) => {
+            const stillOpen = prev.openOrders.some((item) => item.id === openOrder.id)
+            if (!stillOpen) return prev
+            const completed = completeOpenOrderPayment(prev, openOrder, paidOrder, tableHistory)
+            return addLog(completed.database, actor, {
+              storeId: openOrder.storeId,
+              action: 'edited',
+              entity: 'order',
+              entityId: openOrder.id,
+              summary: `Closed paid table ${openOrder.tableName}`,
+              before: openOrderSnapshot(openOrder),
+              after: { paidOrderId: paidOrder.id, status: 'completed', total: paidOrder.total },
+            })
+          })
+        }
+        return { ok: true as const, order: paidOrder, alreadyPaid: true }
+      }
+      if (existing) return finishAlreadyPaid(existing)
       const order = current.openOrders.find((item) => item.id === orderId)
       if (!order) return { ok: false, error: 'Open table order not found.' }
       if (!order.items.some((item) => item.status !== 'void')) {
         return { ok: false, error: 'Add items before paying this table order.' }
       }
-      const paid = createOrder({
+      const built = buildCreateOrder({
         items: order.items.filter((item) => item.status !== 'void'),
         channel: 'dine-in',
         tableId: order.tableId,
@@ -452,13 +518,9 @@ export function useOpenOrdersSlice(
         note: order.note,
         clientOrderId: `pay:${order.id}`,
         excludeOpenOrderId: order.id,
-      })
-      if (!paid.ok) return paid
-      if (paid.order.clientOrderId === `pay:${order.id}` &&
-        paid.order.id !== order.recordedOrderId &&
-        current.orders.some((item) => item.id === paid.order.id)) {
-        return { ok: true, order: paid.order, alreadyPaid: true }
-      }
+      }, current)
+      if (!built.ok) return built
+      if (!built.updateDb) return finishAlreadyPaid(built.order)
       const actorAfter = requireActor(order.storeId)
       if (!actorAfter.ok) return actorAfter
       const paidAt = new Date().toISOString()
@@ -470,7 +532,7 @@ export function useOpenOrdersSlice(
           actorId: actorAfter.actor.id,
           actorName: actorAfter.actor.name,
           at: paidAt,
-          details: `${paymentMethod} · ${paid.order.total.toFixed(3)} DT`,
+          details: `${paymentMethod} · ${built.order.total.toFixed(3)} DT`,
         },
         {
           id: uid('evt'),
@@ -480,32 +542,27 @@ export function useOpenOrdersSlice(
           at: paidAt,
         },
       ]
-      commitDb((prev) => addLog({
-        ...prev,
-        openOrders: prev.openOrders.filter((item) => item.id !== order.id),
-        orders: [
-          ...prev.orders
-            .filter((item) => item.id !== order.recordedOrderId && item.id !== paid.order.id)
-            .map((item) => item),
-          {
-            ...paid.order,
-            ownerStaffId: order.staffId,
-            ownerStaffName: order.staffName,
-            tableHistory: paymentHistory,
-          },
-        ],
-      }, actorAfter.actor, {
-        storeId: order.storeId,
-        action: 'edited',
-        entity: 'order',
-        entityId: order.id,
-        summary: `Paid ${order.tableName} order #${paid.order.provisionalNumber ?? paid.order.number}`,
-        before: openOrderSnapshot(order),
-        after: { paidOrderId: paid.order.id, orderNumber: paid.order.number, total: paid.order.total },
-      }))
-      return { ok: true, order: paid.order }
+      const updateDb = built.updateDb
+      let savedOrder: Order | undefined
+      commitDb((prev) => {
+        const created = updateDb(prev)
+        const completed = completeOpenOrderPayment(created, order, built.order, paymentHistory)
+        savedOrder = completed.order
+        return addLog(completed.database, actorAfter.actor, {
+          storeId: order.storeId,
+          action: 'edited',
+          entity: 'order',
+          entityId: order.id,
+          summary: `Paid ${order.tableName} order #${completed.order.provisionalNumber ?? completed.order.number}`,
+          before: openOrderSnapshot(order),
+          after: { paidOrderId: completed.order.id, orderNumber: completed.order.number, total: completed.order.total },
+        })
+      })
+      return savedOrder
+        ? { ok: true, order: savedOrder }
+        : { ok: false, error: 'The paid table order could not be saved.' }
     },
-    [commitDb, createOrder, dbRef, requireActor],
+    [buildCreateOrder, commitDb, dbRef, requireActor],
   )
 
   const handoverTables = useCallback<AppContextValue['handoverTables']>((storeId, orderIds, targetStaffId) => {
@@ -571,7 +628,8 @@ export function useOpenOrdersSlice(
     const actorResult = requireActor(first.storeId)
     if (!actorResult.ok) return actorResult
     const actor = actorResult.actor
-    if (!openShiftForStaff(current, first.storeId, actor.id)) {
+    const ensuredShift = ensureShiftForActor(current, first.storeId, actor)
+    if (actor.role === 'staff' && !ensuredShift.shift) {
       return { ok: false, error: 'Open your shift before taking over tables.' }
     }
     if (!can(actor, 'takeOverTables')) {
@@ -595,10 +653,10 @@ export function useOpenOrdersSlice(
         at,
       ))
     }
-    commitDb((prev) => addLog({
+    commitDb((prev) => addLog(withEnsuredShift({
       ...prev,
       openOrders: prev.openOrders.map((order) => updates.get(order.id) ?? order),
-    }, actor, {
+    }, ensuredShift, actor, first.storeId), actor, {
       storeId: first.storeId,
       action: 'edited',
       entity: 'table',
@@ -626,7 +684,8 @@ export function useOpenOrdersSlice(
     }
     const guestsError = guestCountError(order.guests, store.settings.guestRequirement)
     if (guestsError) return { ok: false, error: guestsError }
-    const shift = openShiftForStaff(current, order.storeId, actorResult.actor.id)
+    const ensuredShift = ensureShiftForActor(current, order.storeId, actorResult.actor)
+    const shift = ensuredShift.shift
     if (store.settings.requireShiftForOrders && !shift) {
       return { ok: false, error: 'Open your shift before recording table orders.' }
     }
@@ -658,7 +717,7 @@ export function useOpenOrdersSlice(
     }
     const number = previous?.number ?? order.number
     const recorded = recordedOrderFromOpenOrder(order, previous, number, shift?.id ?? order.shiftId)
-    commitDb((prev) => addLog({
+    commitDb((prev) => addLog(withEnsuredShift({
       ...prev,
       openOrders: prev.openOrders.map((item) =>
         item.id === order.id ? { ...item, recordedOrderId: recorded.id } : item,
@@ -666,7 +725,7 @@ export function useOpenOrdersSlice(
       orders: previous
         ? prev.orders.map((item) => item.id === previous.id ? recorded : item)
         : [recorded, ...prev.orders],
-    }, actorResult.actor, {
+    }, ensuredShift, actorResult.actor, order.storeId), actorResult.actor, {
       storeId: order.storeId,
       action: previous ? 'edited' : 'created',
       entity: 'order',

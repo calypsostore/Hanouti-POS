@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildStationTickets, buildStationTicketLines } from '../src/lib/tickets.ts'
+import { buildStationTickets, buildStationTicketLines, unassignedStationItems } from '../src/lib/tickets.ts'
 
 const stations = [
   { id: 'kitchen', storeId: 'store', name: 'Kitchen', icon: 'Utensils', color: 'rose', screen: true, active: true, sort: 0 },
@@ -75,4 +75,14 @@ test('uses the item send time and supports a marked reprint', () => {
 
   assert.equal(ticket.time, '2026-11-15T10:42:00.000Z')
   assert.equal(buildStationTicketLines(ticket)[0].text, 'REPRINT')
+})
+
+test('identifies draft items that were not sent so POS can name them in its warning', () => {
+  const unsent = unassignedStationItems([
+    { lineId: 'sent', productId: 'coffee', name: 'Coffee', price: 2, qty: 1, stationId: 'bar', status: 'sent' },
+    { lineId: 'unassigned', productId: 'water', name: 'Water', price: 1, qty: 1, status: 'draft' },
+    { lineId: 'void', productId: 'cake', name: 'Cake', price: 3, qty: 1, status: 'void' },
+  ])
+
+  assert.deepEqual(unsent.map((item) => item.name), ['Water'])
 })

@@ -14,12 +14,14 @@ handover, cash-difference tracking, owner-only store-day Z closeout with a
 daily staff-working-float input and full-store cashier attribution, live
 branding previews and palette-driven primary brand colors, standalone app/hub
 detection, and mobile-safe dashboard, product, purchase, expense, and report
-layouts**. Staff
-close their own shifts into frozen X snapshots; the owner closes one immutable
-daily Z after all shifts end. The owner enters that day's variable staff float
-and counted cash; the frozen Z includes every cashier's sales, table orders,
-and tab settlements and identifies the administrator closing the day. Staff
-analytics and cash differences are implemented in the client store.
+layouts, privileged-user auto-shifts, atomic/idempotent table payment, and
+kitchen-ticket feedback and note corrections**. Staff close their own shifts
+into frozen X snapshots; admin/manager auto-shifts are closed automatically
+before the owner closes one immutable daily Z. The owner enters that day's
+variable staff float and counted cash; the frozen Z includes every register
+session's sales, table orders, tab settlements and cash movements and identifies
+the administrator closing the day. Staff analytics and cash differences are
+implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
@@ -38,6 +40,10 @@ document.
 - Blocked schedule logins and shift openings are recorded for the owner in
   Shift alerts. Hub schedule checks currently use the hub machine's local time;
   store-specific time zones are not configured.
+- Admins and managers are not subject to shift or schedule gates. POS actions
+  lazily open and reuse their zero-opening-cash session; staff shift rules
+  remain unchanged. Z close auto-closes these auto-opened privileged sessions
+  and still requires real staff sessions to be closed first.
 - Still unverified in a live browser: the complete pre-shift / open-shift route
   transition, owner alert rendering, and schedule controls on phone/tablet
   layouts.
@@ -117,10 +123,10 @@ document.
   reset behavior, and live multi-phone notification verification are absent.
   Browser flows remain **UNVERIFIED**.
 
-- `npm run test:all` passes 43 tests, including hub authorization, snapshot
-  privacy, backup/restore, pairing scope, change-set replay, station routing,
-  ticket formats, ESC/POS width and virtual TCP output. `npm run hub:sim` starts
-  the real hub with the loopback virtual printer.
+- `npm run test:all` passes 92 tests, including hub authorization, first-run
+  setup token enforcement, storage compaction/recovery, device-token migration,
+  local lockouts, backup/restore, pairing scope, station routing and printing.
+  `npm run hub:sim` starts the real hub with the loopback virtual printer.
 - Hub review findings were fixed: schedules and register sessions now enforce
   actor permissions/ownership and immutability; permission-filtered snapshots
   retain the authenticated store document needed for app normalization; public
@@ -128,7 +134,8 @@ document.
   exercises these boundaries.
 - Authenticated WebSocket change messages trigger immediate authoritative
   snapshot refresh; the 2.5-second poll remains a missed-message/reachability
-  fallback. This is still full-snapshot sync, not an incremental change log.
+  fallback. Client refresh still uses full snapshots; the hub's bounded change
+  log is used for conflict checks and requests a snapshot resync for stale bases.
 - Required operational docs are present. See `docs/PROGRESS.md` for the
   PASS/UNVERIFIED table for all ten requested scenarios and deployment steps.
 - Multi-context Playwright scenarios and the 360/768/1280 px accessibility,
@@ -160,7 +167,7 @@ document.
 - **Review/settings:** findings and risk/effort are listed in
   `docs/AUTOMATION.md`; store options are grouped on one Automation settings
   page. Safe simple changes were implemented.
-- `npm run build`, `npm run lint`, and all 43 tests pass. Required multi-context
+- `npm run build`, `npm run lint`, and all 92 tests pass. Required multi-context
   Playwright scenarios remain unverified; physical devices require testing.
 
 ### M4 client sync and offline — implemented; phone-flow validation pending
@@ -188,7 +195,7 @@ document.
   are implemented. Service-worker/PWA behavior requires a secure context:
   plain HTTP on a LAN IP provides online POS only; use the hub HTTPS option for
   app-shell offline loading and installation.
-- Build and lint pass and all 43 Node tests pass. The real hub and virtual
+- Build and lint pass and all 92 Node tests pass. The real hub and virtual
   printer are covered by integration tests. Three-phone Playwright coverage of
   table ownership and live kitchen/bar tickets remains unverified; physical
   printer output needs hardware.
@@ -196,9 +203,14 @@ document.
 ### M3 local shop hub — implemented
 
 - The Node 22+ hub serves the built app, status/QR page, REST and WebSocket APIs,
-  paired station boards, fsynced per-store JSONL records, 14 retained backups,
-  restore/import, authentication, rate limiting, private-LAN binding and
-  configurable local HTTPS. It has no third-party runtime dependencies.
+  paired station boards, cached reads and fsynced change-only JSONL records
+  with atomic periodic snapshots, 14 retained backups, restore/import,
+  authentication, rate limiting, private-LAN binding and configurable local
+  HTTPS. Legacy full-state records and torn final lines recover safely.
+- Hub admin sign-in is password-only; staff/manager username sign-in accepts
+  4–12 digit PINs. Device tokens use SHA-256 with legacy PBKDF2 upgrade. Empty
+  hubs require a one-time console setup token for owner creation or backup
+  import; no frontend bootstrap form currently calls those endpoints.
 - Order item prices and totals are rebuilt from store catalog/settings;
   permission-gated ledger writes are append-only and credit charges are checked
   against their order. Payment tender reconciliation, customer credit limits
@@ -544,7 +556,7 @@ wage or timekeeping system.
 
 | Area | State before this phase | Now |
 | --- | --- | --- |
-| Auth | Browser-local demo auth | Hub PBKDF2 auth and PIN lockout plus local checks; production identity/session management still needed |
+| Auth | Browser-local demo auth | Hub async PBKDF2 login, role-scoped PINs, setup token and persistent local demo lockouts; production identity/session management still needed |
 | POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets and persistent table orders |
 | Orders | History, void (admin only) | + manager-PIN void authorization, reprint, `voidedByName` audit |
 | Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
@@ -617,8 +629,9 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   opener, closer, counted cash, difference, close note, sequential Z number,
   frozen financial snapshot, and frozen report details.
 - Multiple staff can keep independent open sessions. Orders carry `paidById`;
-  table payments, tab settlements, refunds, and cash expenses are attributed to
-  the acting staff member's open session and time window. Opening float and
+  table payments, tab settlements, refunds, expenses, supplier payments and
+  ledger payments are attributed to the acting user's open session and time
+  window. Opening float and
   counted cash (including float) are part of expected-cash calculation.
 - Closing never requires closing tables: owned tables are handed to an open
   colleague or the existing `Unassigned (handover)` pool. Incoming staff can
@@ -636,12 +649,14 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   available on each matching profile.
 - **X report**: a read-only interim snapshot; closing a staff shift saves its
   final X snapshot and ends only that shift. **Store-day Z**: only the owner
-  can close it, and only after every shift is closed. It aggregates all staff
-  shifts, freezes the daily totals once, rejects duplicate closes, and can be
-  reprinted from its immutable day report record.
-- Shift X uses the staff session window; day Z uses the local calendar-day
-  window and includes orders and items from every staff shift. Cash drawer expectation
-  includes cash received, cash tab settlements, expenses and cash refunds;
+  can close it, and only after every real staff session is closed. Open admin
+  and manager auto-shifts are closed with expected cash and a saved X snapshot
+  as part of Z close. Z aggregates every session and role, freezes the daily
+  totals once, rejects duplicate closes, and can be reprinted from its
+  immutable day report record.
+- Shift X uses the session window; day Z uses the local calendar-day
+  window and includes orders and items from every register session. Cash drawer expectation
+  includes cash received, cash tab settlements, expenses, supplier payments and cash refunds;
   card sales and card tab settlements are excluded from physical cash. Sales
   exclude orders voided by the report cutoff. Refund totals include only
   tracked cash refunds and store-credit adjustments; card refund processing
@@ -719,11 +734,13 @@ records locally on the hub machine.
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 
 Store-scoped access, granular permissions, PBKDF2 credential hashing,
-username-based staff PIN login, and a 30-second lock after five failed
-username attempts are implemented in the demo. The browser-local activity log
-records relevant actions but is not tamper-resistant. Phase 2 must add
-server-side hashing, authoritative rate limiting, session timeout, and a
-trusted server-side audit log.
+username-based staff PIN login, 4–12 digit PIN validation, and 30-second locks
+after five failed local PIN or email/password attempts are implemented in the
+demo. Local lockouts persist across reloads but remain browser-controlled. Hub
+login/pairing lockouts are separately rate-limited and persisted where
+applicable. The browser-local activity log is not tamper-resistant. Phase 2
+must add production identity/session management and a trusted server-side audit
+log.
 
 ### Phase 7 — Offline-first ✅ hub mode implemented; cloud sync unavailable
 
@@ -796,13 +813,18 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
 - Orders reprint shows `*** REPRINT ***`; staff void demands a manager PIN;
   wrong PIN rejected; correct PIN voids and records `voidedByName` (visible in
   the order drawer); tab charge reversal lands in the ledger.
+- Admin and manager auto-shifts, one-commit table payment, station-ticket
+  failure/reprint feedback, sent-item note correction tickets, and inline
+  payment errors are implemented; end-to-end browser verification remains
+  pending.
 - Settings: the legacy Receipt printer card keeps WebSerial connect/disconnect
   for compatibility; Devices & printing manages new printer records, routes,
   queue, and print policies.
 - POS: checkout receipt modal follows the receipt policy; table station tickets
-  use queued station routes when configured and retain a preview path when no
-  route is configured. Browser/hardware dispatch is not equivalent to verified
-  physical output.
+  report successful printing, open a preview when not automatically printed,
+  name items with no station, and preserve a Reprint path on failure. Sent-item
+  note corrections generate ADDITION tickets and are audited. Browser/hardware
+  dispatch is not equivalent to verified physical output.
 - `npm run build` passes clean (tsc + vite).
 - `npm run test:register-items` covers variant/modifier aggregation, weight
   precision, recorded orders, void timing, two-staff scoping, drawer-total
@@ -812,8 +834,9 @@ Executed in-browser (Chrome, dev build) against the seeded demo data:
   PDF-reader rendering and physical ESC/POS output. The pure tests cover
   aggregation, long-name wrapping and 58/80 mm line widths.
 - Latest source validation: `npm run build` and `npm run lint` both exit
-  successfully. Vite reports the existing large-chunk warning; Oxlint reports
-  warnings, including hook-dependency and purity warnings. Real browser print,
+  successfully, and all 100 Node tests pass. Vite reports the existing
+  large-chunk warning; Oxlint reports warnings, including hook-dependency and
+  purity warnings. Real browser print,
   PDF-reader rendering and physical ESC/POS output still require manual checks.
 - M2 browser smoke loaded Settings → Devices & printing. Printer add/edit,
   route selection, queue actions and print dialog dispatch remain unverified
@@ -832,6 +855,19 @@ Phase 1 build/type validation also passes. Manual browser scenarios still to run
 - Sell a variant and verify its price/cost/stock; sell 0.125 kg and verify the
   three-decimal quantity, total and stock validation; void each order and verify
   tracked stock is restored.
+- In local and hub modes, use admin and manager POS with no shift: make two
+  sales, verify the same zero-cash auto-shift is reused, and verify Z includes
+  both privileged users and all staff. Confirm Z auto-closes their auto-shifts
+  but still blocks when a staff shift remains open.
+- Pay a 5 DT table total with 10 DT cash, retry payment, and verify one paid
+  order, one stock deduction, no open table, and the expected 5 DT change.
+- Press Done with an unassigned item and verify the warning names it; test
+  manual preview, automatic print success/failure and Reprint. Update a sent,
+  preparing, and ready item's note and verify an ADDITION ticket and audit;
+  verify quantity and price edits remain rejected.
+- Force a payment failure and verify the error toast lasts at least six seconds,
+  the modal remains open with the exact error, and the sale can be retried
+  without losing its contents.
 
 Real thermal printer over WebSerial remains unverified without shop hardware.
 Automated Node coverage includes app domain rules and hub APIs; the app UI and

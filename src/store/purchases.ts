@@ -4,7 +4,8 @@ import { round } from '../lib/pricing-utils'
 import { uid } from '../lib/utils'
 import { addLog } from './audit'
 import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
-import { openShiftForStaff } from '../lib/registerShifts'
+import { ensureShiftForActor } from '../lib/registerShifts'
+import { withEnsuredShift } from './registerShiftHelpers'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 import {
@@ -242,6 +243,7 @@ export function usePurchasesSlice(dependencies: StoreSliceDependencies) {
     if (!['cash', 'card', 'bank_transfer', 'other'].includes(data.method)) {
       return { ok: false, error: 'Choose a valid payment method.' }
     }
+    const ensuredShift = ensureShiftForActor(dbRef.current, purchase.storeId, actorResult.actor)
     const payment = {
       id: uid('ppay'),
       storeId: purchase.storeId,
@@ -252,14 +254,14 @@ export function usePurchasesSlice(dependencies: StoreSliceDependencies) {
       userId: actorResult.actor.id,
       userName: actorResult.actor.name,
       createdAt: new Date().toISOString(),
-      shiftId: openShiftForStaff(dbRef.current, purchase.storeId, actorResult.actor.id)?.id,
+      shiftId: ensuredShift.shift?.id,
     }
     const paidAmount = round(purchase.paidAmount + payment.amount)
-    commitDb((prev) => addLog({
+    commitDb((prev) => addLog(withEnsuredShift({
       ...prev,
       purchases: prev.purchases.map((item) => item.id === purchaseId ? { ...item, paidAmount } : item),
       purchasePayments: [...prev.purchasePayments, payment],
-    }, actorResult.actor, {
+    }, ensuredShift, actorResult.actor, purchase.storeId), actorResult.actor, {
       storeId: purchase.storeId,
       action: 'debt_payment',
       entity: 'purchase',

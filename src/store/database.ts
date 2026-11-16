@@ -2,7 +2,8 @@ import type {
   Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, CashDifference,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
-  ProductVariant, Purchase, PurchasePayment, RegisterDayReport, RegisterItemRow, RegisterReportDetails, RegisterSession,
+  ProductVariant, Purchase, PurchasePayment, RegisterDayReport, RegisterItemRow, RegisterReportDetails,
+  RegisterSession, RegisterSessionBreakdown, Role,
   SaleUnit, Shift, Station, StationDevice, StockMovement, Printer, PrintJob, PrintRoute,
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
@@ -16,6 +17,7 @@ import { isAccentPalette } from '../lib/theme'
 import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 import { normalizeShiftAccessSettings } from '../lib/shiftAccess'
+import { parseLoginFailures, serializeLoginFailures, type LoginFailureState } from '../lib/localAuthLockouts'
 
 export const DB_KEY = '7anouti.db.v38'
 const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
@@ -25,6 +27,24 @@ const LEGACY_DB_KEYS = [
 ]
 export const SESSION_KEY = '7anouti.session.v2'
 export const LEGACY_SESSION_KEYS = ['cafepos.session.v2']
+export const LOCAL_AUTH_FAILURES_KEY = '7anouti.auth-failures.v1'
+
+export const loadLocalAuthFailures = (): Map<string, LoginFailureState> => {
+  try {
+    return parseLoginFailures(localStorage.getItem(LOCAL_AUTH_FAILURES_KEY))
+  } catch (error) {
+    console.warn('7anouti: could not read local sign-in lockout state.', error)
+    return new Map()
+  }
+}
+
+export const saveLocalAuthFailures = (failures: Map<string, LoginFailureState>): void => {
+  try {
+    localStorage.setItem(LOCAL_AUTH_FAILURES_KEY, serializeLoginFailures(failures))
+  } catch (error) {
+    console.warn('7anouti: could not save local sign-in lockout state.', error)
+  }
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -110,6 +130,35 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
           : [],
       )
     : null
+  const sessionBreakdown = Array.isArray(value.sessionBreakdown)
+    ? value.sessionBreakdown.flatMap((row): RegisterSessionBreakdown[] =>
+        isRecord(row) &&
+        typeof row.sessionId === 'string' && typeof row.name === 'string' &&
+        (row.role === 'super' || row.role === 'admin' || row.role === 'manager' ||
+          row.role === 'staff' || row.role === 'unknown') &&
+        Number.isSafeInteger(row.orders) && Number(row.orders) >= 0 &&
+        isAmount(row.cash) && isAmount(row.card) && isAmount(row.credit) &&
+        isAmount(row.discounts) &&
+        Number.isSafeInteger(row.voids) && Number(row.voids) >= 0 &&
+        Number.isSafeInteger(row.staffItemOrders) && Number(row.staffItemOrders) >= 0 &&
+        isAmount(row.staffItemTotal) && isAmount(row.expectedCash)
+          ? [{
+              sessionId: row.sessionId.slice(0, 100),
+              name: row.name.slice(0, 100),
+              role: row.role as Role | 'unknown',
+              orders: Number(row.orders),
+              cash: row.cash,
+              card: row.card,
+              credit: row.credit,
+              discounts: row.discounts,
+              voids: Number(row.voids),
+              staffItemOrders: Number(row.staffItemOrders),
+              staffItemTotal: row.staffItemTotal,
+              expectedCash: row.expectedCash,
+            }]
+          : [],
+      ).slice(0, 1000)
+    : undefined
   const byCategory = Array.isArray(value.byCategory)
     ? value.byCategory.flatMap((row) =>
         isRecord(row) && typeof row.name === 'string' &&
@@ -257,6 +306,7 @@ const normalizeReportDetails = (value: unknown): RegisterReportDetails | undefin
     supplierCashPayments: value.supplierCashPayments,
     taxBreakdown,
     byEmployee,
+    sessionBreakdown,
     byCategory,
     itemsSold,
     recordedItems,
@@ -711,6 +761,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       sentAt: typeof item.sentAt === 'string' && Number.isFinite(Date.parse(item.sentAt))
         ? item.sentAt
         : undefined,
+      noteCorrectionAt: typeof item.noteCorrectionAt === 'string' && Number.isFinite(Date.parse(item.noteCorrectionAt))
+        ? item.noteCorrectionAt
+        : undefined,
       voidReason: typeof item.voidReason === 'string' ? item.voidReason.slice(0, 240) : undefined,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note : '',
@@ -968,6 +1021,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
       updatedAt: typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
         ? item.updatedAt
         : undefined,
+      noteCorrectionAt: typeof item.noteCorrectionAt === 'string' && Number.isFinite(Date.parse(item.noteCorrectionAt))
+        ? item.noteCorrectionAt
+        : undefined,
       modifiers: Array.isArray(item.modifiers) ? item.modifiers.filter(isOrderModifier) : [],
       note: typeof item.note === 'string' ? item.note.slice(0, 240) : '',
       variantId: typeof item.variantId === 'string' ? item.variantId : undefined,
@@ -1078,6 +1134,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     isFiniteNumber(item.openingCash),
   ).map((session) => ({
     ...session,
+    autoOpened: session.autoOpened === true ? true : undefined,
     closeType: session.closeType === 'shift' ? 'shift' as const : undefined,
     snapshot: isRecord(session.snapshot) &&
       [16, 18].includes(Object.values(session.snapshot).length) &&

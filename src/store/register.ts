@@ -3,10 +3,11 @@ import type { CashDifferenceResolution, RegisterDayReport, RegisterSession } fro
 import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
-import { computeRegisterTotals, registerReportDetails } from '../lib/reports'
+import { autoCloseRegisterSessionForZ, computeRegisterTotals, registerReportDetails } from '../lib/reports'
 import { can } from '../lib/permissions'
-import { nextShiftNumber, openShiftForStaff } from '../lib/registerShifts'
+import { ensureShiftForActor, nextShiftNumber, openShiftForStaff } from '../lib/registerShifts'
 import { addLog } from './audit'
+import { withEnsuredShift } from './registerShiftHelpers'
 import { isCashDifferenceWithinTolerance, shiftCashDifference } from '../lib/shiftCash'
 import { cashDifferenceDeduction } from '../lib/payroll'
 import { clearManualAvailability } from './availabilityMaintenance'
@@ -204,8 +205,19 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     if (current.registerDayReports.some((report) => report.storeId === storeId && report.date === day)) {
       return { ok: false, error: 'The store-day Z report has already been closed.' }
     }
-    if (current.registerSessions.some((session) => session.storeId === storeId && session.status === 'open')) {
-      return { ok: false, error: 'Close or hand over every staff shift before closing the day.' }
+    const openSessions = current.registerSessions.filter((session) =>
+      session.storeId === storeId && session.status === 'open',
+    )
+    const autoCloseable = openSessions.filter((session) => {
+      if (!session.autoOpened) return false
+      const ownerId = session.staffId ?? session.openedById
+      return current.users.some((user) =>
+        user.id === ownerId && user.storeId === storeId &&
+        (user.role === 'admin' || user.role === 'manager'),
+      )
+    })
+    if (autoCloseable.length !== openSessions.length) {
+      return { ok: false, error: 'Close or hand over every register shift before closing the day.' }
     }
     const daySessions = current.registerSessions.filter((session) =>
       session.storeId === storeId && dateKey(session.openedAt) === day,
@@ -215,6 +227,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     const closedAt = new Date().toISOString()
     const startISO = new Date(`${day}T00:00:00`).toISOString()
     const openingCash = round(staffFloat)
+    const autoClosedSessions = autoCloseable.map((session) =>
+      autoCloseRegisterSessionForZ(current, session, closedAt, actor),
+    )
+    const autoClosedById = new Map(autoClosedSessions.map((session) => [session.id, session]))
+    const reportSource = {
+      ...current,
+      registerSessions: current.registerSessions.map((session) => autoClosedById.get(session.id) ?? session),
+    }
     const daySession: RegisterSession = {
       id: '',
       storeId,
@@ -225,8 +245,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       openingCash,
       openingFloat: openingCash,
     }
-    const snapshot = computeRegisterTotals(current, storeId, startISO, closedAt, openingCash)
-    const reportDetails = registerReportDetails(current, daySession, closedAt)
+    const snapshot = computeRegisterTotals(reportSource, storeId, startISO, closedAt, openingCash)
+    const reportDetails = registerReportDetails(reportSource, daySession, closedAt)
     const counted = round(countedCash)
     const store = current.stores.find((candidate) => candidate.id === storeId)
     const difference = store?.settings.posMode === 'quick'
@@ -253,10 +273,29 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       snapshot,
       reportDetails,
     }
-    commitDb((prev) => addLog({
-      ...prev,
-      registerDayReports: [...prev.registerDayReports, report],
-    }, actor, {
+    commitDb((prev) => {
+      let next = {
+        ...prev,
+        registerSessions: prev.registerSessions.map((session) =>
+          autoClosedById.get(session.id) ?? session,
+        ),
+        registerDayReports: [...prev.registerDayReports, report],
+      }
+      for (const session of autoClosedSessions) {
+        next = addLog(next, actor, {
+          storeId,
+          action: 'register_closed',
+          entity: 'register',
+          entityId: session.id,
+          summary: `Auto-closed shift ${session.shiftNumber ?? ''} for store-day Z`,
+          after: {
+            countedCash: session.countedCash ?? 0,
+            expectedCash: session.snapshot?.expectedCash ?? 0,
+            difference: session.difference ?? 0,
+          },
+        })
+      }
+      return addLog(next, actor, {
       storeId,
       action: 'register_closed',
       entity: 'register',
@@ -269,7 +308,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         difference,
         expectedCash: snapshot.expectedCash,
       },
-    }))
+      })
+    })
     return { ok: true }
   }, [commitDb, dbRef, requireActor])
 
@@ -410,8 +450,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         return { ok: false, error: `Amount exceeds the outstanding balance (${balance.toFixed(3)} DT).` }
       }
       const remainingBalance = round(balance - amount)
-      const shift = openShiftForStaff(current, customer.storeId, actor.id)
-      commitDb((prev) => addLog({
+      const ensuredShift = ensureShiftForActor(current, customer.storeId, actor)
+      commitDb((prev) => addLog(withEnsuredShift({
         ...prev,
         ledger: [
           {
@@ -423,12 +463,12 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
             method,
             note: note || 'Tab settlement',
             staffName: actor.name,
-            shiftId: shift?.id,
+            shiftId: ensuredShift.shift?.id,
             createdAt: new Date().toISOString(),
           },
           ...prev.ledger,
         ],
-      }, actor, {
+      }, ensuredShift, actor, customer.storeId), actor, {
         storeId: customer.storeId,
         action: 'debt_payment',
         entity: 'customer',

@@ -7,7 +7,7 @@ import { balanceFor } from '../lib/selectors'
 import { addLog } from './audit'
 import { can } from '../lib/permissions'
 import { dineInTableError, guestCountError } from '../lib/tableService'
-import { openShiftForStaff } from '../lib/registerShifts'
+import { ensureShiftForActor } from '../lib/registerShifts'
 import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
 import { roundQuantity } from '../lib/inventory'
 import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
@@ -18,15 +18,23 @@ import {
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
+export type BuiltCreateOrderResult =
+  | { ok: true; order: Order; updateDb?: (prev: Database) => Database }
+  | { ok: false; error: string }
+
+export type BuildCreateOrder = (
+  input: Parameters<AppContextValue['createOrder']>[0],
+  current: Database,
+) => BuiltCreateOrderResult
+
 export function useOrdersSlice(dependencies: StoreSliceDependencies) {
   const { dbRef, commitDb, provider, requireActor, verifyAuthorizationPin } = dependencies
-  const createOrder = useCallback<AppContextValue['createOrder']>(
-    (input) => {
+  const buildCreateOrder = useCallback<BuildCreateOrder>(
+    (input, current) => {
       const actorResult = requireActor()
       if (!actorResult.ok) return actorResult
       const seller = actorResult.actor
       if (!seller.storeId) return { ok: false, error: 'No active store session.' }
-      const current = dbRef.current
       if (!input || !Array.isArray(input.items)) return { ok: false, error: 'The order items are invalid.' }
       if (input.staffConsumption !== undefined && typeof input.staffConsumption !== 'boolean') {
         return { ok: false, error: 'Staff item checkout is invalid.' }
@@ -82,7 +90,8 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         if (guestsError) return { ok: false, error: guestsError }
       }
       if (!input.items.length) return { ok: false, error: 'Cart is empty.' }
-      const shift = openShiftForStaff(current, target.id, seller.id)
+      const ensuredShift = ensureShiftForActor(current, target.id, seller)
+      const shift = ensuredShift.shift
       if ((target.settings.requireShiftForOrders || staffConsumption) && !shift) {
         return { ok: false, error: 'Open your shift before taking orders.' }
       }
@@ -273,25 +282,40 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         staffConsumption: staffConsumption || undefined,
       }
 
-      commitDb((prev) => {
+      const updateDb = (prev: Database): Database => {
+        let starting = prev
+        if (ensuredShift.autoOpened && shift) {
+          starting = {
+            ...prev,
+            registerSessions: [...prev.registerSessions, shift],
+          }
+          starting = addLog(starting, seller, {
+            storeId: target.id,
+            action: 'register_opened',
+            entity: 'register',
+            entityId: shift.id,
+            summary: `Shift auto-opened for ${seller.name}`,
+            after: { shiftNumber: shift.shiftNumber ?? '', autoOpened: true },
+          })
+        }
         order.number = provider.mode === 'hub'
           ? 0
           : nextOrderNumber(
-              prev.orders.filter((existing) => existing.storeId === target.id).map((existing) => existing.number),
+              starting.orders.filter((existing) => existing.storeId === target.id).map((existing) => existing.number),
               target.settings.orderRules.orderNumberFormat,
             )
         order.provisionalNumber = provider.mode === 'hub'
           ? provisionalOrderNumber(
               provider.deviceIdentifier(),
-              prev.orders.filter((existing) => existing.storeId === target.id).length + 1,
+              starting.orders.filter((existing) => existing.storeId === target.id).length + 1,
             )
           : undefined
         const plan = planStockDeductions(
           checkedItems,
-          prev.products,
+          starting.products,
           staffConsumption || target.settings.orderRules.deductIngredientsOnSale,
         )
-        const updatedProducts = prev.products.map((product) => {
+        const updatedProducts = starting.products.map((product) => {
           if (product.storeId !== target.id) return product
           const baseDeduction = plan.productStock.get(stockKey(product.id))
           const nextProduct = baseDeduction && product.trackStock
@@ -307,14 +331,14 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             ? { ...nextProduct, variants: nextVariants }
             : nextProduct
         })
-        const updatedInventory = prev.inventoryItems.map((item) => {
+        const updatedInventory = starting.inventoryItems.map((item) => {
           const line = plan.ingredients.get(item.id)
           if (!line || item.storeId !== target.id) return item
           return { ...item, onHand: Math.max(0, roundQuantity(item.onHand - line.qty)) }
         })
         const orderLabel = order.provisionalNumber ?? String(order.number)
         const ingredientMovements = [...plan.ingredients.values()].flatMap((line) => {
-          const item = prev.inventoryItems.find((candidate) =>
+          const item = starting.inventoryItems.find((candidate) =>
             candidate.id === line.itemId && candidate.storeId === target.id,
           )
           if (!item) return []
@@ -336,11 +360,11 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           }]
         })
         const baseNext: Database = {
-          ...prev,
-          orders: [order, ...prev.orders],
+          ...starting,
+          orders: [order, ...starting.orders],
           products: updatedProducts,
           inventoryItems: updatedInventory,
-          stockMovements: [...ingredientMovements, ...prev.stockMovements],
+          stockMovements: [...ingredientMovements, ...starting.stockMovements],
           ledger:
             input.paymentMethod === 'credit' && input.customerId
               ? [
@@ -355,12 +379,12 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
                     shiftId: shift?.id,
                     createdAt: order.createdAt,
                   },
-                  ...prev.ledger,
+                  ...starting.ledger,
                 ]
-              : prev.ledger,
+              : starting.ledger,
         }
         const maintained = maintainAvailabilityAfterStockChange(
-          prev,
+          starting,
           updatedProducts,
           updatedInventory,
           seller,
@@ -374,7 +398,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
         }
         const stockChanges: AuditJsonValue[] = []
         for (const deduction of plan.productStock.values()) {
-          const product = prev.products.find((candidate) => candidate.id === deduction.productId)
+          const product = starting.products.find((candidate) => candidate.id === deduction.productId)
           if (!product) continue
           const variant = deduction.variantId
             ? product.variants?.find((candidate) => candidate.id === deduction.variantId)
@@ -389,7 +413,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           })
         }
         for (const line of plan.ingredients.values()) {
-          const item = prev.inventoryItems.find((candidate) => candidate.id === line.itemId)
+          const item = starting.inventoryItems.find((candidate) => candidate.id === line.itemId)
           if (!item) continue
           stockChanges.push({
             product: item.name,
@@ -437,11 +461,17 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           })
         }
         return logged
-      })
-      return { ok: true, order }
+      }
+      return { ok: true, order, updateDb }
     },
-    [commitDb, provider, requireActor],
+    [provider, requireActor],
   )
+  const createOrder = useCallback<AppContextValue['createOrder']>((input) => {
+    const built = buildCreateOrder(input, dbRef.current)
+    if (!built.ok) return built
+    if (built.updateDb) commitDb(built.updateDb)
+    return { ok: true, order: built.order }
+  }, [buildCreateOrder, commitDb, dbRef])
 
   const voidOrder = useCallback<AppContextValue['voidOrder']>(
     async (orderId, managerPin, voidReason) => {
@@ -483,12 +513,26 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       const at = new Date().toISOString()
       const voidedById = authorizer.id
       const voidedByName = authorizer.name
-      const voidShift = openShiftForStaff(dbRef.current, order.storeId, latestActor.actor.id)
+      const ensuredVoidShift = ensureShiftForActor(dbRef.current, order.storeId, latestActor.actor)
+      const voidShift = ensuredVoidShift.shift
       commitDb((prev) => {
+        const starting = ensuredVoidShift.autoOpened && voidShift
+          ? addLog({
+              ...prev,
+              registerSessions: [...prev.registerSessions, voidShift],
+            }, latestActor.actor, {
+              storeId: order.storeId,
+              action: 'register_opened',
+              entity: 'register',
+              entityId: voidShift.id,
+              summary: `Shift auto-opened for ${latestActor.actor.name}`,
+              after: { shiftNumber: voidShift.shiftNumber ?? '', autoOpened: true },
+            })
+          : prev
         const ledgerEntries: Database['ledger'] = []
         let creditRefund = 0
         if (order.paymentMethod === 'credit' && order.customerId) {
-          const outstanding = Math.max(0, balanceFor(prev.ledger, order.customerId))
+          const outstanding = Math.max(0, balanceFor(starting.ledger, order.customerId))
           const reversedCharge = Math.min(order.total, outstanding)
           if (reversedCharge > 0) {
             ledgerEntries.push({
@@ -522,13 +566,13 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             })
           }
         }
-        const store = prev.stores.find((candidate) => candidate.id === order.storeId)
+        const store = starting.stores.find((candidate) => candidate.id === order.storeId)
         const restorePlan = planStockDeductions(
           order.items,
-          prev.products,
+          starting.products,
           order.staffConsumption === true || store?.settings.orderRules.deductIngredientsOnSale === true,
         )
-        const restoredProducts = prev.products.map((product) => {
+        const restoredProducts = starting.products.map((product) => {
           if (product.storeId !== order.storeId) return product
           const baseQty = restorePlan.productStock.get(stockKey(product.id))?.qty ?? 0
           const nextProduct = baseQty && product.trackStock
@@ -544,14 +588,14 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
             ? { ...nextProduct, variants }
             : nextProduct
         })
-        const restoredInventory = prev.inventoryItems.map((item) => {
+        const restoredInventory = starting.inventoryItems.map((item) => {
           const line = restorePlan.ingredients.get(item.id)
           if (!line || item.storeId !== order.storeId) return item
           return { ...item, onHand: roundQuantity(item.onHand + line.qty) }
         })
         const orderLabel = order.provisionalNumber ?? String(order.number)
         const returnMovements = [...restorePlan.ingredients.values()].flatMap((line) => {
-          const item = prev.inventoryItems.find((candidate) =>
+          const item = starting.inventoryItems.find((candidate) =>
             candidate.id === line.itemId && candidate.storeId === order.storeId,
           )
           if (!item || line.qty <= 0) return []
@@ -571,8 +615,8 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           }]
         })
         const baseNext: Database = {
-          ...prev,
-          orders: prev.orders.map((o) =>
+          ...starting,
+          orders: starting.orders.map((o) =>
             o.id === orderId
               ? {
                   ...o,
@@ -599,11 +643,11 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
           ),
           products: restoredProducts,
           inventoryItems: restoredInventory,
-          stockMovements: [...returnMovements, ...prev.stockMovements],
-          ledger: [...ledgerEntries, ...prev.ledger],
+          stockMovements: [...returnMovements, ...starting.stockMovements],
+          ledger: [...ledgerEntries, ...starting.ledger],
         }
         const maintained = maintainAvailabilityAfterStockChange(
-          prev,
+          starting,
           restoredProducts,
           restoredInventory,
           authorizer,
@@ -650,5 +694,5 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
   )
 
 
-  return { createOrder, voidOrder }
+  return { createOrder, buildCreateOrder, voidOrder }
 }

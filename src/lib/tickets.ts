@@ -19,6 +19,10 @@ export interface StationTicket {
   items: OrderItem[]
 }
 
+export function unassignedStationItems(items: OrderItem[]): OrderItem[] {
+  return items.filter((item) => item.status === 'draft')
+}
+
 type TicketOrder = Pick<
   OpenOrder,
   'number' | 'provisionalNumber' | 'tableName' | 'sectionName' | 'guests' | 'staffName' | 'createdAt'

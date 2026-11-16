@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import type { User } from '../../types'
+import { isValidPin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../../shared/pin'
 import { can, MANAGER_DEFAULT_PERMISSIONS } from '../../lib/permissions'
 import { defaultPermissions } from '../../lib/defaults'
 import {
@@ -190,7 +191,7 @@ export default function Staff() {
               Active accounts with the required permission are the only accounts that can authorize an action.
             </p>
             <Button
-              disabled={savingAdminPin || !/^\d{4,12}$/.test(adminPin) || adminPin !== adminPinConfirmation}
+              disabled={savingAdminPin || !isValidPin(adminPin) || adminPin !== adminPinConfirmation}
               onClick={async () => {
                 setSavingAdminPin(true)
                 try {
@@ -550,8 +551,8 @@ function StaffEditor({
     ? 'Use 3–24 lowercase letters, digits, dots, underscores or hyphens.'
     : duplicateUsername ? 'That username is already in use.' : ''
   const pinError = member
-    ? pin && !/^\d{4,6}$/.test(pin) ? 'PIN must contain 4 to 6 digits.' : ''
-    : /^\d{4,6}$/.test(pin) ? '' : 'PIN must contain 4 to 6 digits.'
+    ? pin && !isValidPin(pin) ? `PIN must contain ${PIN_RANGE_HINT}.` : ''
+    : isValidPin(pin) ? '' : `PIN must contain ${PIN_RANGE_HINT}.`
   const salaryValue = Number(salaryAmount)
   const salaryError = role === 'staff' && salaryType !== 'none' &&
     (!Number.isFinite(salaryValue) || salaryValue <= 0)
@@ -661,10 +662,11 @@ function StaffEditor({
             </div>
             {(usernameError || usernameSaveError) && <p className="mt-1 text-xs text-red-600">{usernameError || usernameSaveError}</p>}
           </Field>
-          <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? 'Leave blank to keep the current PIN · 4–6 digits' : '4–6 digits · PINs can be reused'}>
+          <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? `Leave blank to keep the current PIN · ${PIN_RANGE_HINT}` : `${PIN_RANGE_HINT} · PINs can be reused`}>
             <Input
               value={pin}
-              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setSaveError('') }}
+              maxLength={PIN_MAX_LENGTH}
+              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH)); setSaveError('') }}
               placeholder={member ? 'Leave unchanged' : '1234'}
               inputMode="numeric"
               className="font-mono tracking-[0.3em]"

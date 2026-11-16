@@ -7,6 +7,24 @@ import { createServer } from 'node:net'
 import { createHubServer } from '../hub/src/server.ts'
 import { startVirtualPrinter } from '../hub/src/printers/virtual-printer.ts'
 import { hashSecret } from '../hub/src/auth.ts'
+import { validateSentItemUpdate } from '../hub/src/orderValidation.ts'
+
+test('hub permits correction notes on sent items but rejects quantity and price changes', () => {
+  const saved = { status: 'preparing', qty: 1, price: 5, note: 'No onion' }
+
+  assert.doesNotThrow(() => validateSentItemUpdate(saved, {
+    ...saved, note: 'No onion, extra sauce', noteCorrectionAt: '2026-11-15T10:42:00.000Z',
+  }))
+  assert.throws(() => validateSentItemUpdate(saved, {
+    ...saved, qty: 2, note: 'No onion, extra sauce', noteCorrectionAt: '2026-11-15T10:42:00.000Z',
+  }), /Only the note/)
+  assert.throws(() => validateSentItemUpdate(saved, {
+    ...saved, price: 6, note: 'No onion, extra sauce', noteCorrectionAt: '2026-11-15T10:42:00.000Z',
+  }), /Only the note/)
+  assert.throws(() => validateSentItemUpdate(saved, {
+    ...saved, note: 'No onion, extra sauce',
+  }), /correction marker/)
+})
 
 async function availablePort() {
   const server = createServer()
@@ -36,9 +54,22 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
   const mockAddress = mock.address()
   if (!mockAddress || typeof mockAddress === 'string') throw new Error('Could not bind a virtual printer.')
   let runtime
+  let setupToken = ''
   const sockets = []
   try {
-    runtime = await createHubServer()
+    const originalInfo = console.info
+    console.info = (...args) => {
+      const message = args.join(' ')
+      const match = /First-run setup token: ([A-Za-z0-9_-]+)/.exec(message)
+      if (match?.[1]) setupToken = match[1]
+      originalInfo(...args)
+    }
+    try {
+      runtime = await createHubServer()
+    } finally {
+      console.info = originalInfo
+    }
+    assert.ok(setupToken)
     const base = `http://127.0.0.1:${httpPort}`
     assert.equal((await fetch(`${base}/health`)).status, 200)
     const qr = await fetch(`${base}/api/status/qr`)
@@ -48,6 +79,22 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.match(await boardPage.text(), /Pair this screen/)
     const stationPage = await fetch(`${base}/station/kitchen`)
     assert.match(await stationPage.text(), /Station board/)
+    const missingSetupToken = await fetch(`${base}/api/auth/setup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeName: 'Test Cafe', storeCode: 'test-cafe', username: 'owner', password: 'a-secure-password', pin: '8426' }),
+    })
+    assert.equal(missingSetupToken.status, 401)
+    const missingImportToken = await fetch(`${base}/api/setup/import-backup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup: { stores: [] } }),
+    })
+    assert.equal(missingImportToken.status, 401)
+    const invalidSetupPin = await fetch(`${base}/api/auth/setup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Setup-Token': setupToken },
+      body: JSON.stringify({ storeName: 'Test Cafe', storeCode: 'test-cafe', username: 'owner', password: 'a-secure-password', pin: 'abcd' }),
+    })
+    assert.equal(invalidSetupPin.status, 400)
+    assert.match((await invalidSetupPin.json()).error, /PIN must contain 4 to 12 digits/i)
     const deniedOrigin = await fetch(`${base}/health`, { headers: { Origin: 'https://outside.example' } })
     assert.equal(deniedOrigin.status, 403)
     const oversized = await fetch(`${base}/api/auth/login`, {
@@ -56,12 +103,34 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     })
     assert.equal(oversized.status, 413)
     const setup = await fetch(`${base}/api/auth/setup`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Setup-Token': setupToken },
       body: JSON.stringify({ storeName: 'Test Cafe', storeCode: 'test-cafe', username: 'owner', password: 'a-secure-password', pin: '8426' }),
     })
     assert.equal(setup.status, 201)
     const owner = await setup.json()
+    const reusedSetupToken = await fetch(`${base}/api/setup/import-backup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Setup-Token': setupToken },
+      body: JSON.stringify({ backup: { stores: [] } }),
+    })
+    assert.equal(reusedSetupToken.status, 409)
+    const adminPinLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'owner@local.invalid', secret: '8426' }),
+    })
+    assert.equal(adminPinLogin.status, 401)
+    const adminPasswordLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'owner@local.invalid', secret: 'a-secure-password' }),
+    })
+    assert.equal(adminPasswordLogin.status, 200)
     const auth = { Authorization: `Bearer ${owner.token}`, 'Content-Type': 'application/json' }
+    const staleSync = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: auth,
+      body: JSON.stringify({
+        opId: 'stale-sync', deviceId: 'old-device', storeId: owner.actor.storeId, baseSeq: 0, ops: [],
+      }),
+    })
+    assert.equal((await staleSync.json()).fullResyncRequired, true)
     const snapshot = await fetch(`${base}/api/sync/snapshot`, { headers: auth })
     const initialData = await snapshot.json()
     assert.equal(initialData.storeId, owner.actor.storeId)
@@ -72,18 +141,26 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(initialData.collections.users[0].pin, undefined)
     const staffUser = {
       id: 'cashier', storeId: owner.actor.storeId, name: 'Cashier', username: 'cashier',
-      password: hashSecret('cashier-password'), pin: hashSecret('2266'), role: 'staff',
+      password: hashSecret('cashier-password'), pin: hashSecret('22661234'), role: 'staff',
       active: true, permissions: { register: true, openShift: true, closeShift: false },
     }
     const activeManager = {
-      id: 'active-manager', storeId: owner.actor.storeId, name: 'Active manager',
+      id: 'active-manager', storeId: owner.actor.storeId, name: 'Active manager', username: 'manager',
       password: hashSecret('manager-password'), pin: hashSecret('4477'), role: 'manager',
-      active: true, permissions: { approveOverrides: true, voidOrders: true, overrideStock: true },
+      active: true, permissions: {
+        approveOverrides: true, voidOrders: true, overrideStock: true,
+        register: true, openShift: true, closeShift: true,
+      },
     }
     const inactiveManager = {
       id: 'inactive-manager', storeId: owner.actor.storeId, name: 'Inactive manager',
       password: hashSecret('inactive-manager-password'), pin: hashSecret('6633'), role: 'manager',
       active: false, permissions: { approveOverrides: true, voidOrders: true, overrideStock: true },
+    }
+    const registerOnlyManager = {
+      id: 'register-only-manager', storeId: owner.actor.storeId, name: 'Register manager', username: 'cash-manager',
+      password: hashSecret('cash-manager-password'), pin: hashSecret('5588'), role: 'manager',
+      active: true, permissions: { register: true, openShift: true, closeShift: true },
     }
     const wrongPin = await fetch(`${base}/api/auth/verify-pin`, {
       method: 'POST', headers: auth, body: JSON.stringify({ pin: '1234' }),
@@ -99,6 +176,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
         { kind: 'put', collection: 'users', id: staffUser.id, document: staffUser },
         { kind: 'put', collection: 'users', id: activeManager.id, document: activeManager },
         { kind: 'put', collection: 'users', id: inactiveManager.id, document: inactiveManager },
+        { kind: 'put', collection: 'users', id: registerOnlyManager.id, document: registerOnlyManager },
         { kind: 'put', collection: 'stores', id: owner.actor.storeId, document: {
           ...initialData.collections.stores[0],
           settings: {
@@ -389,9 +467,10 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const liveUpdate = await stationUpdate
     assert.equal(liveUpdate.type, 'station-status')
     assert.equal(liveUpdate.status, 'preparing')
+    const syncBaseSeq = (await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()).seq
     const staffLogin = await fetch(`${base}/api/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storeCode: 'test-cafe', username: 'cashier', secret: 'cashier-password' }),
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'cashier', secret: '22661234' }),
     })
     const staff = await staffLogin.json()
     const scheduleNow = new Date()
@@ -406,7 +485,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const addSchedule = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'schedule-one', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'schedule-one', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'shifts', id: cashierShift.id, document: cashierShift }],
       }),
     })
@@ -429,7 +508,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     )
     const checkoutWithoutShift = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-checkout-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-checkout-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'orders', id: 'staff-order-without-shift', document: {
           id: 'staff-order-without-shift', storeId: owner.actor.storeId, status: 'completed',
           channel: 'takeaway', paymentMethod: 'cash', items: [{ productId: 'tea', qty: 1 }],
@@ -440,7 +519,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.match((await checkoutWithoutShift.json()).error, /open your shift before taking orders/i)
     const tableOrderWithoutShift = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-table-order-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-table-order-without-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'openOrders', id: 'staff-table-without-shift', document: {
           id: 'staff-table-without-shift', storeId: owner.actor.storeId, status: 'open',
           tableId: 'table-2', tableName: 'T2', items: [],
@@ -451,14 +530,14 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.match((await tableOrderWithoutShift.json()).error, /open your shift before taking orders/i)
     const deleteSchedule = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-delete-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-delete-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'delete', collection: 'shifts', id: cashierShift.id }],
       }),
     })
     assert.equal(deleteSchedule.status, 403)
     const forgedRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-forge-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-forge-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerSessions', id: 'forged-register', document: {
           id: 'forged-register', storeId: owner.actor.storeId, status: 'open',
           openedAt: new Date().toISOString(), openedById: owner.actor.userId,
@@ -485,7 +564,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const enableScheduleChecks = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'enable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'enable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'stores', id: owner.actor.storeId, document: restrictedStore }],
       }),
     })
@@ -496,6 +575,96 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     })
     assert.equal(outOfScheduleLogin.status, 403)
     assert.match((await outOfScheduleLogin.json()).error, /scheduled work hours/i)
+    const managerLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'manager', secret: 'manager-password' }),
+    })
+    assert.equal(managerLogin.status, 200)
+    const manager = await managerLogin.json()
+    assert.equal(manager.actor.userId, activeManager.id)
+    const managerAuth = { Authorization: `Bearer ${manager.token}`, 'Content-Type': 'application/json' }
+    const managerShiftId = 'manager-auto-shift'
+    const managerSession = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: managerAuth, body: JSON.stringify({
+        opId: 'manager-auto-shift-open', deviceId: 'manager-device',
+        storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
+        ops: [{ kind: 'put', collection: 'registerSessions', id: managerShiftId, document: {
+          id: managerShiftId, storeId: owner.actor.storeId, status: 'open',
+          openedAt: new Date().toISOString(), openedById: activeManager.id,
+          openedByName: activeManager.name, staffId: activeManager.id, openingCash: 0,
+          autoOpened: true,
+        } }],
+      }),
+    })
+    assert.equal(managerSession.status, 200, await managerSession.text())
+    const managerSale = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: managerAuth, body: JSON.stringify({
+        opId: 'manager-sale-with-auto-shift', deviceId: 'manager-device',
+        storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
+        ops: [{ kind: 'put', collection: 'orders', id: 'manager-sale', document: {
+            id: 'manager-sale', storeId: owner.actor.storeId, status: 'completed',
+            channel: 'takeaway', paymentMethod: 'cash', shiftId: managerShiftId,
+            staffId: activeManager.id, items: [{ productId: 'tea', qty: 1 }],
+          } }],
+      }),
+    })
+    assert.equal(managerSale.status, 200, await managerSale.text())
+    const managerSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: managerAuth })).json()
+    assert.ok(managerSnapshot.collections.registerSessions.some((session) =>
+      session.id === managerShiftId && session.autoOpened === true,
+    ))
+    assert.ok(managerSnapshot.collections.shifts.some((shift) => shift.id === 'shift-one'))
+    const registerManagerLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode: 'test-cafe', username: 'cash-manager', secret: 'cash-manager-password' }),
+    })
+    assert.equal(registerManagerLogin.status, 200)
+    const registerManager = await registerManagerLogin.json()
+    const registerManagerAuth = {
+      Authorization: `Bearer ${registerManager.token}`, 'Content-Type': 'application/json',
+    }
+    const registerManagerShift = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: registerManagerAuth, body: JSON.stringify({
+        opId: 'register-manager-shift', deviceId: 'register-manager-device',
+        storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
+        ops: [{ kind: 'put', collection: 'registerSessions', id: 'register-manager-shift', document: {
+          id: 'register-manager-shift', storeId: owner.actor.storeId, status: 'open',
+          openedAt: new Date().toISOString(), openedById: registerOnlyManager.id,
+          openedByName: registerOnlyManager.name, staffId: registerOnlyManager.id,
+          openingCash: 0, autoOpened: true,
+        } }],
+      }),
+    })
+    assert.equal(registerManagerShift.status, 200, await registerManagerShift.text())
+    const paidTable = await fetch(`${base}/api/sync`, {
+      method: 'POST', headers: registerManagerAuth, body: JSON.stringify({
+        opId: 'register-manager-pay-table', deviceId: 'register-manager-device',
+        storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
+        ops: [
+          { kind: 'put', collection: 'openOrders', id: 'manager-pay-open', document: {
+            id: 'manager-pay-open', storeId: owner.actor.storeId, tableId: 'table-2',
+            tableName: 'T2', channel: 'dine-in', status: 'open',
+            shiftId: 'register-manager-shift', staffId: registerOnlyManager.id,
+            staffName: registerOnlyManager.name, discount: 0,
+            items: [{ lineId: 'manager-pay-line', productId: 'tea', qty: 1, status: 'sent' }],
+          } },
+          { kind: 'put', collection: 'orders', id: 'manager-pay-sale', document: {
+            id: 'manager-pay-sale', storeId: owner.actor.storeId, status: 'completed',
+            channel: 'dine-in', tableId: 'table-2', tableName: 'T2',
+            paymentMethod: 'cash', clientOrderId: 'pay:manager-pay-open',
+            shiftId: 'register-manager-shift', staffId: registerOnlyManager.id,
+            items: [{ lineId: 'manager-pay-line', productId: 'tea', qty: 1, status: 'sent' }],
+          } },
+          { kind: 'delete', collection: 'openOrders', id: 'manager-pay-open' },
+        ],
+      }),
+    })
+    assert.equal(paidTable.status, 200, await paidTable.text())
+    const paidSnapshot = await (await fetch(`${base}/api/sync/snapshot`, { headers: registerManagerAuth })).json()
+    assert.equal(paidSnapshot.collections.openOrders.some((order) => order.id === 'manager-pay-open'), false)
+    assert.equal(paidSnapshot.collections.orders.filter((order) =>
+      order.clientOrderId === 'pay:manager-pay-open',
+    ).length, 1)
     const ownerSnapshotAfterDeniedLogin = await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()
     assert.ok(ownerSnapshotAfterDeniedLogin.collections.auditLogs.some((entry) =>
       entry.action === 'shift_access_denied' && entry.userId === staffUser.id,
@@ -503,7 +672,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const cashierOpenedAt = new Date().toISOString()
     const deniedShiftOpen = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-open-shift-outside-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-open-shift-outside-schedule', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerSessions', id: 'cashier-register', document: {
           id: 'cashier-register', storeId: owner.actor.storeId, status: 'open',
           openedAt: cashierOpenedAt, openedById: staffUser.id,
@@ -515,7 +684,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.match((await deniedShiftOpen.json()).error, /near its scheduled start time/i)
     const deniedShiftAudit = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-audit-denied-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-audit-denied-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'auditLogs', id: 'denied-shift-log', document: {
           id: 'denied-shift-log', storeId: owner.actor.storeId, userId: staffUser.id,
           userName: staffUser.name, role: 'staff', action: 'shift_access_denied',
@@ -542,14 +711,14 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const disableScheduleChecks = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'disable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'disable-schedule-checks', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'stores', id: owner.actor.storeId, document: scheduleChecksDisabled }],
       }),
     })
     assert.equal(disableScheduleChecks.status, 200)
     const openOwnRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-open-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-open-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerSessions', id: 'cashier-register', document: {
           id: 'cashier-register', storeId: owner.actor.storeId, status: 'open',
           openedAt: cashierOpenedAt, openedById: staffUser.id,
@@ -562,7 +731,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.ok(activeStaffSnapshot.collections.orders.length > 0)
     const checkoutWithShift = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-checkout-with-open-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-checkout-with-open-shift', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'orders', id: 'staff-order-with-open-shift', document: {
           id: 'staff-order-with-open-shift', storeId: owner.actor.storeId, status: 'completed',
           channel: 'takeaway', paymentMethod: 'cash', shiftId: 'cashier-register',
@@ -573,7 +742,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(checkoutWithShift.status, 200, await checkoutWithShift.text())
     const closeOwnRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-close-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-close-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerSessions', id: 'cashier-register', document: {
           id: 'cashier-register', storeId: owner.actor.storeId, status: 'closed',
           closeType: 'shift',
@@ -594,21 +763,21 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     }
     const staffCloseDay = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-close-register-day', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-close-register-day', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerDayReports', id: proposedDayReport.id, document: proposedDayReport }],
       }),
     })
     assert.equal(staffCloseDay.status, 403)
     const ownerCloseWithOpenShifts = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'owner-close-register-day-too-early', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'owner-close-register-day-too-early', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'registerDayReports', id: proposedDayReport.id, document: proposedDayReport }],
       }),
     })
     assert.equal(ownerCloseWithOpenShifts.status, 400)
     const deleteRegister = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: staffAuth, body: JSON.stringify({
-        opId: 'staff-delete-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'staff-delete-register', deviceId: 'cashier-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'delete', collection: 'registerSessions', id: 'owner-register' }],
       }),
     })
@@ -626,7 +795,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const teaDocument = update.ops.find((op) => op.id === 'tea').document
     const zeroStock = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'tea-positive-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'tea-positive-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'products', id: 'tea', document: {
           ...teaDocument, trackStock: true, stock: 1,
         } }],
@@ -635,7 +804,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(zeroStock.status, 200)
     const excessTrackedStock = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'tea-excess-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'tea-excess-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'openOrders', id: 'excess-stock-order', document: {
           id: 'excess-stock-order', storeId: owner.actor.storeId, number: 76, status: 'open', discount: 0,
           tableId: 'table-2', tableName: 'T2',
@@ -647,7 +816,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.match((await excessTrackedStock.json()).error, /Tea.*left in stock/i)
     const teaZeroAgain = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'tea-zero-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'tea-zero-stock', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'products', id: 'tea', document: {
           ...teaDocument, trackStock: true, stock: 0,
         } }],
@@ -656,7 +825,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(teaZeroAgain.status, 200)
     const manual86 = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth, body: JSON.stringify({
-        opId: 'soup-manual-86', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: 0,
+        opId: 'soup-manual-86', deviceId: 'owner-device', storeId: owner.actor.storeId, baseSeq: syncBaseSeq,
         ops: [{ kind: 'put', collection: 'products', id: 'soup', document: {
           ...update.ops.find((op) => op.id === 'soup').document,
           eightySix: {

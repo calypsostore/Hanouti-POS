@@ -55,16 +55,21 @@ run `hostname -I` or `ip -4 addr show` and choose the address on the shop LAN.
 Open `http://<hub-lan-ip>:8080/status` from a shop device. Reserve the address
 in the router's DHCP settings so it does not change unexpectedly.
 
-For a fresh hub, open the app URL and use the first-run owner form, or create
-the first owner directly. There are no default credentials:
+For a fresh hub, create the first owner through the API. The current app does
+not include a frontend form for these bootstrap endpoints. When the empty hub
+starts, copy the one-time setup
+token printed in the hub console. Keep it private; it is not shown in the app
+or returned by an API. There are no default credentials:
 
 ```powershell
 $body = @{ storeName = 'Cafe Yasmine'; storeCode = 'cafe-yasmine'; username = 'owner'; password = 'use-a-unique-long-password'; pin = '482915' } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/auth/setup -ContentType 'application/json' -Body $body
+$headers = @{ 'X-Setup-Token' = 'paste-the-token-from-the-hub-console' }
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/auth/setup -Headers $headers -ContentType 'application/json' -Body $body
 ```
 
 ```sh
 curl -X POST http://127.0.0.1:8080/api/auth/setup \
+  -H 'X-Setup-Token: paste-the-token-from-the-hub-console' \
   -H 'Content-Type: application/json' \
   -d '{"storeName":"Cafe Yasmine","storeCode":"cafe-yasmine","username":"owner","password":"use-a-unique-long-password","pin":"482915"}'
 ```
@@ -77,12 +82,15 @@ stations, and create a backup before using live transactions.
 
 The first owner is created with `POST /api/auth/setup`; there are no default
 credentials. Send `storeName`, a lowercase `storeCode`, `username`, a
-10-character-or-longer `password`, and a 4–12 digit `pin`. Setup is available
-only while the hub has no stores. The API returns a 12-hour bearer session.
+10-character-or-longer `password`, a 4–12 digit `pin`, and the one-time
+`X-Setup-Token` header. The token is printed when an empty hub starts, expires
+after the first successful owner setup or backup import, and failed attempts
+are rate-limited. Setup is available only while the hub has no stores. The API
+returns a 12-hour bearer session.
 
 An existing app backup may bootstrap an empty hub using
-`POST /api/setup/import-backup` with `{ "backup": <backup-json> }`, or from the
-hub machine:
+`POST /api/setup/import-backup` with `{ "backup": <backup-json> }` and the same
+`X-Setup-Token` header, or from the hub machine:
 
 ```powershell
 npm run hub -- import-backup C:\backups\7anouti-backup.json

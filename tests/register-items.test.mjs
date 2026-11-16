@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { registerSessionItems, summarizeRegisterItems } from '../src/lib/registerItems.ts'
-import { computeRegisterTotals, registerReportDetails } from '../src/lib/reports.ts'
-import { openShiftForStaff } from '../src/lib/registerShifts.ts'
+import { autoCloseRegisterSessionForZ, computeRegisterTotals, registerReportDetails } from '../src/lib/reports.ts'
+import { ensureShiftForActor, openShiftForStaff } from '../src/lib/registerShifts.ts'
+import { completeOpenOrderPayment } from '../src/lib/openOrderPayment.ts'
 import { buildReportLines } from '../src/lib/escpos.ts'
+import { withEnsuredShift } from '../src/store/registerShiftHelpers.ts'
 
 const start = '2026-11-14T08:00:00.000Z'
 const end = '2026-11-14T18:00:00.000Z'
@@ -28,13 +30,15 @@ const order = (id, options = {}) => ({
   subtotal: options.total ?? 0,
   tax: 0,
   service: 0,
-  discount: 0,
+  discount: options.discount ?? 0,
   total: options.total ?? 0,
   channel: 'takeaway',
   status: options.status ?? 'completed',
   paymentMethod: options.paymentMethod ?? 'cash',
   staffId: options.staffId ?? 'staff-1',
   staffName: options.staffName ?? 'Staff One',
+  staffConsumption: options.staffConsumption,
+  paidById: options.paidById,
   shiftId: options.shiftId,
   createdAt: options.createdAt ?? '2026-11-14T10:00:00.000Z',
   voidedAt: options.voidedAt,
@@ -318,6 +322,73 @@ test('store-day Z details include every cashier, including admin table sales', (
   assert.equal(details.voidedItems.length, 0)
 })
 
+test('Z breakdown includes admin, manager, and every staff session with per-person totals', () => {
+  const sessions = [
+    { id: 'admin-shift', storeId: 'store-1', status: 'open', openedAt: start, openedById: 'admin-1', staffId: 'admin-1', openedByName: 'Owner', openingCash: 0, autoOpened: true },
+    { id: 'manager-shift', storeId: 'store-1', status: 'open', openedAt: start, openedById: 'manager-1', staffId: 'manager-1', openedByName: 'Manager', openingCash: 0, autoOpened: true },
+    { id: 'staff-shift-1', storeId: 'store-1', status: 'closed', openedAt: start, openedById: 'staff-1', staffId: 'staff-1', openedByName: 'Staff One', openingCash: 0 },
+    { id: 'staff-shift-2', storeId: 'store-1', status: 'closed', openedAt: start, openedById: 'staff-2', staffId: 'staff-2', openedByName: 'Staff Two', openingCash: 0 },
+  ]
+  const dayOrders = [
+    order('admin-cash-sale', { total: 10, discount: 1, shiftId: 'admin-shift', staffId: 'admin-1', staffName: 'Owner', items: [item('coffee', 'Coffee')] }),
+    order('admin-void', { total: 2, status: 'void', shiftId: 'admin-shift', voidShiftId: 'admin-shift', voidedAt: '2026-11-14T12:00:00.000Z', voidedById: 'admin-1', staffId: 'staff-1', staffName: 'Staff One' }),
+    order('manager-staff-items', { total: 20, paymentMethod: 'card', shiftId: 'manager-shift', staffId: 'manager-1', staffName: 'Manager', staffConsumption: true, items: [item('tea', 'Tea')] }),
+    order('staff-credit-sale', { total: 30, paymentMethod: 'credit', shiftId: 'staff-shift-1', staffId: 'staff-1', staffName: 'Staff One' }),
+    order('staff-cash-sale', { total: 40, shiftId: 'staff-shift-2', staffId: 'staff-2', staffName: 'Staff Two' }),
+  ]
+  const source = {
+    stores: [{
+      id: 'store-1', name: 'Cafe', address: '', city: '', phone: '',
+      settings: { posMode: 'standard', printer: { width: 80 } },
+    }],
+    users: [
+      { id: 'admin-1', storeId: 'store-1', name: 'Owner', role: 'admin' },
+      { id: 'manager-1', storeId: 'store-1', name: 'Manager', role: 'manager' },
+      { id: 'staff-1', storeId: 'store-1', name: 'Staff One', role: 'staff' },
+      { id: 'staff-2', storeId: 'store-1', name: 'Staff Two', role: 'staff' },
+    ],
+    registerSessions: sessions,
+    orders: dayOrders,
+    products: [],
+    categories: [],
+    inventoryItems: [],
+    stockMovements: [],
+    auditLogs: [],
+    ledger: [],
+    expenses: [],
+    purchasePayments: [],
+  }
+  const details = registerReportDetails(source, {
+    id: '', storeId: 'store-1', status: 'open', openedAt: start,
+    openedById: 'admin-1', openedByName: 'Owner', openingCash: 0,
+  }, end)
+  const totals = computeRegisterTotals(source, 'store-1', start, end, 0)
+  const people = details.sessionBreakdown
+
+  assert.deepEqual(people.map((person) => person.role).sort(), ['admin', 'manager', 'staff', 'staff'])
+  assert.equal(people.reduce((total, person) => total + person.cash, 0), 50)
+  assert.equal(people.reduce((total, person) => total + person.card, 0), 20)
+  assert.equal(people.reduce((total, person) => total + person.credit, 0), 30)
+  assert.equal(people.reduce((total, person) => total + person.orders, 0), 4)
+  assert.equal(people.find((person) => person.sessionId === 'manager-shift').staffItemOrders, 1)
+  assert.equal(people.find((person) => person.sessionId === 'admin-shift').voids, 1)
+  assert.equal(totals.salesTotal, 100)
+  assert.equal(totals.cashRefunds, 2)
+  assert.equal(totals.expectedCash, 50)
+
+  const autoClosed = autoCloseRegisterSessionForZ(
+    source,
+    sessions[0],
+    end,
+    { id: 'admin-1', name: 'Owner' },
+  )
+  assert.equal(autoClosed.status, 'closed')
+  assert.equal(autoClosed.closeType, 'shift')
+  assert.equal(autoClosed.countedCash, 10)
+  assert.equal(autoClosed.difference, 0)
+  assert.equal(autoClosed.snapshot.expectedCash, 10)
+})
+
 test('coffee shift report compares yield estimate, recipe use, and tracked stock remainder', () => {
   const session = {
     id: 'session-1',
@@ -415,6 +486,104 @@ test('staff may have separate concurrent shifts while duplicate personal shifts 
   assert.equal(openShiftForStaff({ registerSessions: sessions }, 'store-1', 'staff-1')?.id, 'one')
   assert.equal(openShiftForStaff({ registerSessions: sessions }, 'store-1', 'staff-2')?.id, 'two')
   assert.equal(openShiftForStaff({ registerSessions: sessions }, 'store-1', 'staff-3'), undefined)
+})
+
+test('admin and manager auto-shifts are created once while staff shifts remain required', () => {
+  const sessions = []
+  const admin = { id: 'admin-1', name: 'Owner', role: 'admin' }
+  const first = ensureShiftForActor({ registerSessions: sessions }, 'store-1', admin)
+  assert.equal(first.autoOpened, true)
+  assert.equal(first.shift.openedById, admin.id)
+  assert.equal(first.shift.staffId, admin.id)
+  assert.equal(first.shift.openingCash, 0)
+  assert.equal(first.shift.autoOpened, true)
+
+  const afterFirst = [...sessions, first.shift]
+  const second = ensureShiftForActor({ registerSessions: afterFirst }, 'store-1', admin)
+  assert.equal(second.shift.id, first.shift.id)
+  assert.equal(second.autoOpened, false)
+
+  const manager = ensureShiftForActor({ registerSessions: [] }, 'store-1', {
+    id: 'manager-1', name: 'Manager', role: 'manager',
+  })
+  assert.equal(manager.autoOpened, true)
+  assert.equal(manager.shift.openingCash, 0)
+
+  const staff = ensureShiftForActor({ registerSessions: [] }, 'store-1', {
+    id: 'staff-1', name: 'Staff', role: 'staff',
+  })
+  assert.equal(staff.shift, undefined)
+  assert.equal(staff.autoOpened, false)
+})
+
+test('persisting an auto-shift adds its session and audit record to the same database update', () => {
+  const actor = { id: 'manager-1', name: 'Manager', role: 'manager' }
+  const previous = { registerSessions: [], auditLogs: [] }
+  const ensured = ensureShiftForActor(previous, 'store-1', actor)
+  const next = withEnsuredShift(previous, ensured, actor, 'store-1')
+
+  assert.equal(next.registerSessions.length, 1)
+  assert.equal(next.registerSessions[0].id, ensured.shift.id)
+  assert.equal(next.auditLogs[0].summary, 'Shift auto-opened for Manager')
+})
+
+test('paid table finalization removes the table idempotently without repeating stock deductions', () => {
+  const openOrder = {
+    id: 'open-1',
+    storeId: 'store-1',
+    tableName: 'T1',
+    items: [],
+    subtotal: 5,
+    tax: 0,
+    service: 0,
+    discount: 0,
+    total: 5,
+    channel: 'dine-in',
+    status: 'open',
+    staffId: 'admin-1',
+    staffName: 'Owner',
+    recordedOrderId: 'recorded-1',
+    createdAt: start,
+  }
+  const paidOrder = {
+    id: 'paid-1',
+    storeId: 'store-1',
+    number: 1,
+    items: [],
+    subtotal: 5,
+    tax: 0,
+    service: 0,
+    discount: 0,
+    total: 5,
+    channel: 'dine-in',
+    status: 'completed',
+    paymentMethod: 'cash',
+    staffId: 'admin-1',
+    staffName: 'Owner',
+    clientOrderId: 'pay:open-1',
+    createdAt: end,
+  }
+  const source = {
+    ...db,
+    openOrders: [openOrder],
+    orders: [{ ...paidOrder, id: 'recorded-1', status: 'recorded', paymentMethod: 'unpaid' }],
+    products: [{ id: 'coffee', storeId: 'store-1', stock: 3 }],
+  }
+  const paymentHistory = [
+    { id: 'payment', type: 'payment', actorId: 'admin-1', actorName: 'Owner', at: end },
+    { id: 'closed', type: 'closed', actorId: 'admin-1', actorName: 'Owner', at: end },
+  ]
+  const first = completeOpenOrderPayment(source, openOrder, paidOrder, paymentHistory)
+  const retry = completeOpenOrderPayment(first.database, openOrder, first.order, paymentHistory)
+
+  assert.equal(first.database.openOrders.length, 0)
+  assert.equal(first.database.orders.length, 1)
+  assert.equal(first.order.total, 5)
+  assert.equal(first.database.products[0].stock, 3)
+  assert.equal(retry.database.openOrders.length, 0)
+  assert.equal(retry.database.orders.filter((item) => item.clientOrderId === 'pay:open-1').length, 1)
+  assert.equal(retry.database.products[0].stock, 3)
+  assert.equal(retry.order.tableHistory.at(-1).type, 'closed')
 })
 
 test('prints every item without exceeding 58mm or 80mm line widths', () => {

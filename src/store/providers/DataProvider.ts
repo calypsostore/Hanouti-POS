@@ -430,16 +430,17 @@ export class HubProvider implements DataProvider {
       if (!body || !Number.isSafeInteger(body.seq) || !body.collections || typeof body.collections !== 'object') {
         throw new Error('The hub returned an invalid database snapshot.')
       }
+      const snapshotSeq = Number(body.seq)
       const database = this.snapshotToDatabase(body as unknown as HubSnapshot)
       const previousSequence = this.sequence
-      this.sequence = Math.max(this.sequence, Number(body.seq))
+      this.sequence = Math.max(this.sequence, snapshotSeq)
       this.lastSyncAt = new Date().toISOString()
       this.writeLocal(SEQ_KEY, String(this.sequence))
       this.cache = database
       if (this.sequence > previousSequence) {
         this.recordActivity('info', `Received hub data through sequence ${this.sequence}.`)
       }
-      return { database, seq: this.sequence }
+      return { database, seq: snapshotSeq }
     }).catch((error: unknown) => {
       this.recordActivity('error', `Could not load a hub snapshot: ${this.errorMessage(error)}`)
       this.setConnection('offline')
@@ -526,6 +527,7 @@ export class HubProvider implements DataProvider {
   private async flushOutbox(): Promise<void> {
     if (this.flushing || !this.token || !this.outbox.length) return
     this.flushing = true
+    const resyncedEntries = new Set<string>()
     try {
       while (this.outbox.length && this.token) {
         const entry = this.outbox[0]
@@ -534,6 +536,20 @@ export class HubProvider implements DataProvider {
         try {
           if (entry.kind === 'change') {
             const result = await this.request('/api/sync', entry.payload)
+            if (result.fullResyncRequired === true) {
+              if (resyncedEntries.has(entry.key)) {
+                entry.retryAt = Date.now() + 1000
+                await this.persistOutbox()
+                break
+              }
+              const snapshot = await this.pullSnapshot()
+              if (!snapshot) throw new Error('A full hub resync is required before retrying this change.')
+              resyncedEntries.add(entry.key)
+              entry.payload = { ...entry.payload, baseSeq: snapshot.seq }
+              await this.persistOutbox()
+              this.recordActivity('warn', `Refreshed hub data before retrying change ${entry.key}.`)
+              continue
+            }
             if (Number.isSafeInteger(result.seq)) {
               this.sequence = Math.max(this.sequence, Number(result.seq))
               this.writeLocal(SEQ_KEY, String(this.sequence))

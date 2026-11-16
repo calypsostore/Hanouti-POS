@@ -1,5 +1,6 @@
-import { Ban, Minus, Plus } from 'lucide-react'
-import { Button } from '../../components/ui'
+import { useState } from 'react'
+import { Ban, Minus, Pencil, Plus, Save, X } from 'lucide-react'
+import { Button, Textarea } from '../../components/ui'
 import type { OrderItem } from '../../types'
 import { Input } from '../../components/ui'
 import { cn, money } from '../../lib/utils'
@@ -13,6 +14,7 @@ export function CartItemsList({
   setLineQty,
   canVoidSentItems = false,
   onVoidSentItem,
+  onUpdateSentItemNote,
   unavailableLineIds = [],
   issueByLine = {},
 }: {
@@ -23,9 +25,12 @@ export function CartItemsList({
   setLineQty: (id: string, qty: number) => void
   canVoidSentItems?: boolean
   onVoidSentItem?: (lineId: string) => void
+  onUpdateSentItemNote?: (lineId: string, note: string) => boolean
   unavailableLineIds?: string[]
   issueByLine?: Record<string, string>
 }) {
+  const [editingNoteLineId, setEditingNoteLineId] = useState<string>()
+  const [noteDraft, setNoteDraft] = useState('')
   return (
     <ul className={compact ? 'space-y-0.5' : 'space-y-1'}>
       {items.map((item) => {
@@ -63,6 +68,47 @@ export function CartItemsList({
                 </div>
               )}
               {item.note && <div className="truncate text-[10px] italic text-muted">{item.note}</div>}
+              {persisted && ['sent', 'preparing', 'ready'].includes(item.status ?? '') && onUpdateSentItemNote && (
+                editingNoteLineId === item.lineId ? (
+                  <div className="mt-1 space-y-1">
+                    <Textarea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      maxLength={240}
+                      aria-label={`Kitchen note for ${item.name}`}
+                      className="min-h-[52px] text-[11px]"
+                    />
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (item.lineId && onUpdateSentItemNote(item.lineId, noteDraft)) setEditingNoteLineId(undefined)
+                        }}
+                      >
+                        <Save className="h-3 w-3" />
+                        Save note
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditingNoteLineId(undefined)}>
+                        <X className="h-3 w-3" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-0.5 h-6 px-1 text-[10px]"
+                    onClick={() => {
+                      setNoteDraft(item.note ?? '')
+                      setEditingNoteLineId(item.lineId)
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit note
+                  </Button>
+                )
+              )}
               <div className="text-[10.5px] text-muted tabular">{money(item.price)} each</div>
               {persisted && (
                 <div className="text-[9.5px] font-semibold text-muted">

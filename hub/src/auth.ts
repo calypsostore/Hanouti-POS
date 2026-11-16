@@ -1,10 +1,12 @@
-import { createHash, randomBytes, timingSafeEqual, pbkdf2Sync } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual, pbkdf2 as pbkdf2Callback, pbkdf2Sync } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import type { AuthenticatedActor, HubStoreState, HubUser } from './types.ts'
 import type { HubStorage } from './storage.ts'
 import type { AuditLog, Shift, StoreSettings } from '../../src/types.ts'
 import type { ChangeSet } from '../../src/shared/sync.ts'
+import { isValidPin } from '../../src/shared/pin.ts'
 import {
   DEFAULT_SHIFT_ACCESS_SETTINGS,
   loginScheduleError,
@@ -14,10 +16,20 @@ import {
 const SESSION_MS = 12 * 60 * 60 * 1000
 const LOCK_MS = 15 * 60 * 1000
 const MAX_FAILURES = 5
+const MAX_LOCKOUT_RECORDS = 10_000
+const FAILURE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const pbkdf2Async = promisify(pbkdf2Callback)
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
+const hashDeviceToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
-export function verifySecret(secret: string, stored: unknown): boolean {
+interface LoginFailure {
+  count: number
+  lockedUntil: number
+  updatedAt?: number
+}
+
+export async function verifySecret(secret: string, stored: unknown): Promise<boolean> {
   if (typeof stored !== 'string') return false
   const parts = stored.split('$')
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
@@ -27,7 +39,7 @@ export function verifySecret(secret: string, stored: unknown): boolean {
     const salt = Buffer.from(parts[2], 'base64')
     const expected = Buffer.from(parts[3], 'base64')
     if (!salt.length || expected.length !== 32) return false
-    const actual = pbkdf2Sync(secret, salt, iterations, expected.length, 'sha256')
+    const actual = await pbkdf2Async(secret, salt, iterations, expected.length, 'sha256')
     return timingSafeEqual(actual, expected)
   } catch {
     return false
@@ -42,9 +54,13 @@ export function hashSecret(secret: string): string {
 
 export class HubAuth {
   private sessions = new Map<string, { actor: AuthenticatedActor; expiresAt: number }>()
-  private failures: Record<string, { count: number; lockedUntil: number }> = {}
+  private failures: Record<string, LoginFailure> = {}
   private pairFailures = new Map<string, { count: number; lockedUntil: number }>()
+  private deviceStoreIds = new Map<string, string>()
+  private deviceLastSeenAt = new Map<string, number>()
   private setupInProgress = false
+  private setupTokenHash: Buffer | null = null
+  private setupFailures = new Map<string, { count: number; lockedUntil: number }>()
   private readonly failureFile: string
 
   private readonly storage: HubStorage
@@ -56,21 +72,106 @@ export class HubAuth {
 
   async initialize(): Promise<void> {
     try {
-      this.failures = JSON.parse(await readFile(this.failureFile, 'utf8')) as typeof this.failures
+      const persisted: unknown = JSON.parse(await readFile(this.failureFile, 'utf8'))
+      if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
+        throw new Error('Invalid hub authentication lockout file.')
+      }
+      this.failures = Object.fromEntries(Object.entries(persisted).flatMap(([key, value]) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+        const failure = value as Partial<LoginFailure>
+        if (!Number.isSafeInteger(failure.count) || Number(failure.count) < 0 ||
+          !Number.isFinite(failure.lockedUntil)) return []
+        return [[key, {
+          count: Number(failure.count),
+          lockedUntil: Number(failure.lockedUntil),
+          ...(Number.isFinite(failure.updatedAt) ? { updatedAt: Number(failure.updatedAt) } : {}),
+        }]]
+      }))
+      this.pruneFailures()
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    await this.reindexDevices()
+    if (!(await this.storage.listStoreIds()).length) {
+      const setupToken = randomBytes(32).toString('base64url')
+      this.setupTokenHash = createHash('sha256').update(setupToken).digest()
+      console.info(`First-run setup token: ${setupToken}`)
+    }
+  }
+
+  beginSetup(setupToken: unknown, ip: string): void {
+    const failure = this.setupFailures.get(ip)
+    if ((failure?.lockedUntil ?? 0) > Date.now()) {
+      throw Object.assign(new Error('Too many setup token attempts. Try again later.'), { status: 429 })
+    }
+    if (!this.setupTokenHash) {
+      throw Object.assign(new Error('First-run setup is unavailable or already complete.'), { status: 409 })
+    }
+    const supplied = typeof setupToken === 'string'
+      ? createHash('sha256').update(setupToken).digest()
+      : createHash('sha256').update('').digest()
+    if (!timingSafeEqual(supplied, this.setupTokenHash)) {
+      const count = (failure?.count ?? 0) + 1
+      this.setupFailures.set(ip, {
+        count: count >= MAX_FAILURES ? 0 : count,
+        lockedUntil: count >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+      })
+      throw Object.assign(new Error('A valid first-run setup token is required.'), { status: 401 })
+    }
+    if (this.setupInProgress) {
+      throw Object.assign(new Error('First-run owner setup is already in progress.'), { status: 409 })
+    }
+    this.setupFailures.delete(ip)
+    this.setupInProgress = true
+  }
+
+  finishSetup(succeeded: boolean): void {
+    if (succeeded) {
+      this.setupTokenHash = null
+      this.setupFailures.clear()
+    }
+    this.setupInProgress = false
+  }
+
+  async reindexDevices(): Promise<void> {
+    this.deviceStoreIds.clear()
+    for (const storeId of await this.storage.listStoreIds()) {
+      const state = await this.storage.readStore(storeId)
+      for (const device of Object.values(state.collections.stationDevices ?? {})) {
+        if (typeof device.id === 'string') this.deviceStoreIds.set(device.id, storeId)
+      }
     }
   }
 
   private async persistFailures(): Promise<void> {
+    this.pruneFailures()
     await mkdir(this.storage.root, { recursive: true })
     await writeFile(this.failureFile, JSON.stringify(this.failures), { encoding: 'utf8', mode: 0o600 })
+  }
+
+  private pruneFailures(): void {
+    const now = Date.now()
+    const cutoff = now - FAILURE_MAX_AGE_MS
+    for (const [key, failure] of Object.entries(this.failures)) {
+      if ((failure.count === 0 && failure.lockedUntil <= now) ||
+        (failure.updatedAt !== undefined && failure.updatedAt < cutoff)) {
+        delete this.failures[key]
+      }
+    }
+    const entries = Object.entries(this.failures)
+    if (entries.length <= MAX_LOCKOUT_RECORDS) return
+    entries.sort(([leftKey, left], [rightKey, right]) =>
+      (left.updatedAt ?? 0) - (right.updatedAt ?? 0) || leftKey.localeCompare(rightKey),
+    )
+    for (const [key] of entries.slice(0, entries.length - MAX_LOCKOUT_RECORDS)) {
+      delete this.failures[key]
+    }
   }
 
   async login(storeCode: string, username: string, secret: string, ip: string): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
     const throttleKey = `${storeCode.toLowerCase()}:${username.toLowerCase()}:${ip}`
     const failure = this.failures[throttleKey]
-    if (failure?.lockedUntil > Date.now()) throw Object.assign(new Error('Too many failed sign-in attempts. Try again later.'), { status: 429 })
+    if ((failure?.lockedUntil ?? 0) > Date.now()) throw Object.assign(new Error('Too many failed sign-in attempts. Try again later.'), { status: 429 })
     const storeId = await this.findStoreId(storeCode)
     const state = storeId ? await this.storage.readStore(storeId) : undefined
     const users = (state?.collections.users ? Object.values(state.collections.users) : []) as unknown as HubUser[]
@@ -78,10 +179,17 @@ export class HubAuth {
       candidate.active && candidate.storeId === storeId &&
       [candidate.username, candidate.email].some((value) => typeof value === 'string' && value.toLowerCase() === username.toLowerCase()),
     )
-    const valid = !!user && !!storeId && (verifySecret(secret, user.password) || verifySecret(secret, user.pin))
+    const pinLogin = !!user && !username.includes('@') &&
+      (user.role === 'staff' || user.role === 'manager') && isValidPin(secret)
+    const valid = !!user && !!storeId &&
+      await verifySecret(secret, pinLogin ? user.pin : user.password)
     if (!valid || !user || !storeId) {
       const next = (failure?.count ?? 0) + 1
-      this.failures[throttleKey] = { count: next >= MAX_FAILURES ? 0 : next, lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0 }
+      this.failures[throttleKey] = {
+        count: next >= MAX_FAILURES ? 0 : next,
+        lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+        updatedAt: Date.now(),
+      }
       await this.persistFailures()
       throw Object.assign(new Error('Invalid store code, username, or password/PIN.'), { status: 401 })
     }
@@ -147,18 +255,19 @@ export class HubAuth {
   async verifyPin(actor: AuthenticatedActor, pin: string, ip: string): Promise<boolean> {
     const throttleKey = `pin:${actor.storeId}:${actor.userId}:${ip}`
     const failure = this.failures[throttleKey]
-    if (failure?.lockedUntil > Date.now()) {
+    if ((failure?.lockedUntil ?? 0) > Date.now()) {
       throw Object.assign(new Error('Too many failed PIN attempts. Try again later.'), { status: 429 })
     }
     const state = await this.storage.readStore(actor.storeId)
     const user = state.collections.users?.[actor.userId] as HubUser | undefined
     const valid = !!user && user.active && user.storeId === actor.storeId &&
-      /^\d{4,12}$/.test(pin) && verifySecret(pin, user.pin)
+      isValidPin(pin) && await verifySecret(pin, user.pin)
     if (!valid) {
       const next = (failure?.count ?? 0) + 1
       this.failures[throttleKey] = {
         count: next >= MAX_FAILURES ? 0 : next,
         lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+        updatedAt: Date.now(),
       }
       await this.persistFailures()
       return false
@@ -176,7 +285,7 @@ export class HubAuth {
   ): Promise<{ id: string; name: string } | null> {
     const throttleKey = `authorization-pin:${actor.storeId}:${actor.userId}:${ip}`
     const failure = this.failures[throttleKey]
-    if (failure?.lockedUntil > Date.now()) {
+    if ((failure?.lockedUntil ?? 0) > Date.now()) {
       throw Object.assign(new Error('Too many failed PIN attempts. Try again later.'), { status: 429 })
     }
 
@@ -197,14 +306,21 @@ export class HubAuth {
           : rules?.staff === true
       return roleAllowed && (user.role === 'admin' || user.permissions?.overrideStock === true)
     })
-    const confirmer = /^\d{4,12}$/.test(pin)
-      ? eligible.find((user) => verifySecret(pin, user.pin))
-      : undefined
+    let confirmer: HubUser | undefined
+    if (isValidPin(pin)) {
+      for (const user of eligible) {
+        if (await verifySecret(pin, user.pin)) {
+          confirmer = user
+          break
+        }
+      }
+    }
     if (!confirmer) {
       const next = (failure?.count ?? 0) + 1
       this.failures[throttleKey] = {
         count: next >= MAX_FAILURES ? 0 : next,
         lockedUntil: next >= MAX_FAILURES ? Date.now() + LOCK_MS : 0,
+        updatedAt: Date.now(),
       }
       await this.persistFailures()
       return null
@@ -215,17 +331,22 @@ export class HubAuth {
     return { id: confirmer.id, name: confirmer.name }
   }
 
-  async setupOwner(body: Record<string, unknown>): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
-    if (this.setupInProgress) throw Object.assign(new Error('First-run owner setup is already in progress.'), { status: 409 })
-    this.setupInProgress = true
+  async setupOwner(
+    body: Record<string, unknown>,
+    setupToken: unknown,
+    ip: string,
+  ): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
+    this.beginSetup(setupToken, ip)
+    let succeeded = false
     try {
     const storeName = typeof body.storeName === 'string' ? body.storeName.trim().slice(0, 100) : ''
     const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim().toLowerCase() : ''
     const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
     const pin = typeof body.pin === 'string' ? body.pin : ''
-    if (!storeName || !/^[a-z0-9][a-z0-9-]{1,39}$/.test(storeCode) || !/^[a-z0-9._-]{3,64}$/.test(username) || password.length < 10 || pin.length < 4 || pin.length > 12) {
-      throw new Error('Provide a store name/code, username, password (10+ characters), and PIN (4-12 characters).')
+    if (!isValidPin(pin)) throw new Error('PIN must contain 4 to 12 digits.')
+    if (!storeName || !/^[a-z0-9][a-z0-9-]{1,39}$/.test(storeCode) || !/^[a-z0-9._-]{3,64}$/.test(username) || password.length < 10) {
+      throw new Error('Provide a store name/code, username, and password (10+ characters).')
     }
     if ((await this.storage.listStoreIds()).length) throw new Error('First-run owner setup is already complete.')
     const storeId = randomBytes(12).toString('hex')
@@ -257,13 +378,14 @@ export class HubAuth {
         users: { [owner.id]: owner },
       },
     })
+    succeeded = true
     const token = randomBytes(32).toString('base64url')
     const expiresAt = Date.now() + SESSION_MS
     const actor: AuthenticatedActor = { storeId, userId: owner.id, role: 'admin', permissions: {}, stationOnly: false }
     this.sessions.set(hashToken(token), { actor, expiresAt })
     return { token, expiresAt: new Date(expiresAt).toISOString(), actor }
     } finally {
-      this.setupInProgress = false
+      this.finishSetup(succeeded)
     }
   }
 
@@ -292,7 +414,7 @@ export class HubAuth {
   async pair(storeCode: string, enteredCode: string, ip: string): Promise<{ token: string; storeId: string; deviceId: string; stationIds: string[] }> {
     const throttleKey = `${storeCode.toLowerCase()}:${ip}`
     const previousFailure = this.pairFailures.get(throttleKey)
-    if (previousFailure && previousFailure.lockedUntil > Date.now()) throw Object.assign(new Error('Too many pairing attempts. Try again later.'), { status: 429 })
+    if ((previousFailure?.lockedUntil ?? 0) > Date.now()) throw Object.assign(new Error('Too many pairing attempts. Try again later.'), { status: 429 })
     const storeId = await this.findStoreId(storeCode)
     if (!storeId || !/^\d{6}$/.test(enteredCode)) return this.failPairing(throttleKey)
     const state = await this.storage.readStore(storeId)
@@ -315,7 +437,7 @@ export class HubAuth {
       pairedAt: new Date().toISOString(),
       pairingCode: undefined,
       pairingCodeExpiresAt: undefined,
-      deviceTokenHash: hashSecret(token),
+      deviceTokenHash: hashDeviceToken(token),
     }
     const updatedState: HubStoreState = {
       ...state,
@@ -323,38 +445,66 @@ export class HubAuth {
       collections: { ...state.collections, stationDevices: { ...state.collections.stationDevices, [device.id]: updated } },
     }
     await this.storage.replaceStore(storeId, updatedState)
+    this.deviceStoreIds.set(device.id, storeId)
     this.pairFailures.delete(throttleKey)
     return { token, storeId, deviceId: device.id, stationIds }
   }
 
   async authenticateDevice(deviceId: string, token: string): Promise<AuthenticatedActor | null> {
-    for (const storeId of await this.storage.listStoreIds()) {
-      const state = await this.storage.readStore(storeId)
-      const device = state.collections.stationDevices?.[deviceId] as Record<string, unknown> | undefined
-      if (!device || device.active !== true || typeof device.deviceTokenHash !== 'string' ||
-        !verifySecret(token, device.deviceTokenHash) || !Array.isArray(device.stationIds)) continue
-      const stations = Object.values(state.collections.stations ?? {}) as Array<Record<string, unknown>>
-      const stationIds = (device.stationIds as unknown[]).filter((id): id is string =>
-        typeof id === 'string' && stations.some((station) => station.id === id && station.active === true && station.screen === true && station.storeId === storeId),
-      )
-      if (!stationIds.length) return null
-      const lastSeen = typeof device.lastSeenAt === 'string' ? Date.parse(device.lastSeenAt) : 0
-      if (Date.now() - lastSeen > 60_000) {
-        await this.storage.replaceStore(storeId, {
-          ...state,
-          seq: state.seq + 1,
-          collections: {
-            ...state.collections,
-            stationDevices: {
-              ...state.collections.stationDevices,
-              [deviceId]: { ...device, id: deviceId, lastSeenAt: new Date().toISOString() },
-            },
-          },
-        })
-      }
-      return { storeId, userId: deviceId, role: 'staff', permissions: { viewStation: true }, stationOnly: true, deviceId, stationIds, deviceToken: true }
+    const storeId = this.deviceStoreIds.get(deviceId)
+    if (!storeId) return null
+    const state = await this.storage.readStore(storeId)
+    const device = state.collections.stationDevices?.[deviceId] as Record<string, unknown> | undefined
+    if (!device || device.active !== true || typeof device.deviceTokenHash !== 'string' ||
+      !Array.isArray(device.stationIds)) return null
+    let upgradeHash = false
+    const storedHash = device.deviceTokenHash
+    if (/^[a-f\d]{64}$/i.test(storedHash)) {
+      const expected = Buffer.from(storedHash, 'hex')
+      const actual = Buffer.from(hashDeviceToken(token), 'hex')
+      if (!timingSafeEqual(actual, expected)) return null
+    } else if (storedHash.startsWith('pbkdf2$')) {
+      if (!await verifySecret(token, storedHash)) return null
+      upgradeHash = true
+    } else {
+      return null
     }
-    return null
+    const stations = Object.values(state.collections.stations ?? {}) as Array<Record<string, unknown>>
+    const stationIds = (device.stationIds as unknown[]).filter((id): id is string =>
+      typeof id === 'string' && stations.some((station) => station.id === id && station.active === true && station.screen === true && station.storeId === storeId),
+    )
+    if (!stationIds.length) return null
+    const now = Date.now()
+    const storedLastSeen = typeof device.lastSeenAt === 'string' ? Date.parse(device.lastSeenAt) : 0
+    const lastSeen = this.deviceLastSeenAt.get(deviceId) ?? (Number.isFinite(storedLastSeen) ? storedLastSeen : 0)
+    if (upgradeHash || now - lastSeen > 60_000) {
+      const updatedDevice = {
+        ...device,
+        id: deviceId,
+        ...(upgradeHash ? { deviceTokenHash: hashDeviceToken(token) } : {}),
+        lastSeenAt: new Date(now).toISOString(),
+      }
+      const changeSet: ChangeSet = {
+        opId: `device${randomBytes(12).toString('hex')}`,
+        deviceId: 'hub-auth',
+        storeId,
+        baseSeq: state.seq,
+        ops: [{
+          kind: 'put',
+          collection: 'stationDevices',
+          id: deviceId,
+          document: updatedDevice,
+        }],
+      }
+      this.deviceLastSeenAt.set(deviceId, now)
+      try {
+        await this.storage.transact(storeId, changeSet)
+      } catch (error) {
+        this.deviceLastSeenAt.delete(deviceId)
+        throw error
+      }
+    }
+    return { storeId, userId: deviceId, role: 'staff', permissions: { viewStation: true }, stationOnly: true, deviceId, stationIds, deviceToken: true }
   }
 
   private async findStoreId(storeCode: string): Promise<string | null> {

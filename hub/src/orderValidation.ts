@@ -14,6 +14,19 @@ import { dineInTableError } from '../../src/lib/tableService.ts'
 const VALID_ITEM_STATUSES = ['draft', 'sent', 'preparing', 'ready', 'served', 'void']
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+export function validateSentItemUpdate(
+  old: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
+  if (!['sent', 'preparing', 'ready'].includes(String(old.status))) return
+  if (source.qty !== old.qty || source.price !== old.price) {
+    throw new Error('Only the note of a sent item can be changed.')
+  }
+  if (String(source.note ?? '') !== String(old.note ?? '') &&
+    (typeof source.noteCorrectionAt !== 'string' || !Number.isFinite(Date.parse(source.noteCorrectionAt)))) {
+    throw new Error('A valid kitchen note correction marker is required.')
+  }
+}
 const isDiningTableReference = (value: unknown): value is Pick<DiningTable, 'id' | 'storeId' | 'active'> =>
   isRecord(value) && typeof value.id === 'string' &&
   typeof value.storeId === 'string' && typeof value.active === 'boolean'
@@ -63,7 +76,7 @@ export function validateOrderDocument(
     )
     if (tableError) throw new Error(tableError)
   }
-  const requiresOpenShift = store.settings.requireShiftForOrders &&
+  const requiresOpenShift = actor.role === 'staff' && store.settings.requireShiftForOrders &&
     (collection === 'openOrders' || !isRecord(previousDocument))
   const activeShift = Object.values(state.collections.registerSessions ?? {}).find((candidate) =>
     isRecord(candidate) && candidate.storeId === actor.storeId && candidate.status === 'open' &&
@@ -74,6 +87,13 @@ export function validateOrderDocument(
   }
   if (requiresOpenShift && typeof input.shiftId === 'string' && input.shiftId !== activeShift?.id) {
     throw new Error('Orders must use your own open shift.')
+  }
+  if ((actor.role === 'admin' || actor.role === 'manager') && typeof input.shiftId === 'string') {
+    const shift = state.collections.registerSessions?.[input.shiftId]
+    if (!isRecord(shift) || shift.storeId !== actor.storeId ||
+      shift.status !== 'open' || (shift.staffId ?? shift.openedById) !== actor.userId) {
+      throw new Error('Orders must use your own open shift.')
+    }
   }
   if (input.staffConsumption !== undefined && typeof input.staffConsumption !== 'boolean') {
     throw new Error('Staff item checkout is invalid.')
@@ -164,6 +184,7 @@ export function validateOrderDocument(
       (typeof source.lineId === 'string' && candidate.lineId === source.lineId) ||
       (!source.lineId && candidate.productId === item.productId && previousItems.indexOf(candidate) === index),
     )
+    if (old) validateSentItemUpdate(old, source)
     return {
       ...item,
       lineId: typeof source.lineId === 'string'
@@ -259,6 +280,9 @@ export function validateOrderDocument(
       sentAt: status === 'sent'
         ? (typeof old?.sentAt === 'string' ? old.sentAt : new Date().toISOString())
         : typeof old?.sentAt === 'string' ? old.sentAt : undefined,
+      noteCorrectionAt: typeof source.noteCorrectionAt === 'string' && Number.isFinite(Date.parse(source.noteCorrectionAt))
+        ? source.noteCorrectionAt
+        : typeof old?.noteCorrectionAt === 'string' ? old.noteCorrectionAt : undefined,
       addedAt: typeof old?.addedAt === 'string' ? old.addedAt : new Date().toISOString(),
       addedById: typeof old?.addedById === 'string' ? old.addedById : actor.userId,
       addedByName: typeof old?.addedByName === 'string' ? old.addedByName : String(user.name),

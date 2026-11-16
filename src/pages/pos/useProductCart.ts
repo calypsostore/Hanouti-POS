@@ -43,7 +43,8 @@ export function useProductCart(
   }
 
   const canTakeOrders = () => {
-    if (!store?.settings.requireShiftForOrders || hasOpenShift) return true
+    if (!store?.settings.requireShiftForOrders || hasOpenShift ||
+      user?.role === 'admin' || user?.role === 'manager') return true
     push('Open your shift before taking orders.', 'error')
     return false
   }

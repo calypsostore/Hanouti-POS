@@ -76,8 +76,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [auth.userIdRef, database.dbRef, database.provider],
   )
   const dependencies = { ...database, ...guards, verifyAuthorizationPin }
-  const orders = useOrdersSlice(dependencies)
-  const openOrders = useOpenOrdersSlice(dependencies, orders.createOrder)
+  const { buildCreateOrder, ...orders } = useOrdersSlice(dependencies)
+  const openOrders = useOpenOrdersSlice(dependencies, buildCreateOrder)
   const register = useRegisterSlice(dependencies)
   const catalog = useCatalogSlice(dependencies)
   const customers = useCustomersSlice(dependencies)

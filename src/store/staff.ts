@@ -6,6 +6,7 @@ import { isValidUsername, normalizeUsername } from '../lib/staff'
 import { round } from '../lib/pricing-utils'
 import { defaultPermissions } from '../lib/defaults'
 import type { Capability } from '../types'
+import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 
 const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances', 'useStaffAllowances',
@@ -93,7 +94,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       if (current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
         return { ok: false, error: 'That username is already in use.' }
       }
-      if (!/^\d{4,6}$/.test(data.pin)) return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
+      if (!isValidPin(data.pin)) return { ok: false, error: `PIN must contain ${PIN_RANGE_HINT}.` }
       if (!isValidPhoto(data.photo)) return { ok: false, error: 'Profile photos must be images no larger than 300 KB.' }
       if (!['daily', 'monthly', 'none'].includes(data.salaryType) ||
           !Number.isFinite(data.salaryAmount) || data.salaryAmount < 0 ||
@@ -192,8 +193,8 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
         user.id !== id && normalizeUsername(user.username ?? '') === username,
       )) return { ok: false, error: 'That username is already in use.' }
     }
-    if (patch.pin && !/^\d{4,6}$/.test(patch.pin)) {
-      return { ok: false, error: 'PIN must contain 4 to 6 digits.' }
+    if (patch.pin && !isValidPin(patch.pin)) {
+      return { ok: false, error: `PIN must contain ${PIN_RANGE_HINT}.` }
     }
     if ((member.role === 'staff' || member.role === 'manager') && patch.password) {
       return { ok: false, error: 'Staff accounts use a PIN, not a password.' }
@@ -344,7 +345,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
 
 
   const setOwnAdminPin = useCallback<AppContextValue['setOwnAdminPin']>(async (pin) => {
-    if (!/^\d{4,12}$/.test(pin)) return { ok: false, error: 'Authorization PIN must contain 4 to 12 digits.' }
+    if (!isValidPin(pin)) return { ok: false, error: `Authorization PIN must contain ${PIN_RANGE_HINT}.` }
     const actorResult = requireActor()
     if (!actorResult.ok) return actorResult
     const actor = actorResult.actor

@@ -31,6 +31,7 @@ export interface PrintJob {
   itemsReport?: RegisterItemsReport
   itemsRebuiltFromOrders?: boolean
   openDrawer?: boolean
+  reprint?: boolean
 }
 
 /**
@@ -211,11 +212,11 @@ export function PrintModal({ job, onClose }: { job: PrintJob | null; onClose: ()
             )}
             {wantsSerial && state.connected && (
               <Button onClick={send} disabled={!job.bytes || state.busy}>
-                <Printer className="h-4 w-4" /> {job.stationTickets ? 'Send to configured printers' : 'Print ESC/POS'}
+                <Printer className="h-4 w-4" /> {job.reprint ? 'Reprint' : job.stationTickets ? 'Send to configured printers' : 'Print ESC/POS'}
               </Button>
             )}
             <Button variant="secondary" onClick={browserPrint}>
-              <Printer className="h-4 w-4" /> Browser print
+              <Printer className="h-4 w-4" /> {job.reprint ? 'Reprint' : 'Browser print'}
             </Button>
             <Button variant="secondary" onClick={downloadPdf}>
               <Download className="h-4 w-4" /> Download PDF

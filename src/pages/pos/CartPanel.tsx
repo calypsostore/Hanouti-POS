@@ -78,6 +78,7 @@ export function CartPanel({
   persistedLineIds,
   canVoidSentItems,
   onVoidSentItem,
+  onUpdateSentItemNote,
   onOpenFloor,
   unavailableLineIds = [],
   hasUnavailableDraft = false,
@@ -131,6 +132,7 @@ export function CartPanel({
   persistedLineIds?: string[]
   canVoidSentItems: boolean
   onVoidSentItem: (lineId: string) => void
+  onUpdateSentItemNote: (lineId: string, note: string) => boolean
   onOpenFloor?: () => void
   unavailableLineIds?: string[]
   hasUnavailableDraft?: boolean
@@ -260,6 +262,7 @@ export function CartPanel({
             setLineQty={setLineQty}
             canVoidSentItems={canVoidSentItems}
             onVoidSentItem={onVoidSentItem}
+            onUpdateSentItemNote={onUpdateSentItemNote}
             unavailableLineIds={unavailableLineIds}
             issueByLine={issueByLine}
           />
