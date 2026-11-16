@@ -1,16 +1,28 @@
-import { mergeHubSnapshot, type ChangeSet, type HubSnapshot } from '../../shared/sync'
+import { mergeHubSnapshot, type ChangeSet, type HubSnapshot } from '../../shared/sync.ts'
 import type { Database, PrintJob } from '../../types'
-import { readIndexedValue, writeIndexedValue } from '../../lib/storage'
-import { verifySecret } from '../../lib/hash'
+import { readIndexedValue, writeIndexedValue } from '../../lib/storage.ts'
+import { verifySecret } from '../../lib/hash.ts'
 import type { Result } from '../types'
 import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../../lib/authorizationPin'
 
 export type ProviderMode = 'local' | 'hub'
 export type HubConnectionState = 'connected' | 'offline' | 'internet-offline'
 
+export interface ProviderLogEntry {
+  at: string
+  level: 'info' | 'warn' | 'error'
+  message: string
+}
+
 export interface ProviderStatus {
   mode: ProviderMode
   connection: HubConnectionState
+  sessionActive: boolean
+  deviceId: string
+  sequence: number
+  lastConnectedAt?: string
+  lastSyncAt?: string
+  activityLog: ProviderLogEntry[]
   pendingCount: number
   pendingPrintCount: number
   printerStatuses: Record<string, 'online' | 'offline' | 'error'>
@@ -57,12 +69,20 @@ const TOKEN_KEY = '7anouti.hub.session.v1'
 const STORE_CODE_KEY = '7anouti.hub.store-code.v1'
 const SEQ_KEY = '7anouti.hub.sequence.v1'
 const CONFLICTS_KEY = '7anouti.hub.conflicts.v1'
+const ACTIVITY_LOG_KEY = '7anouti.hub.activity.v1'
+const MAX_ACTIVITY_LOG_ENTRIES = 50
 type OutboxEntry =
   | { kind: 'change'; key: string; createdAt: number; attempts: number; retryAt: number; lastError?: string; payload: ChangeSet }
   | { kind: 'print'; key: string; createdAt: number; attempts: number; retryAt: number; lastError?: string; payload: PrintJob }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isProviderLogEntry = (value: unknown): value is ProviderLogEntry =>
+  isRecord(value) &&
+  typeof value.at === 'string' &&
+  (value.level === 'info' || value.level === 'warn' || value.level === 'error') &&
+  typeof value.message === 'string'
 
 class HubRequestError extends Error {
   readonly status: number
@@ -88,6 +108,10 @@ export class LocalProvider implements DataProvider {
     return {
       mode: this.mode,
       connection: this.connection,
+      sessionActive: false,
+      deviceId: this.deviceIdentifier(),
+      sequence: 0,
+      activityLog: [],
       pendingCount: 0,
       pendingPrintCount: 0,
       printerStatuses: {},
@@ -140,6 +164,9 @@ export class HubProvider implements DataProvider {
   private deviceId = ''
   private outbox: OutboxEntry[] = []
   private connection: HubConnectionState = 'offline'
+  private activityLog: ProviderLogEntry[] = []
+  private lastConnectedAt: string | undefined
+  private lastSyncAt: string | undefined
   private printerStatuses: ProviderStatus['printerStatuses'] = {}
   private printerOfflineSince: ProviderStatus['printerOfflineSince'] = {}
   private lastBackupAt: string | null | undefined
@@ -171,6 +198,12 @@ export class HubProvider implements DataProvider {
     return {
       mode: this.mode,
       connection: this.connection,
+      sessionActive: this.hasSession(),
+      deviceId: this.deviceId,
+      sequence: this.sequence,
+      lastConnectedAt: this.lastConnectedAt,
+      lastSyncAt: this.lastSyncAt,
+      activityLog: [...this.activityLog],
       pendingCount: this.outbox.length,
       pendingPrintCount: this.outbox.filter((entry) => entry.kind === 'print').length,
       printerStatuses: this.printerStatuses,
@@ -199,6 +232,8 @@ export class HubProvider implements DataProvider {
 
   async start(): Promise<void> {
     this.started = true
+    this.loadActivityLog()
+    this.recordActivity('info', 'Hub client started; checking connection.')
     this.token = this.readLocal(TOKEN_KEY)
     this.deviceId = this.readLocal(DEVICE_KEY) ?? randomId()
     this.writeLocal(DEVICE_KEY, this.deviceId)
@@ -225,7 +260,9 @@ export class HubProvider implements DataProvider {
     } catch (error) {
       this.onError(`Could not load the offline sync queue: ${this.errorMessage(error)}`)
     }
-    this.connection = await this.probeHub() ? 'connected' : 'offline'
+    const reachable = await this.probeHub()
+    this.setConnection(reachable ? 'connected' : 'offline')
+    if (!reachable) this.recordActivity('warn', 'Hub is not reachable; changes will remain queued on this device.')
     window.addEventListener('online', this.handleConnectivity)
     window.addEventListener('offline', this.handleConnectivity)
     this.pollTimer = window.setInterval(() => { void this.poll() }, 2500)
@@ -272,6 +309,7 @@ export class HubProvider implements DataProvider {
       lastError: undefined,
       payload: changeSet,
     })
+    this.recordActivity('info', `Queued ${changeSet.ops.length} data operation${changeSet.ops.length === 1 ? '' : 's'} for sync.`)
     await this.persistOutbox()
     this.emit()
     void this.flushOutbox()
@@ -281,6 +319,7 @@ export class HubProvider implements DataProvider {
     const key = job.id
     if (!this.outbox.some((entry) => entry.kind === 'print' && entry.key === key)) {
       this.outbox.push({ kind: 'print', key, createdAt: Date.now(), attempts: 0, retryAt: 0, lastError: undefined, payload: job })
+      this.recordActivity('info', 'Queued a print job for the hub.')
       await this.persistOutbox()
       this.emit()
     }
@@ -348,7 +387,8 @@ export class HubProvider implements DataProvider {
       this.token = body.token
       this.writeLocal(TOKEN_KEY, body.token)
       this.writeLocal(STORE_CODE_KEY, code)
-      this.connection = 'connected'
+      this.setConnection('connected')
+      this.recordActivity('info', 'Signed in to the hub.')
       this.lastBackupAt = undefined
       this.lastBackupHealthCheckAt = 0
       this.backupHealthError = undefined
@@ -391,11 +431,17 @@ export class HubProvider implements DataProvider {
         throw new Error('The hub returned an invalid database snapshot.')
       }
       const database = this.snapshotToDatabase(body as unknown as HubSnapshot)
+      const previousSequence = this.sequence
       this.sequence = Math.max(this.sequence, Number(body.seq))
+      this.lastSyncAt = new Date().toISOString()
       this.writeLocal(SEQ_KEY, String(this.sequence))
       this.cache = database
+      if (this.sequence > previousSequence) {
+        this.recordActivity('info', `Received hub data through sequence ${this.sequence}.`)
+      }
       return { database, seq: this.sequence }
-    }).catch(() => {
+    }).catch((error: unknown) => {
+      this.recordActivity('error', `Could not load a hub snapshot: ${this.errorMessage(error)}`)
       this.setConnection('offline')
       return null
     }).finally(() => { this.snapshotRequest = null })
@@ -415,6 +461,7 @@ export class HubProvider implements DataProvider {
     this.lastBackupAt = undefined
     this.lastBackupHealthCheckAt = 0
     this.backupHealthError = undefined
+    this.recordActivity('info', 'Signed out of the hub.')
     if (token) {
       void fetch('/api/auth/logout', {
         method: 'POST',
@@ -431,6 +478,7 @@ export class HubProvider implements DataProvider {
 
   private async poll(): Promise<void> {
     const reachable = await this.probeHub()
+    if (reachable) this.lastConnectedAt = new Date().toISOString()
     this.setConnection(reachable
       ? navigator.onLine ? 'connected' : 'internet-offline'
       : 'offline')
@@ -469,7 +517,8 @@ export class HubProvider implements DataProvider {
         if (!this.outbox.length) this.notifySnapshot(snapshot.database, snapshot.seq)
       }
       this.emit()
-    } catch {
+    } catch (error) {
+      this.recordActivity('error', `Hub status check failed: ${this.errorMessage(error)}`)
       this.setConnection('offline')
     }
   }
@@ -515,11 +564,16 @@ export class HubProvider implements DataProvider {
           this.outbox.shift()
           await this.persistOutbox()
           this.lastError = undefined
+          this.lastSyncAt = new Date().toISOString()
+          this.recordActivity('info', entry.kind === 'change'
+            ? `Synced data changes through sequence ${this.sequence}.`
+            : 'Hub accepted a queued print job.')
           this.setConnection('connected')
         } catch (error) {
           entry.attempts += 1
           entry.lastError = this.errorMessage(error)
           this.lastError = entry.lastError
+          this.recordActivity('error', `${entry.kind === 'change' ? 'Data sync' : 'Print delivery'} failed: ${entry.lastError}`)
           const permanent = error instanceof HubRequestError && error.status >= 400 && error.status < 500
           entry.retryAt = permanent
             ? Number.MAX_SAFE_INTEGER
@@ -604,6 +658,7 @@ export class HubProvider implements DataProvider {
         if (update.type === 'connected') {
           this.socketRetryDelay = 1000
           this.lastError = undefined
+          this.recordActivity('info', 'Live hub updates connected.')
           return
         }
         if (update.type === 'sync' || update.type === 'station-status') {
@@ -612,12 +667,12 @@ export class HubProvider implements DataProvider {
         }
         if (update.type === 'error') {
           this.lastError = typeof update.error === 'string' ? update.error : 'Hub live connection failed.'
-          this.emit()
+          this.recordActivity('error', this.lastError)
           socket.close()
         }
       } catch (error) {
         this.lastError = this.errorMessage(error)
-        this.emit()
+        this.recordActivity('error', `Invalid hub live update: ${this.lastError}`)
         socket.close()
       }
     })
@@ -627,7 +682,7 @@ export class HubProvider implements DataProvider {
     })
     socket.addEventListener('error', () => {
       this.lastError = 'Hub live connection failed; retrying.'
-      this.emit()
+      this.recordActivity('warn', this.lastError)
       socket.close()
     })
   }
@@ -668,6 +723,35 @@ export class HubProvider implements DataProvider {
   private setConnection(connection: HubConnectionState): void {
     if (this.connection === connection) return
     this.connection = connection
+    if (connection !== 'offline') this.lastConnectedAt = new Date().toISOString()
+    this.recordActivity(connection === 'offline' ? 'warn' : 'info', `Connection status changed to ${connection}.`)
+  }
+
+  private loadActivityLog(): void {
+    const raw = this.readLocal(ACTIVITY_LOG_KEY)
+    if (!raw) return
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      this.activityLog = Array.isArray(parsed)
+        ? parsed.filter(isProviderLogEntry).slice(0, MAX_ACTIVITY_LOG_ENTRIES)
+        : []
+    } catch (error) {
+      this.activityLog = []
+      this.recordActivity('warn', `Could not load the saved activity log: ${this.errorMessage(error)}`)
+    }
+  }
+
+  private recordActivity(level: ProviderLogEntry['level'], message: string): void {
+    this.activityLog = [{
+      at: new Date().toISOString(),
+      level,
+      message: message.replace(/[\r\n]/g, ' ').slice(0, 240),
+    }, ...this.activityLog].slice(0, MAX_ACTIVITY_LOG_ENTRIES)
+    try {
+      localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify(this.activityLog))
+    } catch (error) {
+      this.onError(`Could not save hub activity logs: ${this.errorMessage(error)}`)
+    }
     this.emit()
   }
 

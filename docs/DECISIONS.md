@@ -50,6 +50,10 @@
 
 ## Client sync and offline operation
 
+- Hub status lives under Settings → Connection & logs, not in the application
+  header. The panel shows connection/session state, device and sequence details,
+  outbox/print health, and up to 50 device-local activity events. These logs
+  are device-local troubleshooting history, not the hub's server logs.
 - The app selects HubProvider only when same-origin `/api/status` responds; a
   standalone Vite/static build keeps LocalProvider. Hub mode treats IndexedDB
   as its offline cache and stores ordered change sets and print jobs in an

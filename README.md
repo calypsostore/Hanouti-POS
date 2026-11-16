@@ -113,7 +113,7 @@ The login screen has one-click demo buttons for the first three.
   table mode/sections/guest-count rules,
   receipt footer, accent colour, **thermal printer setup** (58/80 mm, auto or
   manual, USB/WebSerial or browser, baud rate, kitchen tickets, test print),
-  demo reset
+  connectivity details and recent device-local hub activity logs, demo reset
 - Automation: per-device receipt policy, cash drawer kick, idle lock/logout,
   shift reminders, stock alerts/hide-out-of-stock, hub print retry/health and
   backup health alert controls. Physical printer and drawer behavior still

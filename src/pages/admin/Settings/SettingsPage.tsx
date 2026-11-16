@@ -20,25 +20,26 @@ import StationsTab from './StationsTab'
 import ServiceTab from './ServiceTab'
 import DevicesTab from './DevicesTab'
 import AutomationTab from './AutomationTab'
+import ConnectivityTab from './ConnectivityTab'
 import { readDeviceReceiptPolicy, saveDeviceReceiptPolicy } from '../../../lib/printPreferences'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'automation' | 'data'
+type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'automation' | 'connectivity' | 'data'
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 export type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
 export default function SettingsPage() {
-  const { db, store, updateStore, updateSettings, updateStaff, user } = useApp()
+  const { db, store, updateStore, updateSettings, updateStaff, user, providerMode, providerStatus } = useApp()
   const [searchParams, setSearchParams] = useSearchParams()
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation'
+    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
       ? requested
       : 'profile'
   })
   const requestedTab = searchParams.get('tab')
   const activeTab: Tab = requestedTab === 'tables' || requestedTab === 'stations' ||
-    requestedTab === 'service' || requestedTab === 'devices' || requestedTab === 'automation'
+    requestedTab === 'service' || requestedTab === 'devices' || requestedTab === 'automation' || requestedTab === 'connectivity'
     ? requestedTab
     : tab
   const changeTab = (next: Tab) => {
@@ -177,7 +178,7 @@ export default function SettingsPage() {
             Shape how the register works for {store.name}.
           </p>
         </div>
-        {activeTab !== 'data' && <Button onClick={save}>
+        {activeTab !== 'data' && activeTab !== 'connectivity' && <Button onClick={save}>
           <Save className="h-4 w-4" /> Save changes
         </Button>}
       </div>
@@ -197,6 +198,7 @@ export default function SettingsPage() {
             { value: 'service' as const, label: 'Service' },
             { value: 'devices' as const, label: 'Devices & printing' },
             { value: 'automation' as const, label: 'Automation' },
+            { value: 'connectivity' as const, label: 'Connection & logs' },
             ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
           ]}
         />
@@ -258,6 +260,13 @@ export default function SettingsPage() {
         receiptPolicy={deviceReceiptPolicy}
         onReceiptPolicyChange={changeDeviceReceiptPolicy}
       />}
+      {activeTab === 'connectivity' && (
+        <ConnectivityTab
+          mode={providerMode}
+          status={providerStatus}
+          printers={db.printers.filter((printer) => printer.storeId === store.id)}
+        />
+      )}
       {activeTab === 'data' && user?.role === 'admin' && <DataTab />}
 
       <PrintModal

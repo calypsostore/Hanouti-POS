@@ -94,16 +94,6 @@ export function TopBar({
   const queuedHubPrint = store && providerStatus.pendingPrintCount > 0
     ? db.printJobs.find((job) => job.storeId === store.id && job.status === 'queued')
     : undefined
-  const connectionLabel = providerStatus.connection === 'connected'
-    ? 'Hub connected'
-    : providerStatus.connection === 'internet-offline'
-      ? 'Internet offline · hub is fine'
-      : 'Hub offline · working locally'
-  const connectionTone = providerStatus.connection === 'connected'
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-    : providerStatus.connection === 'internet-offline'
-      ? 'border-amber-200 bg-amber-50 text-amber-900'
-      : 'border-rose-200 bg-rose-50 text-rose-800'
   const title = titles[location.pathname] ?? BRAND_NAME
   const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
@@ -145,16 +135,6 @@ export function TopBar({
         <ThemeToggle accent={store?.settings.accent} defaultMode={store?.settings.colorMode} />
         <InstallAppButton />
         {!isSuper && store && <div className="hidden sm:block"><ReprintLastReceipt /></div>}
-        <div
-          className={`max-w-40 truncate rounded-lg border px-2 py-1 text-[9px] font-bold leading-tight sm:max-w-none sm:text-[10px] ${providerMode === 'hub' ? connectionTone : 'border-line bg-cream-100 text-muted'}`}
-          role="status"
-          aria-live="polite"
-          title={providerMode === 'hub' ? connectionLabel : 'Local data on this device'}
-        >
-          {providerMode === 'hub'
-            ? `${connectionLabel}${providerStatus.pendingCount ? ` · ${providerStatus.pendingCount} changes waiting` : ''}${providerStatus.lastError ? ` · ${providerStatus.lastError}` : ''}`
-            : 'This device'}
-        </div>
         {providerMode === 'hub' && providerStatus.connection === 'offline' &&
           providerStatus.pendingPrintCount > 0 && !localPrinterAvailable && (
             <span

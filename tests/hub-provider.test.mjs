@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mergeHubSnapshot } from '../src/shared/sync.ts'
+import { HubProvider } from '../src/store/providers/DataProvider.ts'
 
 test('hub snapshots clear locally cached collections omitted by the actor permissions', () => {
   const cached = Object.fromEntries([
@@ -46,4 +47,32 @@ test('hub snapshots clear locally cached collections omitted by the actor permis
   assert.deepEqual(database.shifts, [])
   assert.deepEqual(database.registerSessions, [])
   assert.deepEqual(database.users.map((user) => user.id), [actor.id])
+})
+
+test('hub provider records bounded connection activity locally', () => {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const storage = new Map()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+  })
+  try {
+    const provider = new HubProvider(() => {}, {})
+    provider.setConnection('connected')
+    for (let index = 0; index < 54; index += 1) {
+      provider.setConnection(index % 2 ? 'connected' : 'offline')
+    }
+    const status = provider.status()
+    assert.equal(status.connection, 'connected')
+    assert.equal(status.activityLog.length, 50)
+    assert.match(status.activityLog[0]?.message ?? '', /connected/)
+    assert.ok(storage.has('7anouti.hub.activity.v1'))
+  } finally {
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage)
+    else delete globalThis.localStorage
+  }
 })

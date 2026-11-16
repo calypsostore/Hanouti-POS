@@ -134,6 +134,9 @@ document.
 
 ### M4 client sync and offline — implemented; phone-flow validation pending
 
+- Hub connection status was moved from the header to Settings → Connection &
+  logs. The panel includes device/session/sync/outbox/printer/backup details and
+  a bounded device-local activity history; it does not expose global hub logs.
 - The app auto-selects `HubProvider` when served from the same-origin shop hub;
   standalone mode retains `LocalProvider`. Hub login uses hub authentication;
   IndexedDB is the offline cache and ordered change-set/print outbox.
