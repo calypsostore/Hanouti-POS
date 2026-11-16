@@ -2,7 +2,7 @@ import { Check, Image, Monitor, Moon, Palette, Sun } from 'lucide-react'
 import type { Store, StoreSettings } from '../../../types'
 import { Card } from '../../../components/ui'
 import { ImageUpload } from '../../../components/ImageUpload'
-import { accentPalettes, applyColorMode, saveColorMode } from '../../../lib/theme'
+import { accentPalettes, applyAccent, applyColorMode, saveColorMode } from '../../../lib/theme'
 import { cn } from '../../../lib/utils'
 
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
@@ -48,7 +48,10 @@ export default function BrandingTab({
               key={palette.id}
               type="button"
               aria-pressed={settings.accent === palette.id}
-              onClick={() => set('accent', palette.id)}
+              onClick={() => {
+                applyAccent(palette.id)
+                set('accent', palette.id)
+              }}
               className={cn(
                 'group rounded-xl border p-2.5 text-center transition',
                 settings.accent === palette.id

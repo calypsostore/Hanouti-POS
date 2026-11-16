@@ -1,7 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mergeHubSnapshot } from '../src/shared/sync.ts'
-import { HubProvider } from '../src/store/providers/DataProvider.ts'
+import { detectDataProvider, HubProvider } from '../src/store/providers/DataProvider.ts'
+
+test('standalone HTML fallback does not get mistaken for a shop hub', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => ({
+    ok: true,
+    headers: { get: () => 'text/html; charset=utf-8' },
+    json: async () => { throw new Error('HTML cannot be parsed as JSON.') },
+  })
+
+  try {
+    const provider = await detectDataProvider(() => {}, {})
+    assert.equal(provider.mode, 'local')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('hub snapshots clear locally cached collections omitted by the actor permissions', () => {
   const cached = Object.fromEntries([

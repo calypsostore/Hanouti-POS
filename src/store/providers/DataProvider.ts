@@ -786,7 +786,10 @@ export async function detectDataProvider(
 ): Promise<DataProvider> {
   try {
     const response = await fetch('/api/status', { cache: 'no-store', signal: AbortSignal.timeout(1500) })
-    if (response.ok) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+    if (response.ok && contentType.includes('application/json')) {
+      const status: unknown = await response.json()
+      if (!isHubStatus(status)) throw new Error('The hub returned an invalid status response.')
       const provider = new HubProvider(onError, cache)
       await provider.start()
       return provider
@@ -798,3 +801,18 @@ export async function detectDataProvider(
   await provider.start()
   return provider
 }
+
+const isHubStatus = (value: unknown): value is {
+  ok: true
+  address: string
+  port: number
+  secure: boolean
+  stores: number
+} =>
+  typeof value === 'object' &&
+  value !== null &&
+  'ok' in value && value.ok === true &&
+  'address' in value && typeof value.address === 'string' &&
+  'port' in value && typeof value.port === 'number' &&
+  'secure' in value && typeof value.secure === 'boolean' &&
+  'stores' in value && typeof value.stores === 'number'

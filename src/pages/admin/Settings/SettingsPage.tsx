@@ -33,12 +33,12 @@ export default function SettingsPage() {
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
+    return requested === 'branding' || requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
       ? requested
       : 'profile'
   })
   const requestedTab = searchParams.get('tab')
-  const activeTab: Tab = requestedTab === 'tables' || requestedTab === 'stations' ||
+  const activeTab: Tab = requestedTab === 'branding' || requestedTab === 'tables' || requestedTab === 'stations' ||
     requestedTab === 'service' || requestedTab === 'devices' || requestedTab === 'automation' || requestedTab === 'connectivity'
     ? requestedTab
     : tab
