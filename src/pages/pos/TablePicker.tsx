@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Users } from 'lucide-react'
 import type { DiningTable, GuestRequirement, OpenOrder, TableMode, TableSection } from '../../types'
 import { Button, Card, Field, Input } from '../../components/ui'
+import { AppIcon } from '../../components/AppIcon'
 import { cn } from '../../lib/utils'
 
 export function TablePicker({
@@ -33,11 +34,12 @@ export function TablePicker({
 }) {
   const firstTableRef = useRef<HTMLButtonElement>(null)
   const datalistId = 'open-table-names'
-  const sectionTables = sections.map((section) => ({
+  const sectionTables: Array<{ label: string; section?: TableSection; tables: DiningTable[] }> = sections.map((section) => ({
     label: section.name,
+    section,
     tables: tables.filter((table) => table.sectionId === section.id),
   }))
-  const groupedTables = tableMode === 'sections_tables'
+  const groupedTables: Array<{ label: string; section?: TableSection; tables: DiningTable[] }> = tableMode === 'sections_tables'
     ? [...sectionTables, { label: 'No section', tables: tables.filter((table) => !sections.some((section) => section.id === table.sectionId)) }]
     : [{ label: '', tables }]
 
@@ -70,9 +72,14 @@ export function TablePicker({
             </datalist>
           </>
         </Field>
-      ) : tables.length ? groupedTables.map(({ label, tables: sectionTablesForGroup }) => sectionTablesForGroup.length > 0 && (
+      ) : tables.length ? groupedTables.map(({ label, section, tables: sectionTablesForGroup }) => sectionTablesForGroup.length > 0 && (
         <div key={label || 'tables-only'} className="mb-2 last:mb-0">
-          {label && <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">{label}</div>}
+          {label && (
+            <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+              {section && <AppIcon name={section.icon} color={section.color} size={11} className="h-5 w-5 rounded-md" />}
+              {label}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {sectionTablesForGroup.map((table, index) => (
               <TableButton

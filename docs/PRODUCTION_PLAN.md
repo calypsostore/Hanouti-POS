@@ -453,6 +453,8 @@ stored; no demo values are presented as production data.
   has section tabs and My tables / All / Unassigned filter controls; Unassigned
   is populated by the handover flow and new shifts can take over tables. Manual mode takes
   a free-form table name with suggestions from currently open tables.
+  Configured section colors and icons are displayed in the Settings preview,
+  table-floor filters and headings, and the POS table picker.
 - Settings tabs scroll horizontally on narrow screens without widening the
   page beyond the viewport.
 - Guest-count policy is configurable as required, optional, or off; table-open

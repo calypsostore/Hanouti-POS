@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChefHat, Clock3, Merge, MoveRight, Plus, Utensils } from 'lucide-react'
 import { Button, Field, Input, Modal, Select } from '../../components/ui'
+import { AppIcon } from '../../components/AppIcon'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
 import { guestCountError } from '../../lib/tableService'
 import { openShiftForStaff } from '../../lib/registerShifts'
 import { fmtTime, money } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
-import type { DiningTable, OpenOrder } from '../../types'
+import type { DiningTable, OpenOrder, TableSection } from '../../types'
 
 type FloorFilter = 'mine' | 'all' | 'unassigned'
 type FloorItem = { key: string; name: string; sectionId?: string; table?: DiningTable; order?: OpenOrder }
+type FloorGroup = { key: string; name: string; section: TableSection | undefined; items: FloorItem[] }
 
 const elapsedLabel = (order: OpenOrder, now: number) => {
   const minutes = Math.max(0, Math.floor((now - Date.parse(order.createdAt)) / 60_000))
@@ -74,17 +76,19 @@ export default function TableFloor() {
         order: orders.find((order) => order.tableId === table.id),
       }))
   const visibleItems = floorItems.filter((item) => tableFilter(item) && ownerFilter(item))
-  const groups = store.settings.tableMode === 'sections_tables'
+  const groups: FloorGroup[] = store.settings.tableMode === 'sections_tables'
     ? [...sections.map((section) => ({
         key: section.id,
         name: section.name,
+        section,
         items: visibleItems.filter((item) => item.sectionId === section.id),
       })), {
         key: 'unsectioned',
         name: 'No section',
+        section: undefined,
         items: visibleItems.filter((item) => !sections.some((section) => section.id === item.sectionId)),
       }]
-    : [{ key: 'tables', name: 'Tables', items: visibleItems }]
+    : [{ key: 'tables', name: 'Tables', section: undefined, items: visibleItems }]
 
   const beginOpenTable = (tableId?: string, name?: string) => {
     setStartTable(tableId ? { id: tableId, name: name ?? 'Table' } : { name: '' })
@@ -201,13 +205,20 @@ export default function TableFloor() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant={sectionFilter === 'all' ? 'primary' : 'secondary'} onClick={() => setSectionFilter('all')}>All sections</Button>
             {sections.map((section) => (
-              <Button key={section.id} size="sm" variant={sectionFilter === section.id ? 'primary' : 'secondary'} onClick={() => setSectionFilter(section.id)}>{section.name}</Button>
+              <Button key={section.id} size="sm" variant={sectionFilter === section.id ? 'primary' : 'secondary'} onClick={() => setSectionFilter(section.id)}>
+                <AppIcon name={section.icon} color={section.color} size={12} className="h-5 w-5 rounded-md" /> {section.name}
+              </Button>
             ))}
           </div>
         )}
         {groups.map((group) => group.items.length > 0 && (
           <section key={group.key}>
-            {store.settings.tableMode === 'sections_tables' && <h2 className="mb-2 text-sm font-bold text-muted">{group.name}</h2>}
+            {store.settings.tableMode === 'sections_tables' && (
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-muted">
+                {group.section && <AppIcon name={group.section.icon} color={group.section.color} size={13} className="h-6 w-6 rounded-md" />}
+                {group.name}
+              </h2>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.items.map((item) => {
                 const order = item.order
@@ -238,7 +249,10 @@ export default function TableFloor() {
                               <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {elapsedLabel(order, now)}</span>
                               <span>{order.items.length} lines · {fmtTime(order.createdAt)}</span>
                               {order.guests !== undefined && <span>{order.guests} guests</span>}
-                              <span>{section?.name ?? 'No section'}</span>
+                              <span className="inline-flex items-center gap-1">
+                                {section && <AppIcon name={section.icon} color={section.color} size={10} className="h-4 w-4 rounded" />}
+                                {section?.name ?? 'No section'}
+                              </span>
                               <span>{order.staffName || 'Unassigned'}</span>
                               {allSent && <span className="inline-flex items-center gap-1"><ChefHat className="h-3 w-3" /> Sent</span>}
                             </div>

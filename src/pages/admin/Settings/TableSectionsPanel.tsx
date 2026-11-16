@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button, Card, Field, Input, Modal, Select, Toggle } from '../../../components/ui'
+import { AppIcon } from '../../../components/AppIcon'
 import { useToast } from '../../../components/toast'
 import { useApp } from '../../../store/AppStore'
 import type { IconColor, IconName, TableSection } from '../../../types'
@@ -83,6 +84,7 @@ export default function TableSectionsPanel({ storeId }: { storeId: string }) {
       <div className="grid gap-2 sm:grid-cols-2">
         {sections.map((section, index) => (
           <div key={section.id} className="flex items-center gap-2 rounded-xl border border-line p-3">
+            <AppIcon name={section.icon} color={section.color} size={14} className="h-8 w-8 rounded-lg" />
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{section.name}</span>
             <span className="text-[10px] text-muted">{section.color} · {section.icon}</span>
             <Button variant="ghost" size="icon" aria-label={`Move ${section.name} up`} disabled={index === 0} onClick={() => move(section, -1)}><ArrowUp className="h-4 w-4" /></Button>
