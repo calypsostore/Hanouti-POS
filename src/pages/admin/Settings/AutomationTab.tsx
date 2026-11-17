@@ -5,17 +5,48 @@ import type { SettingsSetter } from './SettingsPage'
 export default function AutomationTab({
   settings,
   set,
+  quick,
   receiptPolicy,
   onReceiptPolicyChange,
 }: {
   settings: StoreSettings
   set: SettingsSetter
+  quick: boolean
   receiptPolicy: StoreSettings['receiptPrintPolicy']
   onReceiptPolicyChange: (value: StoreSettings['receiptPrintPolicy']) => void
 }) {
   const automation = settings.automation
   const update = (patch: Partial<StoreSettings['automation']>) =>
     set('automation', { ...automation, ...patch })
+
+  if (quick) {
+    return (
+      <Card className="space-y-4 p-5">
+        <div>
+          <h3 className="text-sm font-bold">Shifts</h3>
+          <p className="mt-1 text-xs text-muted">Remind staff about shift setup and long-running shifts.</p>
+        </div>
+        <Toggle checked={settings.requireShiftForOrders}
+          onChange={(value) => set('requireShiftForOrders', value)}
+          label="Require an open shift to take orders" />
+        <Toggle checked={automation.shiftReminders}
+          onChange={(value) => update({ shiftReminders: value })}
+          label="Show long-shift reminder" />
+        <Field label="Remind to close shift after (hours)">
+          <Input type="number" min={1} max={24} value={automation.shiftReminderHours}
+            onChange={(event) => update({ shiftReminderHours: Number(event.target.value) || 1 })} />
+        </Field>
+        <Field label="Shift alert after (hours)">
+          <Input type="number" min={1} max={168} value={automation.maxShiftHours}
+            onChange={(event) => update({ maxShiftHours: Math.round(Number(event.target.value) || 1) })} />
+        </Field>
+        <Field label="Cash difference tolerance (DT)">
+          <Input type="number" min={0} step={0.001} value={automation.cashDifferenceTolerance}
+            onChange={(event) => update({ cashDifferenceTolerance: Math.max(0, Number(event.target.value) || 0) })} />
+        </Field>
+      </Card>
+    )
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">

@@ -17,7 +17,7 @@ import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 import { addLog, changedAuditFields } from './audit'
 import { withEnsuredShift } from './registerShiftHelpers'
 import type { AppContextValue } from './types'
-import type { CreateStoreInput } from './types'
+import type { ActorResult, CreateStoreInput } from './types'
 import type { SettingsSliceDependencies } from './sliceTypes'
 
 const expenseSnapshot = (expense: Expense): Record<string, AuditJsonValue> => ({
@@ -110,8 +110,18 @@ const storeProfileSnapshot = (store: Store): Record<string, AuditJsonValue> => (
 
 export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
   const { dbRef, commitDb, requireActor, requireAdmin, requireCapability, userIdRef, setUserId } = dependencies
+  const requireExpenseAccess = useCallback((storeId: string): ActorResult => {
+    const result = requireActor(storeId)
+    if (!result.ok) return result
+    const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
+    if (result.actor.role === 'admin' ||
+      (store?.settings.posMode === 'quick' && result.actor.role === 'manager')) {
+      return result
+    }
+    return { ok: false, error: 'Only store admins and Quick-mode managers can manage expenses.' }
+  }, [dbRef, requireActor])
   const addExpense = useCallback<AppContextValue['addExpense']>((storeId, data) => {
-    const actorResult = requireAdmin(storeId)
+    const actorResult = requireExpenseAccess(storeId)
     if (!actorResult.ok) return actorResult
     if (!Number.isFinite(data.amount) || data.amount <= 0) return { ok: false, error: 'Enter an amount greater than zero.' }
     const datePart = data.date.slice(0, 10)
@@ -146,12 +156,12 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       after: expenseSnapshot(expense),
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireExpenseAccess])
 
   const updateExpense = useCallback<AppContextValue['updateExpense']>((id, data) => {
     const expense = dbRef.current.expenses.find((candidate) => candidate.id === id)
     if (!expense) return { ok: false, error: 'Expense not found.' }
-    const actorResult = requireAdmin(expense.storeId)
+    const actorResult = requireExpenseAccess(expense.storeId)
     if (!actorResult.ok) return actorResult
     if (!Number.isFinite(data.amount) || data.amount <= 0) return { ok: false, error: 'Enter an amount greater than zero.' }
     const datePart = data.date.slice(0, 10)
@@ -183,12 +193,12 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       after: changes.after,
     }))
     return { ok: true }
-  }, [commitDb, dbRef, requireAdmin])
+  }, [commitDb, dbRef, requireExpenseAccess])
 
   const deleteExpense = useCallback<AppContextValue['deleteExpense']>((id) => {
     const expense = dbRef.current.expenses.find((candidate) => candidate.id === id)
     if (!expense) return { ok: false, error: 'Expense not found.' }
-    const actorResult = requireAdmin(expense.storeId)
+    const actorResult = requireExpenseAccess(expense.storeId)
     if (!actorResult.ok) return actorResult
     commitDb((prev) => addLog({
       ...prev,
@@ -202,7 +212,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       before: expenseSnapshot(expense),
     }))
     return { ok: true }
-  }, [commitDb, requireAdmin])
+  }, [commitDb, requireExpenseAccess])
 
   const updateSettings = useCallback<AppContextValue['updateSettings']>((storeId, patch) => {
     const actorResult = requireCapability(storeId, 'manageSettings')

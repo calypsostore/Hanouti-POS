@@ -6,23 +6,27 @@ export default function ProductsSummary({
   categoryCount,
   avgMargin,
   lowStock,
+  quick,
 }: {
   productCount: number
   categoryCount: number
   avgMargin: number
   lowStock: number
+  quick: boolean
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className={`grid grid-cols-2 gap-3 ${quick ? '' : 'lg:grid-cols-4'}`}>
       <Tile label="Products" value={String(productCount)} icon={<Boxes className="h-4 w-4" />} />
       <Tile label="Categories" value={String(categoryCount)} icon={<Boxes className="h-4 w-4" />} />
-      <Tile label="Average margin" value={`${avgMargin.toFixed(0)}%`} icon={<TrendingUp className="h-4 w-4" />} />
-      <Tile
-        label="Low stock"
-        value={String(lowStock)}
-        icon={<AlertTriangle className="h-4 w-4" />}
-        warn={lowStock > 0}
-      />
+      {!quick && <>
+        <Tile label="Average margin" value={`${avgMargin.toFixed(0)}%`} icon={<TrendingUp className="h-4 w-4" />} />
+        <Tile
+          label="Low stock"
+          value={String(lowStock)}
+          icon={<AlertTriangle className="h-4 w-4" />}
+          warn={lowStock > 0}
+        />
+      </>}
     </div>
   )
 }

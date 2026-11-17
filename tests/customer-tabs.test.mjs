@@ -31,7 +31,7 @@ test('settings tabs expose only the Quick set and retain Cashier settings', () =
   const admin = userFor('admin')
   const quick = visibleSettingsTabs(settingsFor('quick'), admin)
   assert.deepEqual(quick, [
-    'profile', 'branding', 'register', 'permissions', 'devices', 'connectivity', 'data',
+    'profile', 'branding', 'register', 'permissions', 'devices', 'automation', 'connectivity', 'data',
   ])
   const cashier = visibleSettingsTabs(settingsFor('cashier'), admin)
   assert.ok(cashier.includes('receipt'))

@@ -12,6 +12,7 @@ export function ProductEditor({
   categories,
   stations,
   inventoryItems,
+  quick,
   onClose,
   onSave,
 }: {
@@ -19,6 +20,7 @@ export function ProductEditor({
   categories: Category[]
   stations: Array<{ id: string; name: string }> | []
   inventoryItems: InventoryItem[]
+  quick: boolean
   onClose: () => void
   onSave: (data: Omit<Product, 'id' | 'storeId'>) => void
 }) {
@@ -57,7 +59,7 @@ export function ProductEditor({
       footer={
         <div className="flex items-center justify-between gap-2">
           <div className="text-[11.5px] text-muted">
-            {priceNum > 0 && (
+            {!quick && priceNum > 0 && (
               <>
                 Margin <span className="font-semibold text-ink">{margin.toFixed(0)}%</span>
               </>
@@ -133,7 +135,7 @@ export function ProductEditor({
               </Select>
             </Field>
           )}
-          {inventoryItems.length > 0 && (
+          {!quick && inventoryItems.length > 0 && (
             <Field label="Linked inventory item" hint="An empty inventory item makes this product unavailable.">
               <Select value={inventoryItemId} onChange={(event) => setInventoryItemId(event.target.value)}>
                 <option value="">Not linked</option>
@@ -144,14 +146,14 @@ export function ProductEditor({
           <Field label="Selling price (DT)">
             <Input type="number" min={0} step={0.1} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.000" className="tabular" />
           </Field>
-          <Field label="Cost price (DT)" hint="For margin only">
+          {!quick && <Field label="Cost price (DT)" hint="For margin only">
             <Input type="number" min={0} step={0.1} value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.000" className="tabular" />
-          </Field>
+          </Field>}
           <Field label="Barcode" hint="Optional product barcode">
             <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scan or enter code" />
           </Field>
         </div>
-        <div className="rounded-xl border border-line bg-white p-3.5">
+        {!quick && <div className="rounded-xl border border-line bg-white p-3.5">
           <Toggle
             checked={trackStock}
             onChange={setTrackStock}
@@ -166,7 +168,7 @@ export function ProductEditor({
               <p className="pb-2.5 text-[11px] text-muted">Units remaining</p>
             </div>
           )}
-        </div>
+        </div>}
         <div className="rounded-xl border border-line bg-white p-3.5">
           <Toggle
             checked={soldByWeight}
@@ -184,11 +186,12 @@ export function ProductEditor({
             </Field>
           )}
         </div>
-        <RecipeEditor recipe={recipe} inventoryItems={inventoryItems} onChange={setRecipe} />
+        {!quick && <RecipeEditor recipe={recipe} inventoryItems={inventoryItems} onChange={setRecipe} />}
         <ProductOptionsEditor
           modifiers={modifiers}
           variants={variants}
           inventoryItems={inventoryItems}
+          quick={quick}
           onModifiersChange={setModifiers}
           onVariantsChange={setVariants}
         />

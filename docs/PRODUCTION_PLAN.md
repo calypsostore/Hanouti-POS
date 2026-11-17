@@ -32,10 +32,15 @@ document.
   direct-route guards. Cashier payment and checkout behavior is unchanged.
 - Quick checkout has no payment modal, receipt printing, cash/card tender or
   change calculation. It records orders as finished; station tickets remain
-  available only when the store enables kitchen stations. Quick navigation and
-  settings omit cashier-only inventory, purchasing, payroll, floor and receipt
-  workflows. Mode changes update settings only; orders, customers, ledger,
-  products and inventory remain stored and reappear when enabled again.
+  available only when the store enables kitchen stations. Quick navigation
+  keeps Overview and Products available; its product editor hides cost, margin,
+  recipe and stock fields. Quick Settings retains shift/cash-difference
+  automation while hiding receipt, table, station and service tabs. Managers
+  retain their normal Quick navigation permissions, and Expenses does not
+  require payroll access. Cashier navigation retains its pre-split features.
+  Saved mode and feature changes update navigation without a page reload. Mode
+  changes update settings only; orders, customers, ledger, products and
+  inventory remain stored and reappear when enabled again.
 - Quick shifts use staff-declared cash: counted amount less opening float is
   the declared sales figure; optional expected-sales tallies create staff
   differences. Staff may record corrections or accept a difference. Manager Z
@@ -46,11 +51,10 @@ document.
   owner-configurable; the owner can override them. Quick settlements record
   staff/shift attribution. The v41 migration normalizes the added permissions
   and limits without deleting existing data.
-- `npm run build` and `npm run test:all` pass (112 tests). Sidebar/settings,
-  route access, tab permissions/limits, mode-switch retention and the
-  Sarra/Sami declared-cash example have automated coverage. Phone/tablet flows,
-  multi-device Hub synchronization, real kitchen tickets and physical printer
-  output still need live-browser/hardware verification.
+- Sidebar/settings, route access, tab permissions/limits, mode-switch retention
+  and the Sarra/Sami declared-cash example have automated coverage. Phone/tablet
+  flows, multi-device Hub synchronization, real kitchen tickets and physical
+  printer output still need live-browser/hardware verification.
 
 ### Staff access and scheduled shifts — implemented; browser verification pending
 

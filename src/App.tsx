@@ -275,11 +275,9 @@ export default function App() {
               <Route
                 path="products"
                 element={
-                  <ModeFeatureGate feature="inventory">
-                    <CapabilityGate capability="manageProducts">
-                      <Products />
-                    </CapabilityGate>
-                  </ModeFeatureGate>
+                  <CapabilityGate capability="manageProducts">
+                    <Products />
+                  </CapabilityGate>
                 }
               />
               <Route

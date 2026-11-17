@@ -26,6 +26,7 @@ export default function ProductCatalog({
   onAvailabilityFilterChange,
   onNewProduct,
   stations,
+  quick,
   onBulkAssignProducts,
   onBulkAssignCategories,
 }: {
@@ -48,6 +49,7 @@ export default function ProductCatalog({
   onAvailabilityFilterChange: (value: 'all' | '86') => void
   onNewProduct: () => void
   stations: Array<{ id: string; name: string }>
+  quick: boolean
   onBulkAssignProducts: (ids: string[], stationId?: string) => boolean
   onBulkAssignCategories: (ids: string[], stationId?: string) => boolean
 }) {
@@ -221,9 +223,9 @@ export default function ProductCatalog({
                     <th className="px-4 py-2.5 font-semibold">Product</th>
                     <th className="px-4 py-2.5 font-semibold">Category</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Price</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Cost</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Margin</th>
-                    <th className="px-4 py-2.5 text-center font-semibold">Stock</th>
+                    {!quick && <th className="px-4 py-2.5 text-right font-semibold">Cost</th>}
+                    {!quick && <th className="px-4 py-2.5 text-right font-semibold">Margin</th>}
+                    {!quick && <th className="px-4 py-2.5 text-center font-semibold">Stock</th>}
                     <th className="px-4 py-2.5 text-center font-semibold">86</th>
                     <th className="px-4 py-2.5 text-center font-semibold">Active</th>
                     <th className="px-4 py-2.5" />
@@ -255,13 +257,13 @@ export default function ProductCatalog({
                         </td>
                         <td className="px-4 py-2.5 text-muted">{categoryName(product.categoryId)}</td>
                         <td className="px-4 py-2.5 text-right font-semibold tabular">{money(product.price)}</td>
-                        <td className="px-4 py-2.5 text-right text-muted tabular">{money(product.cost)}</td>
-                        <td className="px-4 py-2.5 text-right">
+                        {!quick && <td className="px-4 py-2.5 text-right text-muted tabular">{money(product.cost)}</td>}
+                        {!quick && <td className="px-4 py-2.5 text-right">
                           <span className={cn('font-semibold tabular', margin >= 50 ? 'text-emerald-600' : 'text-ink')}>
                             {margin.toFixed(0)}%
                           </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
+                        </td>}
+                        {!quick && <td className="px-4 py-2.5 text-center">
                           {product.trackStock ? (
                             <Badge tone={product.stock === 0 ? 'danger' : low ? 'warning' : 'neutral'}>
                               {product.stock}
@@ -269,7 +271,7 @@ export default function ProductCatalog({
                           ) : (
                             <span className="text-[10.5px] text-muted/60">untracked</span>
                           )}
-                        </td>
+                        </td>}
                         <td className="px-4 py-2.5 text-center">
                           <Button
                             size="sm"
@@ -345,7 +347,7 @@ export default function ProductCatalog({
                     <div className="min-w-0 flex-1">
                       <div className="text-[12.5px] font-semibold">{product.name}</div>
                       <div className="text-[10.5px] text-muted">
-                        {categoryName(product.categoryId)} · {product.trackStock ? `${product.stock} in stock` : 'untracked'}
+                        {categoryName(product.categoryId)}{!quick && ` · ${product.trackStock ? `${product.stock} in stock` : 'untracked'}`}
                       </div>
                     </div>
                     <span className="text-[12.5px] font-bold tabular">{money(product.price)}</span>

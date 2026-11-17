@@ -8,12 +8,14 @@ export function ProductOptionsEditor({
   modifiers,
   variants,
   inventoryItems,
+  quick,
   onModifiersChange,
   onVariantsChange,
 }: {
   modifiers: ProductModifierGroup[]
   variants: ProductVariant[]
   inventoryItems: InventoryItem[]
+  quick: boolean
   onModifiersChange: (groups: ProductModifierGroup[]) => void
   onVariantsChange: (items: ProductVariant[]) => void
 }) {
@@ -93,11 +95,11 @@ export function ProductOptionsEditor({
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <RecipeEditor
+                  {!quick && <RecipeEditor
                     recipe={option.recipe ?? []}
                     inventoryItems={inventoryItems}
                     onChange={(recipe) => patchOption(group.id, option.id, { recipe: recipe.length ? recipe : undefined })}
-                  />
+                  />}
                 </div>
               ))}
               <Button
@@ -117,7 +119,9 @@ export function ProductOptionsEditor({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-[12.5px] font-semibold text-ink">Variants</h3>
-            <p className="text-[10.5px] text-muted">Size/color options with their own price, cost, barcode and stock.</p>
+            <p className="text-[10.5px] text-muted">
+              {quick ? 'Size/color options with their own price and barcode.' : 'Size/color options with their own price, cost, barcode and stock.'}
+            </p>
           </div>
           <Button
             type="button"
@@ -154,25 +158,25 @@ export function ProductOptionsEditor({
               <Field label="Selling price (DT)">
                 <Input type="number" min={0} step="0.001" value={variant.price} onChange={(event) => patchVariant(variant.id, { price: Number(event.target.value) || 0 })} />
               </Field>
-              <Field label="Cost price (DT)">
+              {!quick && <Field label="Cost price (DT)">
                 <Input type="number" min={0} step="0.001" value={variant.cost} onChange={(event) => patchVariant(variant.id, { cost: Number(event.target.value) || 0 })} />
-              </Field>
+              </Field>}
             </div>
-            <Toggle
+            {!quick && <Toggle
               checked={variant.trackStock}
               onChange={(trackStock) => patchVariant(variant.id, { trackStock })}
               label="Track variant stock"
-            />
-            {variant.trackStock && (
+            />}
+            {!quick && variant.trackStock && (
               <Field label="Variant stock">
                 <Input type="number" min={0} step="0.001" value={variant.stock} onChange={(event) => patchVariant(variant.id, { stock: Number(event.target.value) || 0 })} />
               </Field>
             )}
-            <RecipeEditor
+            {!quick && <RecipeEditor
               recipe={variant.recipe ?? []}
               inventoryItems={inventoryItems}
               onChange={(recipe) => patchVariant(variant.id, { recipe: recipe.length ? recipe : undefined })}
-            />
+            />}
             <Button
               type="button"
               size="sm"

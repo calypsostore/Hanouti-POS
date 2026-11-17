@@ -65,7 +65,8 @@ export default function Expenses() {
     )
   }
   if (user.role === 'manager' && !can(user, 'managePayroll') && features.payroll) return <Navigate to="/admin" replace />
-  const canManageExpenses = user.role === 'admin' || can(user, 'managePayroll')
+  const canManageExpenses = user.role === 'admin' ||
+    (user.role === 'manager' && (!features.payroll || can(user, 'managePayroll')))
 
   const expenses = db.expenses.filter((e) => e.storeId === store.id)
 

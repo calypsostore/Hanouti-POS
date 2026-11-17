@@ -3,7 +3,8 @@ import { can } from './permissions.ts'
 import { isQuick, modeFeatures } from './posMode.ts'
 
 export function canViewCustomerTabs(store: Store, user: User): boolean {
-  return modeFeatures(store).customerCredit &&
+  return (modeFeatures(store).customerCredit ||
+    (isQuick(store) && (can(user, 'viewTabs') || can(user, 'manageCustomers')))) &&
     (!isQuick(store) || can(user, 'viewTabs') || can(user, 'manageCustomers'))
 }
 

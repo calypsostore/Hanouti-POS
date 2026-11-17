@@ -9,6 +9,7 @@ import ProductCatalog from './ProductCatalog'
 import { CategoryEditor, ProductEditor } from './ProductEditors'
 import ProductsSummary from './ProductsSummary'
 import { isUnavailable } from '../../../lib/availability'
+import { isQuick } from '../../../lib/posMode'
 
 export default function ProductsPage() {
   const {
@@ -32,6 +33,7 @@ export default function ProductsPage() {
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<Category | null>(null)
 
   if (!store) return null
+  const quick = isQuick(store)
 
   const categories = db.categories.filter((c) => c.storeId === store.id).sort((a, b) => a.sort - b.sort)
   const stations = db.stations.filter((station) => station.storeId === store.id).sort((a, b) => a.sort - b.sort)
@@ -64,7 +66,7 @@ export default function ProductsPage() {
         <div>
           <h2 className="text-[20px] font-extrabold tracking-tight">Products</h2>
           <p className="mt-1 text-[13px] text-muted">
-            Your menu, prices and stock — fully yours to shape.
+            {quick ? 'Your menu and prices — fully yours to shape.' : 'Your menu, prices and stock — fully yours to shape.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -85,6 +87,7 @@ export default function ProductsPage() {
         categoryCount={categories.length}
         avgMargin={avgMargin}
         lowStock={lowStock}
+        quick={quick}
       />
 
       {historyOpen ? (
@@ -154,6 +157,7 @@ export default function ProductsPage() {
         }}
         onNewProduct={() => setProductEditor({ open: true })}
         stations={stations}
+        quick={quick}
         onBulkAssignProducts={(ids, stationId) => {
           const result = bulkAssignProductStation(store.id, ids, stationId)
           if (!result.ok) {
@@ -181,6 +185,7 @@ export default function ProductsPage() {
           categories={categories}
           stations={stations}
           inventoryItems={db.inventoryItems.filter((item) => item.storeId === store.id && item.active)}
+          quick={quick}
           onClose={() => setProductEditor({ open: false })}
           onSave={(data) => {
             if (productEditor.product) {

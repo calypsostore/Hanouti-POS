@@ -33,7 +33,7 @@ import { AppIcon } from './AppIcon'
 import { can } from '../lib/permissions'
 import { isQuick, modeFeatures } from '../lib/posMode'
 import { canViewCustomerTabs } from '../lib/customerTabs'
-import { quickSidebarPaths } from '../lib/posNavigation'
+import { cashierSidebarPaths, quickSidebarPaths } from '../lib/posNavigation'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; tone: DashboardTone; end?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
@@ -108,7 +108,7 @@ export function Sidebar({
             ...(features?.kitchenStations && can(user, 'viewStation')
               ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
               : []),
-            ...(features?.customerCredit && store && canViewCustomerTabs(store, user)
+            ...(store && canViewCustomerTabs(store, user)
               ? [{ to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' as const }]
               : []),
             ...(user.permissions.supervisor || can(user, 'manageStaff')
@@ -130,14 +130,16 @@ export function Sidebar({
           ] }]
         : [
             { label: 'QUICK', items: [
+              { to: '/admin', label: 'Overview', icon: LayoutDashboard, tone: 'blue', end: true },
               { to: '/pos', label: 'POS', icon: ShoppingBag, tone: 'amber' },
               { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
               ...(features?.kitchenStations && can(user, 'viewStation')
                 ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
                 : []),
-              ...(features?.customerCredit && store && canViewCustomerTabs(store, user)
+              ...(store && canViewCustomerTabs(store, user)
                 ? [{ to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' as const }]
                 : []),
+              { to: '/admin/products', label: 'Products', icon: Package, tone: 'blue' },
             ] },
             { label: 'TEAM', items: [
               { to: '/admin/staff', label: 'Staff', icon: Users, tone: 'purple' },
@@ -204,12 +206,21 @@ export function Sidebar({
         ]
 
   const quickPaths = quick && store ? new Set(quickSidebarPaths(store, user)) : undefined
+  const cashierPaths = !quick && store ? new Set(cashierSidebarPaths(store, user)) : undefined
   const modeFilteredGroups = quickPaths
     ? groups.map((group) => ({
         ...group,
         items: group.items.filter((item) => quickPaths.has(item.to)),
       })).filter((group) => group.items.length > 0)
-    : groups
+    : cashierPaths
+      ? groups.map((group) => ({
+          ...group,
+          items: group.items.filter((item) =>
+            !['/pos/floor', '/kitchen', '/admin/purchases', '/admin/inventory', '/admin/customers'].includes(item.to) ||
+            cashierPaths.has(item.to),
+          ),
+        })).filter((group) => group.items.length > 0)
+      : groups
   const visibleGroups = isManager
     ? modeFilteredGroups.map((group) => ({
         ...group,
@@ -225,7 +236,7 @@ export function Sidebar({
             return quick ? quickPaths?.has(item.to) === true : user.permissions.credit
           }
           if (item.to === '/admin/settings') return can(user, 'manageSettings')
-          if (item.to === '/admin/expenses') return can(user, 'managePayroll')
+          if (item.to === '/admin/expenses') return quick || can(user, 'managePayroll')
           return true
         }),
       })).filter((group) => group.items.length > 0)

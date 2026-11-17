@@ -282,6 +282,7 @@ export default function SettingsPage() {
       {activeTab === 'automation' && <AutomationTab
         settings={settings}
         set={set}
+        quick={quick}
         receiptPolicy={deviceReceiptPolicy}
         onReceiptPolicyChange={changeDeviceReceiptPolicy}
       />}

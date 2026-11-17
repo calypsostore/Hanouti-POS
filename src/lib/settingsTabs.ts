@@ -19,7 +19,7 @@ export type SettingsTab =
 export function visibleSettingsTabs(settings: StoreSettings, user: User | null): SettingsTab[] {
   const quick = !modeFeatures(settings).payments
   const tabs: SettingsTab[] = quick
-    ? ['profile', 'branding', 'register', 'devices', 'connectivity']
+    ? ['profile', 'branding', 'register', 'devices', 'automation', 'connectivity']
     : ['profile', 'branding', 'register', 'receipt', 'tables', 'stations', 'service', 'devices', 'automation', 'connectivity']
   if (quick && user && can(user, 'manageStaff')) tabs.splice(3, 0, 'permissions')
   if (user?.role === 'admin') tabs.push('data')
