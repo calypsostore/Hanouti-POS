@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def appVersionCode = 2
+def appVersionName = "1.1"
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.anouti.pos"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -11,8 +19,8 @@ android {
         applicationId "com.anouti.pos"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,9 +28,29 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                def requiredProperties = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+                def missingProperties = requiredProperties.findAll {
+                    !keystoreProperties.getProperty(it)
+                }
+                if (!missingProperties.isEmpty()) {
+                    throw new GradleException(
+                        "Missing ${missingProperties.join(', ')} in ${keystorePropertiesFile}"
+                    )
+                }
+                storeFile rootProject.file(keystoreProperties.getProperty('storeFile'))
+                storePassword keystoreProperties.getProperty('storePassword')
+                keyAlias keystoreProperties.getProperty('keyAlias')
+                keyPassword keystoreProperties.getProperty('keyPassword')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

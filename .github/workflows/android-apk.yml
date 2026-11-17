@@ -1,8 +1,9 @@
-name: Android debug APK
+name: Android APKs
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -27,6 +28,107 @@ jobs:
           name: 7anouti-pos-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Configure Android release signing
+        id: android-signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] && [ -z "$ANDROID_KEYSTORE_PASSWORD" ] && [ -z "$ANDROID_KEY_ALIAS" ] && [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Android signing secrets are not configured; skipping signed release APK."
+            exit 0
+          fi
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required GitHub secret for $name." >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/7anouti-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/7anouti-release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > android/keystore.properties
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+      - name: Build signed Android release APK
+        if: steps.android-signing.outputs.enabled == 'true'
+        run: cd android && ./gradlew assembleRelease
+      - name: Upload signed Android release APK
+        if: steps.android-signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7anouti-pos-android-release
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+  android-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run app:sync
+      - name: Configure Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required GitHub secret for $name." >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/7anouti-release.jks
+          {
+            echo "storeFile=app/7anouti-release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > android/keystore.properties
+      - name: Build signed release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/7anouti-pos.apk
+      - name: Create release version file
+        run: |
+          VERSION_CODE="$(sed -nE 's/^def appVersionCode = ([0-9]+)$/\1/p' android/app/build.gradle)"
+          VERSION_NAME="$(sed -nE 's/^def appVersionName = "([^"]+)"$/\1/p' android/app/build.gradle)"
+          if [ -z "$VERSION_CODE" ] || [ -z "$VERSION_NAME" ]; then
+            echo "Could not read appVersionCode and appVersionName from android/app/build.gradle." >&2
+            exit 1
+          fi
+          export VERSION_CODE VERSION_NAME
+          python3 -c 'import json, os; repo=os.environ["GITHUB_REPOSITORY"]; tag=os.environ["GITHUB_REF_NAME"]; version_name=os.environ["VERSION_NAME"]; print(json.dumps({"versionCode": int(os.environ["VERSION_CODE"]), "versionName": version_name, "apkUrl": f"https://github.com/{repo}/releases/download/{tag}/7anouti-pos.apk", "notes": f"7anouti POS {version_name} release."}))' > version.json
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 7anouti POS ${{ github.ref_name }}
+          make_latest: true
+          files: |
+            android/app/build/outputs/apk/release/7anouti-pos.apk
+            version.json
+          fail_on_unmatched_files: true
 
   ios:
     if: ${{ vars.IOS_SIGNING_ENABLED == 'true' }}

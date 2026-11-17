@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { App as CapacitorApp } from '@capacitor/app'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { AppProvider, useApp } from './store/AppStore'
 import { ToastProvider } from './components/toast'
@@ -35,6 +36,7 @@ import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
 import { SessionAutomationGuard } from './components/SessionAutomationGuard'
 import { staffLandingPath } from './lib/posNavigation'
+import { checkForAppUpdate } from './lib/appUpdate'
 
 function homeFor(user: User, store?: Store | null) {
   if (user.stationOnly) return user.stationId ? `/station/${encodeURIComponent(user.stationId)}` : '/kitchen'
@@ -181,6 +183,24 @@ function HomeRoute() {
 }
 
 export default function App() {
+  useEffect(() => {
+    void checkForAppUpdate()
+    let active = true
+    let appStateListener: Awaited<ReturnType<typeof CapacitorApp.addListener>> | undefined
+    void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void checkForAppUpdate()
+    }).then((listener) => {
+      if (active) appStateListener = listener
+      else void listener.remove()
+    }).catch(() => {
+      // Update checks are best-effort; listener failures must not affect POS use.
+    })
+    return () => {
+      active = false
+      if (appStateListener) void appStateListener.remove()
+    }
+  }, [])
+
   return (
     <ToastProvider>
       <AppProvider>

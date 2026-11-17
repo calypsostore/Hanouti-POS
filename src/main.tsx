@@ -6,6 +6,10 @@ import App from './App'
 import { BRAND_NAME } from './lib/brand'
 
 document.title = BRAND_NAME
+if (Capacitor.isNativePlatform()) {
+  document.documentElement.classList.add('native-app')
+}
+
 const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
 if (favicon) {
   favicon.href = '/favicon-32.png'

@@ -25,6 +25,18 @@ implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
+### Android releases and in-app updates — implemented; device verification pending
+
+- Pushing a `v*` tag builds a signed Android APK and publishes it as
+  `7anouti-pos.apk` alongside `version.json` on a GitHub Release. The app checks
+  the latest release on Android no more than once every six hours and offers
+  updates from dashboard screens only. APK downloads use the app cache and
+  Android's package installer; users must allow installs from this app when
+  prompted. GitHub release URLs require a publicly accessible repository.
+- Still unverified on devices: a signed tag release, downloading and installing
+  over an existing install with the same signing key, and Android's unknown-app
+  install permission prompt.
+
 ### Quick and Cashier products — implemented; browser verification pending
 
 - `settings.posMode` remains `quick` or `cashier`. Shared capability decisions
@@ -316,12 +328,17 @@ document.
   includes the local-network privacy prompt.
 - Native devices can configure a LAN TCP printer and send a test print. The
   web app keeps its existing browser and hub transports. Android debug APK
-  artifacts are built in GitHub Actions; the signed iOS archive job is
-  opt-in and requires Apple signing secrets.
+  artifacts are built in GitHub Actions; signed Android release APK artifacts
+  are also available when Android signing secrets are configured. Release
+  signing reads local `android/keystore.properties`; version 1.1 uses Android
+  version code 2. Native app launch assets use the 7anouti logo, and native
+  glass panels disable backdrop blur. The signed iOS archive job is opt-in and
+  requires Apple signing secrets.
 - Not yet verified: Gradle/Xcode builds and real receipt output on Android and
-  iOS hardware. Validate network permissions, printer reachability, timeout
-  behavior, codepage output and cut modes on supported devices before claiming
-  physical printer compatibility.
+  iOS hardware. Android release signing still requires the owner-generated
+  keystore and local or GitHub secrets. Validate network permissions, printer
+  reachability, timeout behavior, codepage output and cut modes on supported
+  devices before claiming physical printer compatibility.
 
 ## Code organization update (2026-11-12)
 

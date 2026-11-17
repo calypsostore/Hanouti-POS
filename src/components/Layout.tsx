@@ -5,6 +5,7 @@ import { useApp } from '../store/AppStore'
 import { MobileNav } from './MobileNav'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { UpdateBanner } from './UpdateBanner'
 
 export function AppShell() {
   const { user } = useApp()
@@ -32,6 +33,7 @@ export function AppShell() {
       <div className={`min-h-screen ${sidebarWidth}`}>
         <TopBar onMenu={() => setMobileOpen(true)} />
         <main className="mx-auto min-h-[calc(100vh-68px)] max-w-[1680px] px-3 py-4 pb-36 sm:px-5 sm:py-6 sm:pb-28 lg:px-7 lg:py-7 lg:pb-10">
+          <UpdateBanner />
           <Outlet />
         </main>
       </div>
