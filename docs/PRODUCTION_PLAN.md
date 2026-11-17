@@ -195,6 +195,8 @@ document.
   are implemented. Service-worker/PWA behavior requires a secure context:
   plain HTTP on a LAN IP provides online POS only; use the hub HTTPS option for
   app-shell offline loading and installation.
+- The login brand panel shows Android and iOS download-button designs; both are
+  disabled placeholders until APK and App Store destinations are available.
 - Build and lint pass and all 92 Node tests pass. The real hub and virtual
   printer are covered by integration tests. Three-phone Playwright coverage of
   table ownership and live kitchen/bar tickets remains unverified; physical
