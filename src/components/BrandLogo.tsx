@@ -1,6 +1,6 @@
 import { BRAND_NAME } from '../lib/brand'
 import { cn } from '../lib/utils'
-import logoImage from '../../logo/logo1.png'
+import logoImage from '../../logo/logo1-original.png'
 
 type BrandLogoSize = 'sm' | 'md' | 'lg'
 type BrandLogoVariant = 'auto' | 'light' | 'dark'

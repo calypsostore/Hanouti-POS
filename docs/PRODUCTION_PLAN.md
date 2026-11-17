@@ -330,10 +330,10 @@ document.
   web app keeps its existing browser and hub transports. Android debug APK
   artifacts are built in GitHub Actions; signed Android release APK artifacts
   are also available when Android signing secrets are configured. Release
-  signing reads local `android/keystore.properties`; version 1.1 uses Android
-  version code 2. Native app launch assets use the 7anouti logo, and native
-  glass panels disable backdrop blur. The signed iOS archive job is opt-in and
-  requires Apple signing secrets.
+  signing reads local `android/keystore.properties`; version 1.2 uses Android
+  version code 3. In-app and web branding use the original 7anouti logo;
+  native launch assets remain separate, and native glass panels disable
+  backdrop blur. The signed iOS archive job is opt-in and requires Apple signing secrets.
 - Not yet verified: Gradle/Xcode builds and real receipt output on Android and
   iOS hardware. Android release signing still requires the owner-generated
   keystore and local or GitHub secrets. Validate network permissions, printer
