@@ -8,7 +8,11 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'manageStaffAllowances', label: 'Manage staff allowances', description: 'Record and review staff consumption allowances.' },
   { key: 'useStaffAllowances', label: 'Use staff items', description: 'Record allowed staff items during an open shift.' },
   { key: 'approveOverrides', label: 'Approve overrides', description: 'Authorize manager-PIN protected actions.' },
+  { key: 'viewOrders', label: 'View orders', description: 'Open the Orders page and review order history.' },
   { key: 'viewReports', label: 'Open reports and activity log', description: 'Access store reports, dashboard, and audit history.' },
+  { key: 'viewExpenses', label: 'View expenses', description: 'Open Quick-mode expenses and view expense descriptions.' },
+  { key: 'addExpenses', label: 'Add expenses', description: 'Record new Quick-mode expenses and view their amounts.' },
+  { key: 'editExpenses', label: 'Edit expenses', description: 'Edit or delete Quick-mode expenses and view their amounts.' },
   { key: 'manageProducts', label: 'Manage products', description: 'Create and edit products and categories.' },
   { key: 'voidOrders', label: 'Void orders', description: 'Approve order voids with a manager PIN.' },
   { key: 'manageStaff', label: 'Manage staff', description: 'Edit staff access, details, and permissions.' },
@@ -66,6 +70,10 @@ export default function StaffPermissionsEditor({
         )}
         {quick && (
           <>
+            <Toggle checked={permissions.viewOrders === true} onChange={(value) => toggle('viewOrders', value)} label="View orders" description="Open the Orders page and review your order history." />
+            <Toggle checked={permissions.viewExpenses === true} onChange={(value) => toggle('viewExpenses', value)} label="View expenses" description="Open expenses and view descriptions; amounts stay hidden without add or edit access." />
+            <Toggle checked={permissions.addExpenses === true} onChange={(value) => toggle('addExpenses', value)} label="Add expenses" description="Record new expenses and view expense amounts." />
+            <Toggle checked={permissions.editExpenses === true} onChange={(value) => toggle('editExpenses', value)} label="Edit expenses" description="Edit or delete expenses and view expense amounts." />
             <Toggle checked={permissions.manageCustomers === true} onChange={(value) => toggle('manageCustomers', value)} label="Manage customer profiles" description="Create, edit, and remove customer profiles." />
             <Toggle checked={permissions.viewTabs === true} onChange={(value) => toggle('viewTabs', value)} label="View customer tabs" description="Open regular customer profiles and review tab activity." />
             <Toggle checked={permissions.settleTabs === true} onChange={(value) => toggle('settleTabs', value)} label="Settle customer tabs" description="Record customer payments with staff attribution." />
@@ -106,7 +114,9 @@ export default function StaffPermissionsEditor({
           />
         )}
         {role === 'manager' && managerCapabilities
-          .filter(({ key }) => quick || !['manageCustomers', 'viewTabs', 'settleTabs', 'addToTabs'].includes(key))
+          .filter(({ key }) => quick
+            ? true
+            : !['manageCustomers', 'viewTabs', 'settleTabs', 'addToTabs', 'viewOrders', 'viewExpenses', 'addExpenses', 'editExpenses'].includes(key))
           .map(({ key, label, description }) => (
           <Toggle
             key={key}

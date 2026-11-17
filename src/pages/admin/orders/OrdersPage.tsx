@@ -46,7 +46,7 @@ export default function OrdersPage() {
 
   const customers = db.customers.filter((customer) => customer.storeId === store.id)
   const customerName = (id?: string) => customers.find((customer) => customer.id === id)?.name
-  const myOrders = user.role === 'staff' && searchParams.get('mine') === 'true'
+  const myOrders = user.role === 'staff' && (quick || searchParams.get('mine') === 'true')
   const tableNames = new Map(
     db.tables.filter((table) => table.storeId === store.id).map((table) => [table.id, table.name]),
   )

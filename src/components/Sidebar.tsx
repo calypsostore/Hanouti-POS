@@ -236,7 +236,9 @@ export function Sidebar({
             return quick ? quickPaths?.has(item.to) === true : user.permissions.credit
           }
           if (item.to === '/admin/settings') return can(user, 'manageSettings')
-          if (item.to === '/admin/expenses') return quick || can(user, 'managePayroll')
+          if (item.to === '/admin/expenses') {
+            return quick ? can(user, 'viewExpenses') : can(user, 'managePayroll')
+          }
           return true
         }),
       })).filter((group) => group.items.length > 0)

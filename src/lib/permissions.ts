@@ -7,7 +7,11 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   manageStaffAllowances: true,
   useStaffAllowances: true,
   approveOverrides: true,
+  viewOrders: true,
   viewReports: true,
+  viewExpenses: false,
+  addExpenses: false,
+  editExpenses: false,
   manageProducts: true,
   voidOrders: true,
   manageStaff: true,
@@ -47,6 +51,10 @@ export function can(user: User, capability: Capability): boolean {
   }
   if (user.role === 'admin') return true
   if (capability === 'openShift' || capability === 'closeShift') {
+    return user.permissions[capability] === true
+  }
+  if (capability === 'viewOrders' || capability === 'viewExpenses' ||
+      capability === 'addExpenses' || capability === 'editExpenses') {
     return user.permissions[capability] === true
   }
   if (capability === 'takeOverTables' || capability === 'forceCloseShift' ||

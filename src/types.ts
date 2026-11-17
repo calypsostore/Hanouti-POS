@@ -6,7 +6,11 @@ export type Capability =
   | 'manageStaffAllowances'
   | 'useStaffAllowances'
   | 'approveOverrides'
+  | 'viewOrders'
   | 'viewReports'
+  | 'viewExpenses'
+  | 'addExpenses'
+  | 'editExpenses'
   | 'manageProducts'
   | 'voidOrders'
   | 'manageStaff'
@@ -365,7 +369,11 @@ export interface User {
     manageStaffAllowances?: boolean
     useStaffAllowances?: boolean
     approveOverrides?: boolean
+    viewOrders?: boolean
     viewReports?: boolean
+    viewExpenses?: boolean
+    addExpenses?: boolean
+    editExpenses?: boolean
     manageProducts?: boolean
     voidOrders?: boolean
     manageStaff?: boolean

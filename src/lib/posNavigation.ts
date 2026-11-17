@@ -5,35 +5,18 @@ import { modeFeatures } from './posMode.ts'
 
 export function quickSidebarPaths(store: Store, user: User): string[] {
   const features = modeFeatures(store)
-  const paths = ['/pos', '/admin/orders']
-  if (user.role !== 'staff') paths.unshift('/admin')
+  const paths = ['/pos']
+  if (can(user, 'viewOrders')) paths.push('/admin/orders')
+  if (can(user, 'viewReports')) paths.push('/admin')
   if (features.kitchenStations && can(user, 'viewStation')) paths.push('/kitchen')
   if (canViewCustomerTabs(store, user)) paths.push('/admin/customers')
-  if (user.role === 'staff') {
-    if (user.permissions.supervisor || can(user, 'manageStaff')) paths.push('/admin/staff')
-    if (can(user, 'viewReports')) paths.push('/admin/reports', '/admin/logs')
-    paths.push('/admin/expenses')
-    if (can(user, 'openShift') || can(user, 'closeShift')) paths.push('/admin/register')
-    if (can(user, 'manageSettings')) paths.push('/admin/settings')
-    return paths
-  }
-  paths.push('/admin/products')
-  if (user.role === 'manager') {
-    paths.push(
-      '/admin/staff',
-      '/admin/reports',
-      '/admin/expenses',
-      '/admin/register',
-      '/admin/logs',
-      '/admin/settings',
-    )
-    return paths
-  }
   if (can(user, 'manageStaff')) paths.push('/admin/staff')
+  else if (user.role === 'staff' && user.permissions.supervisor) paths.push('/admin/staff')
   if (can(user, 'viewReports')) paths.push('/admin/reports', '/admin/logs')
-  paths.push('/admin/expenses')
+  if (can(user, 'viewExpenses')) paths.push('/admin/expenses')
   if (can(user, 'openShift') || can(user, 'closeShift')) paths.push('/admin/register')
   if (can(user, 'manageSettings')) paths.push('/admin/settings')
+  if (can(user, 'manageProducts')) paths.push('/admin/products')
   return paths
 }
 

@@ -3,11 +3,16 @@ import { Link, NavLink } from 'react-router-dom'
 import { useApp } from '../store/AppStore'
 import { cn } from '../lib/utils'
 import { can } from '../lib/permissions'
+import { quickSidebarPaths } from '../lib/posNavigation'
+import { isQuick } from '../lib/posMode'
+import { canViewCustomerTabs } from '../lib/customerTabs'
 
 export function MobileNav() {
   const { user, store } = useApp()
   if (!user) return null
   const isSuper = user.role === 'super'
+  const quick = store ? isQuick(store) : false
+  const quickPaths = quick && store ? new Set(quickSidebarPaths(store, user)) : undefined
   const items = isSuper
     ? [{ to: '/super', label: 'Overview', icon: LayoutDashboard, end: true }, { to: '/super/stores', label: 'Stores', icon: Store }]
     : user.role === 'staff'
@@ -19,7 +24,9 @@ export function MobileNav() {
             : []),
           ...(can(user, 'viewStation') ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat }] : []),
           { to: '/admin/orders', label: 'Orders', icon: ReceiptText },
-          { to: '/admin/expenses', label: 'Attendance', icon: Wallet },
+          ...(can(user, 'viewExpenses') || !quick
+            ? [{ to: '/admin/expenses', label: quick ? 'Expenses' : 'Attendance', icon: Wallet }]
+            : []),
           ...(can(user, 'recordPurchases')
             ? [{ to: '/admin/purchases', label: 'Purchases', icon: Truck }]
             : []),
@@ -29,7 +36,9 @@ export function MobileNav() {
           ...(can(user, 'openShift') || can(user, 'closeShift')
             ? [{ to: '/admin/register', label: 'Shift', icon: BarChart3 }]
             : []),
-          ...(user.permissions.credit || user.permissions.settle
+          ...((quick
+            ? Boolean(store && canViewCustomerTabs(store, user))
+            : user.permissions.credit || user.permissions.settle)
             ? [{ to: '/admin/customers', label: 'Tabs', icon: Users }]
             : []),
         ]
@@ -59,14 +68,16 @@ export function MobileNav() {
             ...(can(user, 'openShift') || can(user, 'closeShift')
               ? [{ to: '/admin/register', label: 'Shift', icon: BarChart3 }]
               : []),
-            ...(user.permissions.credit || user.permissions.settle
+            ...((quick
+              ? Boolean(store && canViewCustomerTabs(store, user))
+              : user.permissions.credit || user.permissions.settle)
               ? [{ to: '/admin/customers', label: 'Tabs', icon: Users }]
               : []),
             ...(can(user, 'manageSettings')
               ? [{ to: '/admin/settings', label: 'Settings', icon: Settings }]
               : []),
-            ...(can(user, 'managePayroll')
-              ? [{ to: '/admin/expenses', label: 'Payroll', icon: Wallet }]
+            ...((quick ? can(user, 'viewExpenses') : can(user, 'managePayroll'))
+              ? [{ to: '/admin/expenses', label: quick ? 'Expenses' : 'Payroll', icon: Wallet }]
               : []),
           ]
       : [
@@ -85,11 +96,17 @@ export function MobileNav() {
           ...(can(user, 'recordPurchases')
             ? [{ to: '/admin/purchases', label: 'Purchases', icon: Truck }]
             : []),
+          ...(quick && can(user, 'viewExpenses')
+            ? [{ to: '/admin/expenses', label: 'Expenses', icon: Wallet }]
+            : []),
         ]
+  const visibleItems = quickPaths
+    ? items.filter((item) => quickPaths.has(item.to))
+    : items
   return (
     <>
       <nav className="glass-strong fixed inset-x-2 bottom-2 z-30 flex overflow-x-auto rounded-2xl px-1 pb-[env(safe-area-inset-bottom)] pt-1.5 lg:hidden" aria-label="Primary">
-        {items.map(({ to, label, icon: Icon, end }) => (
+        {visibleItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => cn('min-w-[56px] flex-1 flex flex-col min-h-12 items-center justify-center gap-1 rounded-xl text-[9px] font-semibold focus-visible:ring-2 focus-visible:ring-brand-amber', isActive ? 'text-brand-navy dark:text-brand-amber' : 'text-muted')}>
             {({ isActive }) => <><span className={cn('flex h-7 w-8 items-center justify-center rounded-lg', isActive ? 'bg-brand-amber-soft dark:bg-amber-950/60' : 'bg-cream-100 dark:bg-espresso-900')}><Icon className="h-4 w-4" /></span>{label}</>}
           </NavLink>

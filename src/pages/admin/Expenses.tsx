@@ -18,7 +18,7 @@ import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
 import PayrollTab from './PayrollTab'
 import { can } from '../../lib/permissions'
 import { Navigate } from 'react-router-dom'
-import { modeFeatures } from '../../lib/posMode'
+import { isQuick, modeFeatures } from '../../lib/posMode'
 
 const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Salary advance', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
@@ -46,9 +46,10 @@ export default function Expenses() {
 
   if (!store || !user) return null
   const features = modeFeatures(store)
+  const quick = isQuick(store)
   const activeTab = features.payroll ? tab : 'expenses'
   if (user.role === 'staff' && features.payroll) return <PayrollTab />
-  if (user.role === 'staff' && !features.payroll) {
+  if (user.role === 'staff' && !features.payroll && !quick) {
     const staffExpenses = db.expenses.filter((expense) => expense.storeId === store.id)
     return (
       <div className="space-y-4">
@@ -65,8 +66,11 @@ export default function Expenses() {
     )
   }
   if (user.role === 'manager' && !can(user, 'managePayroll') && features.payroll) return <Navigate to="/admin" replace />
-  const canManageExpenses = user.role === 'admin' ||
+  const canManageCashierExpenses = user.role === 'admin' ||
     (user.role === 'manager' && (!features.payroll || can(user, 'managePayroll')))
+  const canAddExpenses = quick ? can(user, 'addExpenses') : canManageCashierExpenses
+  const canEditExpenses = quick ? can(user, 'editExpenses') : canManageCashierExpenses
+  const canSeeAmounts = !quick || canAddExpenses || canEditExpenses
 
   const expenses = db.expenses.filter((e) => e.storeId === store.id)
 
@@ -133,10 +137,10 @@ export default function Expenses() {
           <Button size="sm" variant={activeTab === 'expenses' ? 'primary' : 'secondary'} onClick={() => setTab('expenses')}>Expenses</Button>
           {features.payroll && <Button size="sm" variant={activeTab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>}
           {activeTab === 'expenses' && <>
-            <Button variant="secondary" onClick={exportCsv}>
+            {canSeeAmounts && <Button variant="secondary" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Export
-            </Button>
-            {canManageExpenses && <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
+            </Button>}
+            {canAddExpenses && <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
               <Plus className="h-4 w-4" /> Add expense
             </Button>}
           </>}
@@ -145,7 +149,7 @@ export default function Expenses() {
 
       {activeTab === 'payroll' ? <PayrollTab /> : <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-4">
+        {canSeeAmounts && <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Month total</div>
           <div className="mt-1 text-[22px] font-extrabold tracking-tight tabular">{money(monthTotal)}</div>
           <div
@@ -157,7 +161,7 @@ export default function Expenses() {
             {change > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
             {Math.abs(change).toFixed(1)}% vs last month
           </div>
-        </Card>
+        </Card>}
         {features.payments && <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Sales this month</div>
           <div className="mt-1 text-[22px] font-extrabold tracking-tight tabular">{money(revenue)}</div>
@@ -218,7 +222,7 @@ export default function Expenses() {
               icon={<Receipt className="h-5 w-5" />}
               title="No expenses this period"
               description="Add an expense to keep your net profit accurate."
-              action={canManageExpenses ? (
+              action={canAddExpenses ? (
                 <Button size="sm" onClick={() => setOpen(true)}>
                   <Plus className="h-4 w-4" /> Add expense
                 </Button>
@@ -247,8 +251,8 @@ export default function Expenses() {
                         {e.note} · {db.users.find((candidate) => candidate.id === e.createdBy)?.name ?? e.createdBy}
                       </div>
                     </div>
-                    <span className="text-[13px] font-bold tabular">{money(e.amount)}</span>
-                    {canManageExpenses && <button
+                    {canSeeAmounts && <span className="text-[13px] font-bold tabular">{money(e.amount)}</span>}
+                    {canEditExpenses && <button
                       type="button"
                       onClick={() => { setEditTarget(e); setOpen(true) }}
                       aria-label={`Edit ${e.category} expense`}
@@ -257,7 +261,7 @@ export default function Expenses() {
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>}
-                    {canManageExpenses && <button
+                    {canEditExpenses && <button
                       type="button"
                       onClick={() => setDeleteTarget(e)}
                       aria-label={`Delete ${e.category} expense`}
@@ -272,7 +276,7 @@ export default function Expenses() {
           )}
         </Card>
 
-        <Card className="h-fit min-w-0 p-5">
+        {canSeeAmounts && <Card className="h-fit min-w-0 p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Where it goes</h3>
           <p className="mt-0.5 text-[12px] text-muted">This month by category</p>
           <div className="mt-4 space-y-3.5">
@@ -297,7 +301,7 @@ export default function Expenses() {
               )
             })}
           </div>
-        </Card>
+        </Card>}
       </div>
 
       {open && (
@@ -349,7 +353,9 @@ export default function Expenses() {
         }
       >
         <p className="text-[13px] text-muted">
-          {deleteTarget ? `${deleteTarget.category} · ${money(deleteTarget.amount)}` : ''}
+          {deleteTarget
+            ? `${deleteTarget.category}${canSeeAmounts ? ` · ${money(deleteTarget.amount)}` : ''}`
+            : ''}
         </p>
       </Modal>
       </>}

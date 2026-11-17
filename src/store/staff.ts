@@ -10,7 +10,8 @@ import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 
 const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances', 'useStaffAllowances',
-  'approveOverrides', 'viewReports', 'manageProducts', 'voidOrders',
+  'approveOverrides', 'viewOrders', 'viewReports', 'viewExpenses', 'addExpenses', 'editExpenses',
+  'manageProducts', 'voidOrders',
   'manageStaff', 'manageSettings', 'managePayroll', 'manageTables', 'manageSections',
   'viewStation', 'openShift', 'closeShift', 'takeOverTables', 'forceCloseShift',
   'manageCashDifferences', 'viewStaffAnalytics', 'manage86', 'overrideStock',
@@ -45,6 +46,9 @@ const permissionsForRole = (
           capability !== 'manageCashDifferences' && capability !== 'viewStaffAnalytics' &&
           capability !== 'manage86' && capability !== 'overrideStock' &&
           capability !== 'useStaffAllowances' &&
+          capability !== 'viewOrders' &&
+          capability !== 'viewExpenses' && capability !== 'addExpenses' &&
+          capability !== 'editExpenses' &&
           capability !== 'manageCustomers' && capability !== 'viewTabs' &&
           capability !== 'settleTabs' && capability !== 'addToTabs') {
         permissions[capability] = false

@@ -266,6 +266,10 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   openShift: role !== 'super',
   closeShift: role !== 'super',
   takeOverTables: role !== 'super',
+  viewOrders: role === 'staff' || role === 'manager',
+  viewExpenses: false,
+  addExpenses: false,
+  editExpenses: false,
   useStaffAllowances: false,
   viewStation: role === 'manager',
   overrideStock: role === 'admin' || role === 'manager',
@@ -285,6 +289,8 @@ export const normalizeUser = (u: User): User => {
     : name === 'recordPurchases'
     ? p[name] === true
     : name === 'openShift' || name === 'closeShift' || name === 'takeOverTables'
+      ? typeof p[name] === 'boolean' ? p[name] : base[name]
+    : name === 'viewOrders'
       ? typeof p[name] === 'boolean' ? p[name] : base[name]
       : name === 'useStaffAllowances'
         ? u.role === 'manager'
@@ -330,7 +336,11 @@ export const normalizeUser = (u: User): User => {
       manageStaffAllowances: capability('manageStaffAllowances'),
       useStaffAllowances: capability('useStaffAllowances'),
       approveOverrides: capability('approveOverrides'),
+      viewOrders: capability('viewOrders'),
       viewReports: capability('viewReports'),
+      viewExpenses: capability('viewExpenses'),
+      addExpenses: capability('addExpenses'),
+      editExpenses: capability('editExpenses'),
       manageProducts: capability('manageProducts'),
       voidOrders: capability('voidOrders'),
       manageStaff: capability('manageStaff'),

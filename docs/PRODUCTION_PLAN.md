@@ -5,7 +5,7 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-16 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-17 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
 orders and station tickets, station-device kiosk pairing, hub sync/offline
@@ -33,11 +33,16 @@ document.
 - Quick checkout has no payment modal, receipt printing, cash/card tender or
   change calculation. It records orders as finished; station tickets remain
   available only when the store enables kitchen stations. Quick navigation
-  keeps Overview and Products available; its product editor hides cost, margin,
-  recipe and stock fields. Quick Settings retains shift/cash-difference
-  automation while hiding receipt, table, station and service tabs. Managers
-  retain their normal Quick navigation permissions, and Expenses does not
-  require payroll access. Cashier navigation retains its pre-split features.
+  exposes Overview and Products only with their matching capabilities; the
+  product editor hides cost, margin, recipe and stock fields. Quick Settings
+  retains shift/cash-difference automation while hiding receipt, table,
+  station and service tabs. Quick
+  administrative pages and actions require their matching staff capability;
+  admins always retain full access. Expenses uses separate view, add, and edit
+  permissions (all off by default for staff and managers); view-only users see
+  descriptions but not amounts or totals. Staff Quick orders are limited to
+  their own orders, and the baseline staff navigation is POS, Orders, and their
+  own shift. Cashier navigation retains its pre-split features.
   Saved mode and feature changes update navigation without a page reload. Mode
   changes update settings only; orders, customers, ledger, products and
   inventory remain stored and reappear when enabled again.

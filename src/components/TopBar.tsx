@@ -95,7 +95,10 @@ export function TopBar({
     ? db.printJobs.find((job) => job.storeId === store.id && job.status === 'queued')
     : undefined
   const title = titles[location.pathname] ?? BRAND_NAME
-  const profilePath = isSuper ? '/super' : can(user, 'manageSettings') ? '/admin/settings' : user.role === 'manager' ? '/admin' : '/staff'
+  const profilePath = isSuper ? '/super'
+    : can(user, 'manageSettings') ? '/admin/settings'
+      : user.role === 'manager' && can(user, 'viewReports') ? '/admin'
+        : user.role === 'staff' ? '/staff' : '/pos'
   const activeMode = searchParams.get('channel') === 'dine-in' ? 'tables' : 'pos'
   const onSignOut = () => { logout(); navigate('/login') }
 

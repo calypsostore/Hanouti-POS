@@ -45,7 +45,7 @@ const PRIVATE_COLLECTIONS: Record<string, string> = {
   users: 'manageStaff', stations: 'manageSettings', stationDevices: 'manageSettings',
   printers: 'manageSettings', printRoutes: 'manageSettings', stores: 'manageSettings',
   products: 'manageProducts', categories: 'manageProducts',
-  expenses: 'manageSettings', inventoryItems: 'manageInventory', stockMovements: 'manageInventory',
+  expenses: 'expenses', inventoryItems: 'manageInventory', stockMovements: 'manageInventory',
   purchases: 'recordPurchases', purchasePayments: 'recordPurchases',
   payrolls: 'managePayroll', advances: 'managePayroll', suppliers: 'recordPurchases',
   cashDifferences: 'manageCashDifferences',
@@ -56,6 +56,8 @@ const localDateKey = (value: string): string => {
   const date = new Date(value)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
+const isQuickStoreDocument = (value: unknown): boolean =>
+  record(value) && record(value.settings) && value.settings.posMode === 'quick'
 
 function isAvailabilityOnlyProductChange(
   previous: unknown,
@@ -796,7 +798,18 @@ export async function createHubServer(): Promise<HubRuntime> {
           }
         }
       }
-      if (required && required !== 'ledger' && !availabilityOnly && !automaticSaleStockChange &&
+      if (operation.collection === 'expenses') {
+        const storeDoc = validationState.collections.stores?.[actor.storeId]
+        if (!record(storeDoc)) throw new Error('Store not found.')
+        if (isQuickStoreDocument(storeDoc)) {
+          const capability = operation.kind === 'delete' || previousForPermission
+            ? 'editExpenses'
+            : 'addExpenses'
+          requireCapability(actor, capability)
+        } else {
+          requireCapability(actor, 'manageSettings')
+        }
+      } else if (required && required !== 'ledger' && !availabilityOnly && !automaticSaleStockChange &&
         !selfQuickDifferenceAction) {
         requireCapability(actor, required)
       }
@@ -1513,6 +1526,9 @@ export async function createHubServer(): Promise<HubRuntime> {
             } else if (name === 'customers' && storeForAccess && isQuick(storeForAccess)) {
               if (!can(actor, 'viewTabs') && !can(actor, 'addToTabs') &&
                 !can(actor, 'settleTabs') && !can(actor, 'manageCustomers')) continue
+            } else if (name === 'expenses' && storeForAccess) {
+              const expensesPermission = isQuickStoreDocument(storeForAccess) ? 'viewExpenses' : 'manageSettings'
+              if (!can(actor, expensesPermission)) continue
             } else if (permission && !(name === 'cashDifferences' && actor.role === 'staff') &&
               !can(actor, permission)) continue
           }

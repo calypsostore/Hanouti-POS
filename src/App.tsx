@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { AppProvider, useApp } from './store/AppStore'
 import { ToastProvider } from './components/toast'
 import { AppShell } from './components/Layout'
@@ -28,7 +28,7 @@ import type { Role, User } from './types'
 import type { Capability } from './types'
 import { can } from './lib/permissions'
 import { canViewCustomerTabs } from './lib/customerTabs'
-import { isCashier, modeFeatures, type PosModeFeatures } from './lib/posMode'
+import { isCashier, isQuick, modeFeatures, type PosModeFeatures } from './lib/posMode'
 import { openShiftForStaff } from './lib/registerShifts'
 import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
@@ -83,10 +83,26 @@ function RoleGate({ roles, children }: { roles: Role[]; children: React.ReactNod
   return <>{children}</>
 }
 
-function CapabilityGate({ capability, children }: { capability: Capability; children: React.ReactNode }) {
-  const { user } = useApp()
+function CapabilityGate({ capability, quickOnly = false, children }: {
+  capability: Capability
+  quickOnly?: boolean
+  children: React.ReactNode
+}) {
+  const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
+  if (quickOnly && store && !isQuick(store)) return <>{children}</>
   if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user)} replace />
+  return <>{children}</>
+}
+
+function StaffAccessGate({ detail = false, children }: { detail?: boolean; children: React.ReactNode }) {
+  const { user } = useApp()
+  const { id } = useParams()
+  if (!user) return <Navigate to="/login" replace />
+  const canManageTeam = can(user, 'manageStaff') ||
+    (user.role === 'staff' && user.permissions.supervisor === true)
+  const canViewOwnDetail = detail && user.role === 'staff' && user.id === id
+  if (!canManageTeam && !canViewOwnDetail) return <Navigate to={homeFor(user)} replace />
   return <>{children}</>
 }
 
@@ -137,6 +153,12 @@ function LoginRoute() {
   return <Login />
 }
 
+function StaffHomeGate({ children }: { children: React.ReactNode }) {
+  const { store, user } = useApp()
+  if (user?.role === 'staff' && store && isQuick(store)) return <Navigate to="/pos" replace />
+  return <>{children}</>
+}
+
 function AdminShell() {
   const { store, user } = useApp()
   if (store && !store.setupComplete) {
@@ -184,7 +206,9 @@ export default function App() {
               element={
                 <Protected>
                   <RoleGate roles={['staff']}>
-                    <AppShell />
+                    <StaffHomeGate>
+                      <AppShell />
+                    </StaffHomeGate>
                   </RoleGate>
                 </Protected>
               }
@@ -269,7 +293,7 @@ export default function App() {
                   </CapabilityGate>
                 }
               />
-              <Route path="orders" element={<RoleGate roles={['admin', 'manager', 'staff']}><Orders /></RoleGate>} />
+              <Route path="orders" element={<CapabilityGate capability="viewOrders"><Orders /></CapabilityGate>} />
               <Route path="customers" element={<CustomerTabsGate><Customers /></CustomerTabsGate>} />
               <Route path="register" element={<RegisterGate><Register /></RegisterGate>} />
               <Route
@@ -303,17 +327,17 @@ export default function App() {
               <Route
                 path="staff"
                 element={
-                  <RoleGate roles={['admin', 'manager', 'staff']}>
+                  <StaffAccessGate>
                     <Staff />
-                  </RoleGate>
+                  </StaffAccessGate>
                 }
               />
               <Route
                 path="staff/:id"
                 element={
-                  <RoleGate roles={['admin', 'manager', 'staff']}>
+                  <StaffAccessGate detail>
                     <StaffDetail />
-                  </RoleGate>
+                  </StaffAccessGate>
                 }
               />
               <Route
@@ -327,9 +351,9 @@ export default function App() {
               <Route
                 path="expenses"
                 element={
-                  <RoleGate roles={['admin', 'manager', 'staff']}>
+                  <CapabilityGate capability="viewExpenses" quickOnly>
                     <Expenses />
-                  </RoleGate>
+                  </CapabilityGate>
                 }
               />
               <Route
