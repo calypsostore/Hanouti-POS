@@ -125,7 +125,7 @@ export function CartFooter({
             {reviewLabel
               ? <><CheckCircle2 className="h-3.5 w-3.5" /> {reviewLabel}</>
               : quick
-              ? <><CheckCircle2 className="h-3.5 w-3.5" /> Complete order</>
+              ? <><CheckCircle2 className="h-3.5 w-3.5" /> Done</>
               : <><Wallet className="h-3.5 w-3.5" /> Checkout</>}
           </Button>
         </div>
@@ -158,7 +158,7 @@ export function CartFooter({
                 : isOpenOrder
                 ? <><CheckCircle2 className="h-4 w-4" /> Done</>
                 : quick
-                ? <><CheckCircle2 className="h-4 w-4" /> Complete order · {money(totals.total)}</>
+                ? <><CheckCircle2 className="h-4 w-4" /> Done</>
                 : <><Wallet className="h-4 w-4" /> Checkout · {money(totals.total)}</>}
             </Button>
 

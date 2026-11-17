@@ -8,6 +8,8 @@ import { balanceFor } from '../../lib/selectors'
 import type { Order, OrderChannel, OrderItem } from '../../types'
 import { useToast } from '../../components/toast'
 import { can, canOverrideStock } from '../../lib/permissions'
+import { isQuick, modeFeatures } from '../../lib/posMode'
+import { canAddOrdersToTabs } from '../../lib/customerTabs'
 import { CustomerPicker } from './CustomerPicker'
 import { PaymentModal } from './PaymentModal'
 import { POSHeader } from './POSHeader'
@@ -116,7 +118,7 @@ export default function POS() {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
-    if (store && !openOrder && !store.settings.features.tables && channel === 'dine-in') {
+    if (store && !openOrder && !modeFeatures(store).tablesFloor && channel === 'dine-in') {
       setChannel('takeaway')
       setTableId(undefined)
       setTableName('')
@@ -130,6 +132,7 @@ export default function POS() {
     kind: TicketKind,
   ) => {
     if (!store) return
+    if (!modeFeatures(store).kitchenStations) return
     const stations = db.stations.filter((station) => station.storeId === store.id)
     const tickets = buildStationTickets(order, items, stations, kind)
     if (!tickets.length) return
@@ -244,6 +247,7 @@ export default function POS() {
 
   useEffect(() => {
     if (!openOrder || !store || store.settings.ticketSendPolicy === 'done_only') return
+    if (!modeFeatures(store).kitchenStations) return
     const pending = openOrder.items.filter((item) => item.status === 'draft' && item.stationId)
     if (!pending.length) return
     const latestAddedAt = Math.max(...pending.map((item) => Date.parse(item.addedAt ?? openOrder.updatedAt)))
@@ -415,9 +419,11 @@ export default function POS() {
     activeDiscount !== openOrder.discount ||
     activeNote !== (openOrder.note ?? '')
   )
-  const quick = store.settings.posMode === 'quick'
+  const quick = isQuick(store)
+  const features = modeFeatures(store)
   const canOpenRegister = can(user, 'openShift')
-  const canUseCredit = store.settings.allowCredit && (user.role === 'admin' || user.permissions.credit)
+  const canUseCredit = features.customerCredit && store.settings.allowCredit &&
+    canAddOrdersToTabs(store, user)
   const balance = customerId ? balanceFor(db.ledger, customerId) : 0
   const changeOpenItemQty = (lineId: string, delta: number) => {
     const order = openOrder
@@ -601,7 +607,7 @@ export default function POS() {
     channel,
     setChannel: changeChannel,
     deliveryEnabled: store.settings.features.delivery,
-    tablesEnabled: store.settings.features.tables,
+    tablesEnabled: features.tablesFloor,
     tables,
     sections,
     openTables,
@@ -625,7 +631,7 @@ export default function POS() {
     totals,
     discount: activeDiscount,
     setDiscount: openOrder ? setOpenDiscount : setDiscount,
-    canDiscount: user.permissions.discount,
+    canDiscount: features.payments && user.permissions.discount,
     note: activeNote,
     setNote: openOrder ? setOpenNote : setNote,
     quick,
@@ -676,7 +682,7 @@ export default function POS() {
         }}
       />
 
-      <StaffItemsModal
+      {features.staffAllowances && <StaffItemsModal
         open={staffItemsOpen}
         onClose={() => setStaffItemsOpen(false)}
         products={enabledStaffProducts(db.products.filter((product) => product.storeId === store.id), store.settings.staffConsumption)}
@@ -687,7 +693,7 @@ export default function POS() {
         settings={store.settings}
         policy={store.settings.staffConsumption}
         onSubmit={submitStaffItems}
-      />
+      />}
 
       <POSWorkspace
         catalog={catalogProps}
@@ -869,7 +875,7 @@ export default function POS() {
                     Reduce to {Number(issue.data?.maxQty ?? issue.data?.available)}
                   </Button>
                 )}
-                {issue.code === 'PRICE_CHANGED' && issue.lineId &&
+                {features.payments && issue.code === 'PRICE_CHANGED' && issue.lineId &&
                   openOrder?.items.some((item) => item.lineId === issue.lineId && item.status !== 'void') && (
                   <Button size="sm" variant="secondary" onClick={() => {
                     const lineId = issue.lineId
@@ -946,7 +952,7 @@ export default function POS() {
       </Modal>
 
       {/* Payment */}
-      <PaymentModal
+      {features.payments && <PaymentModal
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
         total={totals.total}
@@ -957,7 +963,7 @@ export default function POS() {
         allowCredit={canUseCredit}
         onConfirm={completeSale}
         orderNo={null}
-      />
+      />}
 
       <Modal
         open={!!voidTarget}
@@ -978,7 +984,7 @@ export default function POS() {
       </Modal>
 
       {/* Receipt */}
-      <ReceiptModal
+      {features.receiptPrinting && <ReceiptModal
         order={receipt}
         customerName={customers.find((c) => c.id === receipt?.customerId)?.name}
         onClose={() => {
@@ -988,7 +994,7 @@ export default function POS() {
           }
           setReceipt(null)
         }}
-      />
+      />}
       <PrintModal job={kitchenJob} onClose={() => setKitchenJob(null)} />
     </div>
   )

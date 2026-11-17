@@ -8,13 +8,15 @@ import { PlanCard } from '../../../components/dashboard/PlanCard'
 import { RegisterCard } from './RegisterCard'
 import { ActivityCard } from './ActivityCard'
 import { OnDutyCard } from '../../../components/dashboard/OnDutyCard'
+import { modeFeatures } from '../../../lib/posMode'
 
 export function DashboardRail({ now }: { now: Date }) {
   const { db, store, user } = useApp()
   const { push } = useToast()
   if (!store || !user) return null
   const trackingMode = 'usageMode' in store.settings && store.settings.usageMode === 'tracking'
-  const canRegister = !trackingMode && store.settings.posMode === 'cashier'
+  const features = modeFeatures(store)
+  const canRegister = !trackingMode && features.cashDrawer
   const registerOpen = db.registerSessions.some((session) => session.storeId === store.id && session.status === 'open')
   return (
     <aside className="min-w-0 space-y-4">
@@ -28,7 +30,7 @@ export function DashboardRail({ now }: { now: Date }) {
       <OnDutyCard db={db} storeId={store.id} />
       <SectionCard icon={Plus} tone="amber" title="Quick actions" subtitle="Shortcuts for your workspace" bodyClassName="grid grid-cols-2 gap-2 px-4 pb-4 sm:px-5">
         <QuickActionTile icon={Plus} tone="amber" label="New sale" href="/pos" />
-        <QuickActionTile icon={Package} tone="blue" label="Add product" href="/admin/products" />
+        {features.inventory && <QuickActionTile icon={Package} tone="blue" label="Add product" href="/admin/products" />}
         {!trackingMode && <QuickActionTile icon={Wallet} tone="rose" label="Add expense" href="/admin/expenses" />}
         {!trackingMode && <QuickActionTile icon={CreditCard} tone="teal" label="Collect tab" href="/admin/customers" />}
         <QuickActionTile icon={UserPlus} tone="purple" label="Add staff" href="/admin/staff" />

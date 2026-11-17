@@ -9,6 +9,7 @@ import type {
 import { round } from './pricing-utils.ts'
 import { recipeFor } from '../shared/orderRules.ts'
 import { expectedShiftCash, orderPaidBy } from './shiftCash.ts'
+import { isQuick } from './posMode.ts'
 import {
   completedOrdersAt,
   ordersCreatedInWindow,
@@ -112,7 +113,8 @@ export const computeRegisterTotals = (
     )
     .map((payment) => payment.amount))
   const expenses = round(cashExpenses + supplierCashPayments)
-  const quickMode = db.stores?.find((store) => store.id === storeId)?.settings.posMode === 'quick'
+  const reportStore = db.stores?.find((store) => store.id === storeId)
+  const quickMode = reportStore ? isQuick(reportStore) : false
 
   return {
     salesTotal: round(cashSales + cardSales + creditSales),
@@ -516,6 +518,24 @@ export const autoCloseRegisterSessionForZ = (
 export interface RegisterBreakdown {
   byEmployee: Array<{ name: string; count: number; total: number }>
   byCategory: Array<{ name: string; qty: number; total: number }>
+}
+
+export const registerDifferenceTotal = (
+  sessions: RegisterSession[],
+  storeId: string,
+  startISO: string,
+  endISO: string,
+): number => {
+  const start = Date.parse(startISO)
+  const end = Date.parse(endISO)
+  return round(sessions
+    .filter((session) =>
+      session.storeId === storeId &&
+      session.status === 'closed' &&
+      !!session.closedAt &&
+      isInWindow(session.closedAt, start, end),
+    )
+    .reduce((total, session) => total + (session.difference ?? 0), 0))
 }
 
 /** Group the session window's completed orders by employee and product category. */

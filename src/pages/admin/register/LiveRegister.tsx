@@ -26,6 +26,7 @@ type Breakdown = ReturnType<typeof registerBreakdown>
 export function LiveRegister({
   open,
   anyOpen,
+  quick,
   canSeeAll,
   liveSnapshot,
   liveBreakdown,
@@ -34,6 +35,7 @@ export function LiveRegister({
 }: {
   open: RegisterSession | null
   anyOpen: RegisterSession | null
+  quick: boolean
   canSeeAll: boolean
   liveSnapshot: Snapshot | null
   liveBreakdown: Breakdown | null
@@ -91,15 +93,22 @@ export function LiveRegister({
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
-            Expected cash in drawer
-          </div>
-          <div className="text-[22px] font-extrabold tracking-tight tabular text-ink">
-            {money(liveSnapshot.expectedCash)}
-          </div>
+        <div className="text-[9.5px] font-bold uppercase tracking-wider text-muted">
+          {quick ? 'Declared at shift close' : 'Expected cash in drawer'}
+        </div>
+        <div className="text-[22px] font-extrabold tracking-tight tabular text-ink">
+          {quick ? '—' : money(liveSnapshot.expectedCash)}
+        </div>
         </div>
       </Card>
 
+      {quick ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Tile label="Orders tracked" value={String(liveSnapshot.recordedCount ?? 0)} icon={<FileText className="h-4 w-4" />} />
+        <Tile label="Opening float" value={money(open.openingFloat ?? open.openingCash)} icon={<CircleDollarSign className="h-4 w-4" />} accent />
+        </div>
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Transactions" value={String(liveSnapshot.ordersCount)} icon={<FileText className="h-4 w-4" />} />
         <Tile label="Recorded (unpaid)" value={`${liveSnapshot.recordedCount ?? 0} · ${money(liveSnapshot.recordedTotal ?? 0)}`} icon={<FileText className="h-4 w-4" />} />
@@ -163,6 +172,8 @@ export function LiveRegister({
             )}
           </Card>
         </div>
+      )}
+      </>
       )}
     </>
   )

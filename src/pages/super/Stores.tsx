@@ -10,6 +10,7 @@ import { cn, money, sum } from '../../lib/utils'
 import { useToast } from '../../components/toast'
 import { NewStoreModal } from './NewStoreModal'
 import { AppIcon } from '../../components/AppIcon'
+import { isQuick } from '../../lib/posMode'
 
 export default function SuperStores() {
   const { db, createStore } = useApp()
@@ -186,7 +187,7 @@ export default function SuperStores() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-muted">
                   <Users className="h-3.5 w-3.5" />
-                  {store.settings.posMode === 'quick' ? 'Quick order' : 'Cashier'}
+                  {isQuick(store) ? 'Quick order' : 'Cashier'}
                 </span>
               </div>
             </button>

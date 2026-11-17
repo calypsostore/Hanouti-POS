@@ -56,6 +56,7 @@ const defaultSettings = (
   guestRequirement: 'required',
   staffPickSectionsOnShift: false,
   requireShiftForOrders: (over.posMode ?? businessTemplate(businessType).posMode) === 'cashier',
+  allowQuickOpeningFloatEdit: false,
   shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
   accent: '7anouti',
   colorMode: 'system',
@@ -516,7 +517,12 @@ const users = ([
     forceCloseShift: user.role === 'admin',
     manageCashDifferences: user.role === 'admin',
     viewStaffAnalytics: user.role !== 'staff' && user.role !== 'super',
+    manageCustomers: user.role === 'admin',
+    viewTabs: user.role === 'admin',
+    settleTabs: user.role === 'admin',
+    addToTabs: user.role === 'admin',
   },
+  tabCreditLimit: 0,
 }))
 
 const customerSeed: Record<

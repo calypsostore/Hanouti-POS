@@ -12,14 +12,18 @@ type Props = {
   db: Database
   canManage: boolean
   isAdmin: boolean
+  canResolveOwn: boolean
   resolve: (id: string, resolution: CashDifferenceResolution, note?: string) => { ok: true } | { ok: false; error: string }
+  correct: (id: string, amount: number, note?: string) => { ok: true } | { ok: false; error: string }
+  accept: (id: string, note?: string) => { ok: true } | { ok: false; error: string }
   voidDifference: (id: string, reason: string) => { ok: true } | { ok: false; error: string }
   archive: (id: string) => { ok: true } | { ok: false; error: string }
   restore: (id: string) => { ok: true } | { ok: false; error: string }
 }
 
 export default function CashDifferencesTab({
-  member, db, canManage, isAdmin, resolve, voidDifference, archive, restore,
+  member, db, canManage, isAdmin, canResolveOwn, resolve, correct, accept,
+  voidDifference, archive, restore,
 }: Props) {
   const { push } = useToast()
   const [view, setView] = useState<'open' | 'archive'>('open')
@@ -31,6 +35,9 @@ export default function CashDifferencesTab({
   const [voiding, setVoiding] = useState<CashDifference | null>(null)
   const [archiving, setArchiving] = useState<CashDifference | null>(null)
   const [reason, setReason] = useState('')
+  const [correctionTarget, setCorrectionTarget] = useState<CashDifference | null>(null)
+  const [correctionAmount, setCorrectionAmount] = useState('')
+  const [correctionNote, setCorrectionNote] = useState('')
   const differences = db.cashDifferences.filter((item) => item.staffId === member.id)
   const openBalance = openCashDifferenceBalance(differences, member.id)
   const rows = differences.filter((item) => {
@@ -49,6 +56,15 @@ export default function CashDifferencesTab({
     { key: 'shift', header: 'Shift', render: (row) => db.registerSessions.find((session) => session.id === row.shiftId)?.shiftNumber ?? row.shiftId },
     { key: 'type', header: 'Type', render: (row) => row.type },
     { key: 'amount', header: 'Amount', render: (row) => <span className="font-bold tabular">{money(row.amount)}</span> },
+    {
+      key: 'corrections',
+      header: 'Corrections',
+      render: (row) => (row.correctionEntries?.length
+        ? <span className="text-xs text-muted">{row.correctionEntries.map((entry) =>
+            `${entry.staffName}: ${money(entry.amount)} · ${new Date(entry.at).toLocaleString()}`,
+          ).join('; ')}</span>
+        : '—'),
+    },
     { key: 'status', header: 'Status', render: (row) => row.status },
     { key: 'resolution', header: 'Resolution', render: (row) => row.resolution?.replace('_', ' ') ?? row.note ?? '—' },
     {
@@ -61,6 +77,21 @@ export default function CashDifferencesTab({
             <Button size="sm" variant="danger" onClick={() => { setVoiding(row); setReason('') }}>Void</Button>
             <Button size="sm" variant="secondary" onClick={() => setArchiving(row)}>Archive</Button>
           </>}
+          {canResolveOwn && row.status === 'open' && (
+            <>
+              {row.type === 'shortage' && (
+                <Button size="sm" onClick={() => {
+                  const corrected = (row.correctionEntries ?? []).reduce((total, entry) => total + entry.amount, 0)
+                  setCorrectionTarget(row)
+                  setCorrectionAmount(Math.max(0, Math.abs(row.amount) - corrected).toFixed(3))
+                  setCorrectionNote('')
+                }}>Add missing amount</Button>
+              )}
+              <Button size="sm" variant="secondary" onClick={() => run(accept(row.id), 'Cash difference accepted.')}>
+                Accept difference
+              </Button>
+            </>
+          )}
           {isAdmin && row.status !== 'open' &&
             <Button size="sm" variant="secondary" onClick={() => run(restore(row.id), 'Cash difference restored.')}>Restore</Button>}
         </div>
@@ -117,6 +148,32 @@ export default function CashDifferencesTab({
             </Select>
           </Field>
           <Field label="Note (optional)"><Textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></Field>
+        </div>
+      </Modal>
+      <Modal
+        open={correctionTarget !== null}
+        onClose={() => setCorrectionTarget(null)}
+        title="Add missing cash"
+        size="sm"
+        footer={<div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setCorrectionTarget(null)}>Cancel</Button>
+          <Button
+            disabled={!Number.isFinite(Number(correctionAmount)) || Number(correctionAmount) <= 0}
+            onClick={() => {
+              if (!correctionTarget) return
+              run(correct(correctionTarget.id, Number(correctionAmount), correctionNote), 'Cash correction recorded.')
+              setCorrectionTarget(null)
+            }}
+          >Record correction</Button>
+        </div>}
+      >
+        <div className="space-y-3">
+          <Field label="Correction amount (DT)">
+            <Input type="number" min={0.001} step={0.001} value={correctionAmount} onChange={(event) => setCorrectionAmount(event.target.value)} />
+          </Field>
+          <Field label="Note (optional)">
+            <Textarea value={correctionNote} onChange={(event) => setCorrectionNote(event.target.value)} rows={2} />
+          </Field>
         </div>
       </Modal>
       <ConfirmDeleteModal

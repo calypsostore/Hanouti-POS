@@ -5,6 +5,7 @@ import { Avatar, Badge } from '../../components/ui'
 import { AppIcon } from '../../components/AppIcon'
 import { ReprintLastReceipt } from '../../components/ReprintLastReceipt'
 import { can } from '../../lib/permissions'
+import { isQuick, modeFeatures } from '../../lib/posMode'
 
 type POSHeaderProps = {
   store: Store
@@ -22,7 +23,8 @@ type POSHeaderProps = {
 export function POSHeader({
   store, user, now, registerOpen, canOpenRegister, shiftReminderDue, onLogout, eightySixCount, onShowEightySixList, onStaffItems,
 }: POSHeaderProps) {
-  const quick = store.settings.posMode === 'quick'
+  const quick = isQuick(store)
+  const features = modeFeatures(store)
   const hasUnavailableItems = eightySixCount > 0
 
   return (
@@ -47,7 +49,7 @@ export function POSHeader({
         </div>
 
         <div className="flex w-full shrink-0 items-center justify-center gap-1 sm:ml-auto sm:w-auto sm:justify-end sm:gap-2">
-          {store.settings.staffConsumption.enabled && store.settings.staffConsumption.allowances.length > 0 &&
+          {features.staffAllowances && store.settings.staffConsumption.enabled && store.settings.staffConsumption.allowances.length > 0 &&
             can(user, 'useStaffAllowances') && (
               <button
                 type="button"
@@ -85,7 +87,7 @@ export function POSHeader({
               <ArrowLeft className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Dashboard</span>
             </Link>
           )}
-          {store.settings.features.tables && (
+          {features.tablesFloor && (
             <Link
               to="/pos/floor"
               aria-label="Floor"
@@ -95,7 +97,7 @@ export function POSHeader({
               <Utensils className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Floor</span>
             </Link>
           )}
-          <ReprintLastReceipt compact />
+          {features.receiptPrinting && <ReprintLastReceipt compact />}
           {(user.role === 'staff' || user.role === 'manager') && (
             <>
               <Link

@@ -55,6 +55,7 @@ export interface AddStaffInput {
   active: boolean
   salaryType: SalaryType
   salaryAmount: number
+  tabCreditLimit?: number
   photo?: string
   permissions: User['permissions']
 }
@@ -219,11 +220,26 @@ export interface AppContextValue {
   cancelOpenOrder: (orderId: string, managerPin: string) => Promise<Result>
   voidOrder: (orderId: string, managerPin?: string, reason?: string) => Promise<Result>
   openRegister: (storeId: string, openingCash: number) => Result
-  closeRegister: (sessionId: string, countedCash: number, note?: string, forceReason?: string, leaveFloatForNextShift?: boolean) => Result
-  closeRegisterDay: (storeId: string, staffFloat: number, countedCash: number, note?: string) => Result
+  closeRegister: (
+    sessionId: string,
+    countedCash: number,
+    note?: string,
+    forceReason?: string,
+    leaveFloatForNextShift?: boolean,
+    expectedSales?: number,
+  ) => Result
+  closeRegisterDay: (
+    storeId: string,
+    staffFloat: number,
+    countedCash: number,
+    note?: string,
+    quickOpenShiftCounts?: Record<string, number>,
+  ) => Result
   handoverTables: (storeId: string, orderIds: string[], targetStaffId?: string) => Result
   takeOverTables: (orderIds: string[]) => Result
   resolveCashDifference: (id: string, resolution: CashDifferenceResolution, note?: string) => Result
+  recordCashDifferenceCorrection: (id: string, amount: number, note?: string) => Result
+  acceptCashDifference: (id: string, note?: string) => Result
   voidCashDifference: (id: string, reason: string) => Result
   archiveCashDifference: (id: string) => Result
   restoreCashDifference: (id: string) => Result

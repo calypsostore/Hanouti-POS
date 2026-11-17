@@ -269,6 +269,10 @@ export const defaultPermissions = (role: Role): User['permissions'] => ({
   useStaffAllowances: false,
   viewStation: role === 'manager',
   overrideStock: role === 'admin' || role === 'manager',
+  manageCustomers: role === 'admin',
+  viewTabs: role === 'admin',
+  settleTabs: role === 'admin',
+  addToTabs: role === 'admin',
   ...(role === 'manager' ? MANAGER_DEFAULT_PERMISSIONS : {}),
 })
 
@@ -345,7 +349,22 @@ export const normalizeUser = (u: User): User => {
       overrideStock: !u.stationOnly && (typeof p.overrideStock === 'boolean'
         ? p.overrideStock
         : u.role === 'admin' || u.role === 'manager'),
+      manageCustomers: !u.stationOnly && (u.role === 'admin' || (typeof p.manageCustomers === 'boolean'
+        ? p.manageCustomers
+        : u.role === 'manager' && MANAGER_DEFAULT_PERMISSIONS.manageCustomers)),
+      viewTabs: !u.stationOnly && (u.role === 'admin' || (typeof p.viewTabs === 'boolean'
+        ? p.viewTabs
+        : u.role === 'manager' && MANAGER_DEFAULT_PERMISSIONS.viewTabs)),
+      settleTabs: !u.stationOnly && (u.role === 'admin' || (typeof p.settleTabs === 'boolean'
+        ? p.settleTabs
+        : u.role === 'manager' && MANAGER_DEFAULT_PERMISSIONS.settleTabs)),
+      addToTabs: !u.stationOnly && (u.role === 'admin' || (typeof p.addToTabs === 'boolean'
+        ? p.addToTabs
+        : u.role === 'manager' && MANAGER_DEFAULT_PERMISSIONS.addToTabs)),
     },
+    tabCreditLimit: typeof u.tabCreditLimit === 'number' && Number.isFinite(u.tabCreditLimit)
+      ? round(Math.max(0, u.tabCreditLimit))
+      : 0,
   }
 }
 

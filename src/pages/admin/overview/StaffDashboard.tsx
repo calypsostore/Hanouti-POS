@@ -12,6 +12,7 @@ import { ChefHat, ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'luci
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { can } from '../../../lib/permissions'
 import { useToast } from '../../../components/toast'
+import { modeFeatures } from '../../../lib/posMode'
 
 export default function StaffDashboard() {
   const { db, store, user, updateStationLanding } = useApp()
@@ -30,7 +31,8 @@ export default function StaffDashboard() {
 
   if (!store || !user || !data) return null
   const openRegister = !!openShiftForStaff(db, store.id, user.id)
-  const canSeeMoney = canViewFinancials(user)
+  const features = modeFeatures(store)
+  const canSeeMoney = features.payments && canViewFinancials(user)
   const tableOccupancy = getTableOccupancy(db, store.id)
   return (
     <div className="space-y-5">
@@ -43,7 +45,7 @@ export default function StaffDashboard() {
       {!can(user, 'openShift') && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Ask a manager to enable shift access.</div>}
       <SectionCard icon={ShoppingBag} tone="amber" title="Quick actions" subtitle="Pick up where you left off" bodyClassName="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-5">
         <QuickActionTile icon={ShoppingBag} tone="amber" label="New order" href="/pos" />
-        {can(user, 'viewStation') && (
+        {features.kitchenStations && can(user, 'viewStation') && (
           <QuickActionTile
             icon={ChefHat}
             tone="green"
@@ -52,7 +54,7 @@ export default function StaffDashboard() {
             href="/kitchen"
           />
         )}
-        {store.settings.features.tables && (
+        {features.tablesFloor && (
           <QuickActionTile
             icon={Utensils}
             tone="teal"

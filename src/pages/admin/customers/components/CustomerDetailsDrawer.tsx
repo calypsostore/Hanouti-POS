@@ -21,7 +21,7 @@ type Props = {
   orders: Order[]
   detailTab: 'ledger' | 'orders'
   onDetailTabChange: (tab: 'ledger' | 'orders') => void
-  isAdmin: boolean
+  canManageCustomers: boolean
   canSettle: boolean
   onClose: () => void
   onEdit: () => void
@@ -37,7 +37,7 @@ export default function CustomerDetailsDrawer({
   orders,
   detailTab,
   onDetailTabChange,
-  isAdmin,
+  canManageCustomers,
   canSettle,
   onClose,
   onEdit,
@@ -56,7 +56,7 @@ export default function CustomerDetailsDrawer({
         customer ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {isAdmin ? (
+              {canManageCustomers ? (
                 <>
                   <Button variant="secondary" size="sm" onClick={onEdit}>
                     <Pencil className="h-3.5 w-3.5" /> Edit profile
@@ -72,7 +72,7 @@ export default function CustomerDetailsDrawer({
                 </>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
-                  <Lock className="h-3 w-3" /> Profile is managed by an admin
+                  <Lock className="h-3 w-3" /> Profile management is permission-controlled
                 </span>
               )}
             </div>

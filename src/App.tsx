@@ -27,6 +27,8 @@ import SuperStores from './pages/super/Stores'
 import type { Role, User } from './types'
 import type { Capability } from './types'
 import { can } from './lib/permissions'
+import { canViewCustomerTabs } from './lib/customerTabs'
+import { isCashier, modeFeatures, type PosModeFeatures } from './lib/posMode'
 import { openShiftForStaff } from './lib/registerShifts'
 import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
@@ -85,6 +87,24 @@ function CapabilityGate({ capability, children }: { capability: Capability; chil
   const { user } = useApp()
   if (!user) return <Navigate to="/login" replace />
   if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user)} replace />
+  return <>{children}</>
+}
+
+function ModeFeatureGate({ feature, children }: {
+  feature: keyof PosModeFeatures
+  children: React.ReactNode
+}) {
+  const { store, user } = useApp()
+  if (!store || !user) return <Navigate to="/login" replace />
+  if (feature === 'tablesFloor' && isCashier(store)) return <>{children}</>
+  if (!modeFeatures(store)[feature]) return <Navigate to={homeFor(user)} replace />
+  return <>{children}</>
+}
+
+function CustomerTabsGate({ children }: { children: React.ReactNode }) {
+  const { store, user } = useApp()
+  if (!store || !user) return <Navigate to="/login" replace />
+  if (!canViewCustomerTabs(store, user)) return <Navigate to={homeFor(user)} replace />
   return <>{children}</>
 }
 
@@ -190,7 +210,9 @@ export default function App() {
                 <Protected>
                   <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
-                      <TableFloor />
+                      <ModeFeatureGate feature="tablesFloor">
+                        <TableFloor />
+                      </ModeFeatureGate>
                     </StoreSetupGate>
                   </RoleGate>
                 </Protected>
@@ -202,9 +224,11 @@ export default function App() {
                 <Protected>
                   <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
-                      <CapabilityGate capability="viewStation">
-                        <StationBoard />
-                      </CapabilityGate>
+                      <ModeFeatureGate feature="kitchenStations">
+                        <CapabilityGate capability="viewStation">
+                          <StationBoard />
+                        </CapabilityGate>
+                      </ModeFeatureGate>
                     </StoreSetupGate>
                   </RoleGate>
                 </Protected>
@@ -216,9 +240,11 @@ export default function App() {
                 <Protected>
                   <RoleGate roles={['admin', 'manager', 'staff']}>
                     <StoreSetupGate>
-                      <CapabilityGate capability="viewStation">
-                        <StationBoard />
-                      </CapabilityGate>
+                      <ModeFeatureGate feature="kitchenStations">
+                        <CapabilityGate capability="viewStation">
+                          <StationBoard />
+                        </CapabilityGate>
+                      </ModeFeatureGate>
                     </StoreSetupGate>
                   </RoleGate>
                 </Protected>
@@ -244,30 +270,36 @@ export default function App() {
                 }
               />
               <Route path="orders" element={<RoleGate roles={['admin', 'manager', 'staff']}><Orders /></RoleGate>} />
-              <Route path="customers" element={<Customers />} />
+              <Route path="customers" element={<CustomerTabsGate><Customers /></CustomerTabsGate>} />
               <Route path="register" element={<RegisterGate><Register /></RegisterGate>} />
               <Route
                 path="products"
                 element={
-                  <CapabilityGate capability="manageProducts">
-                    <Products />
-                  </CapabilityGate>
+                  <ModeFeatureGate feature="inventory">
+                    <CapabilityGate capability="manageProducts">
+                      <Products />
+                    </CapabilityGate>
+                  </ModeFeatureGate>
                 }
               />
               <Route
                 path="inventory"
                 element={
-                  <CapabilityGate capability="manageInventory">
-                    <Inventory />
-                  </CapabilityGate>
+                  <ModeFeatureGate feature="inventory">
+                    <CapabilityGate capability="manageInventory">
+                      <Inventory />
+                    </CapabilityGate>
+                  </ModeFeatureGate>
                 }
               />
               <Route
                 path="purchases"
                 element={
-                  <CapabilityGate capability="recordPurchases">
-                    <Purchases />
-                  </CapabilityGate>
+                  <ModeFeatureGate feature="purchases">
+                    <CapabilityGate capability="recordPurchases">
+                      <Purchases />
+                    </CapabilityGate>
+                  </ModeFeatureGate>
                 }
               />
               <Route

@@ -24,6 +24,7 @@ import { cn, dateKey, fmtDate, fmtDateTime, money, sum } from '../../lib/utils'
 import { AppIcon } from '../../components/AppIcon'
 import { ChartLegend } from '../../components/charts'
 import { SEMANTIC_COLORS } from '../../lib/semanticColors'
+import { isQuick } from '../../lib/posMode'
 
 export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | null; onClose: () => void }) {
   const { db, setStoreStatus, changePlan } = useApp()
@@ -255,7 +256,7 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
             <div className="mt-2 space-y-1.5 text-[12px]">
               <Line
                 label="POS mode"
-                value={store.settings.posMode === 'quick' ? 'Quick order' : 'Cashier'}
+                value={isQuick(store) ? 'Quick order' : 'Cashier'}
               />
               <Line label="Tax" value={`${store.settings.taxRate}%`} />
               <Line label="Service charge" value={`${store.settings.serviceCharge}%`} />
@@ -350,8 +351,8 @@ export function StoreProfileDrawer({ storeId, onClose }: { storeId: string | nul
 
         <div className="flex items-center justify-between rounded-xl bg-cream-100 px-3.5 py-2.5 text-[11px] text-muted">
           <span className="inline-flex items-center gap-1.5">
-            {store.settings.posMode === 'quick' ? <Zap className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
-            {store.settings.posMode === 'quick' ? 'Quick order mode' : 'Full cashier mode'}
+            {isQuick(store) ? <Zap className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
+            {isQuick(store) ? 'Quick order mode' : 'Full cashier mode'}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Wallet className="h-3.5 w-3.5" /> {money(outstanding)} open tabs

@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import type { AuditJsonValue, Customer } from '../types'
 import { uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
+import { isQuick } from '../lib/posMode'
 import { addLog, changedAuditFields } from './audit'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
@@ -15,10 +16,17 @@ const customerSnapshot = (customer: Customer): Record<string, AuditJsonValue> =>
 })
 
 export function useCustomersSlice(dependencies: StoreSliceDependencies) {
-  const { dbRef, commitDb, requireAdmin } = dependencies
+  const { dbRef, commitDb, requireAdmin, requireCapability } = dependencies
+  const authorizeCustomerChange = useCallback((storeId: string) => {
+    const store = dbRef.current.stores.find((item) => item.id === storeId)
+    if (!store) return { ok: false as const, error: 'Store not found.' }
+    return isQuick(store)
+      ? requireCapability(storeId, 'manageCustomers')
+      : requireAdmin(storeId)
+  }, [dbRef, requireAdmin, requireCapability])
   const addCustomer = useCallback<AppContextValue['addCustomer']>(
     (storeId, data) => {
-      const actorResult = requireAdmin(storeId)
+      const actorResult = authorizeCustomerChange(storeId)
       if (!actorResult.ok) return actorResult
       if (!data.name.trim()) return { ok: false, error: 'Enter the customer name.' }
       if (!Number.isFinite(data.limit) || data.limit < 0) return { ok: false, error: 'Enter a valid credit limit.' }
@@ -45,14 +53,14 @@ export function useCustomersSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [authorizeCustomerChange, commitDb],
   )
 
   const updateCustomer = useCallback<AppContextValue['updateCustomer']>(
     (id, patch) => {
       const customer = dbRef.current.customers.find((c) => c.id === id)
       if (!customer) return { ok: false, error: 'Customer not found.' }
-      const actorResult = requireAdmin(customer.storeId)
+      const actorResult = authorizeCustomerChange(customer.storeId)
       if (!actorResult.ok) return actorResult
       if (patch.storeId !== undefined && patch.storeId !== customer.storeId) {
         return { ok: false, error: 'A customer cannot be moved to another store.' }
@@ -79,7 +87,7 @@ export function useCustomersSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [authorizeCustomerChange, commitDb, dbRef],
   )
 
   const deleteCustomer = useCallback<AppContextValue['deleteCustomer']>(
@@ -87,7 +95,7 @@ export function useCustomersSlice(dependencies: StoreSliceDependencies) {
       const current = dbRef.current
       const customer = current.customers.find((c) => c.id === id)
       if (!customer) return { ok: false, error: 'Customer not found.' }
-      const actorResult = requireAdmin(customer.storeId)
+      const actorResult = authorizeCustomerChange(customer.storeId)
       if (!actorResult.ok) return actorResult
       const balance = balanceFor(current.ledger, id)
       if (balance > 0) return { ok: false, error: 'Settle the outstanding balance before removing this customer.' }
@@ -105,7 +113,7 @@ export function useCustomersSlice(dependencies: StoreSliceDependencies) {
       }))
       return { ok: true }
     },
-    [commitDb, requireAdmin],
+    [authorizeCustomerChange, commitDb, dbRef],
   )
 
 

@@ -23,16 +23,22 @@ const managerCapabilities: Array<{ key: Capability; label: string; description: 
   { key: 'viewStaffAnalytics', label: 'View staff analytics', description: 'View staff performance and cash accuracy metrics.' },
   { key: 'manage86', label: 'Manage 86 availability', description: '86 and return menu items from POS.' },
   { key: 'overrideStock', label: 'Override stock warnings', description: 'Confirm warned over-stock sales when allowed by Order rules settings.' },
+  { key: 'manageCustomers', label: 'Manage customer profiles', description: 'Create, edit, and remove customer profiles.' },
+  { key: 'viewTabs', label: 'View customer tabs', description: 'Open regular customer profiles and review tab activity.' },
+  { key: 'settleTabs', label: 'Settle customer tabs', description: 'Record customer payments with staff attribution.' },
+  { key: 'addToTabs', label: 'Add orders to tabs', description: 'Charge new orders to an existing customer tab within the assigned limit.' },
 ]
 
 export default function StaffPermissionsEditor({
   role,
   stationOnly = false,
+  quick = false,
   permissions,
   onChange,
 }: {
   role: 'staff' | 'manager'
   stationOnly?: boolean
+  quick?: boolean
   permissions: User['permissions']
   onChange: (permissions: User['permissions']) => void
 }) {
@@ -52,8 +58,20 @@ export default function StaffPermissionsEditor({
       ) : (
       <div className="space-y-3">
         <Toggle checked={permissions.discount} onChange={(value) => toggle('discount', value)} label="Apply discounts" description="Can reduce the total at checkout." />
-        <Toggle checked={permissions.credit} onChange={(value) => toggle('credit', value)} label="Charge orders to tabs" description="Can attach an order to a customer account." />
-        <Toggle checked={permissions.settle} onChange={(value) => toggle('settle', value)} label="Take customer payments" description="Can settle tab balances." />
+        {!quick && (
+          <>
+            <Toggle checked={permissions.credit} onChange={(value) => toggle('credit', value)} label="Charge orders to tabs" description="Can attach an order to a customer account." />
+            <Toggle checked={permissions.settle} onChange={(value) => toggle('settle', value)} label="Take customer payments" description="Can settle tab balances." />
+          </>
+        )}
+        {quick && (
+          <>
+            <Toggle checked={permissions.manageCustomers === true} onChange={(value) => toggle('manageCustomers', value)} label="Manage customer profiles" description="Create, edit, and remove customer profiles." />
+            <Toggle checked={permissions.viewTabs === true} onChange={(value) => toggle('viewTabs', value)} label="View customer tabs" description="Open regular customer profiles and review tab activity." />
+            <Toggle checked={permissions.settleTabs === true} onChange={(value) => toggle('settleTabs', value)} label="Settle customer tabs" description="Record customer payments with staff attribution." />
+            <Toggle checked={permissions.addToTabs === true} onChange={(value) => toggle('addToTabs', value)} label="Add orders to tabs" description="Charge orders to existing tabs within the assigned limit." />
+          </>
+        )}
         <Toggle checked={permissions.reports} onChange={(value) => toggle('reports', value)} label="Show financial summaries" description="Displays financial totals; it does not grant access to the Reports page." />
         <Toggle checked={permissions.register} onChange={(value) => toggle('register', value)} label="Use the register" description="Can open shifts, print X reports, and close personal shifts. Only the owner closes the store-day Z." />
         {role === 'staff' && (
@@ -87,7 +105,9 @@ export default function StaffPermissionsEditor({
             description="Confirm over-stock sales when allowed by Order rules settings."
           />
         )}
-        {role === 'manager' && managerCapabilities.map(({ key, label, description }) => (
+        {role === 'manager' && managerCapabilities
+          .filter(({ key }) => quick || !['manageCustomers', 'viewTabs', 'settleTabs', 'addToTabs'].includes(key))
+          .map(({ key, label, description }) => (
           <Toggle
             key={key}
             checked={permissions[key] === true}

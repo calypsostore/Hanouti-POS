@@ -356,7 +356,8 @@ export class HubAuth {
       address: '', city: '', icon: 'Store', iconColor: 'amber', plan: 'starter', status: 'trial',
       businessType: 'cafe', setupComplete: false, createdAt: now,
       settings: {
-        taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false, features: { weightItems: false },
+        taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false,
+        allowQuickOpeningFloatEdit: false, features: { weightItems: false },
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         availability: {
           enabled: true, autoEightySixAtZero: true, autoReturnOnRestock: true,
@@ -370,7 +371,8 @@ export class HubAuth {
     const owner: HubUser = {
       id: randomBytes(12).toString('hex'), storeId, username, email: username.includes('@') ? username : `${username}@local.invalid`,
       name: username, role: 'admin', active: true, createdAt: now, salaryType: 'none', salaryAmount: 0,
-      password: hashSecret(password), pin: hashSecret(pin), permissions: {},
+      password: hashSecret(password), pin: hashSecret(pin),
+      permissions: { manageCustomers: true, viewTabs: true, settleTabs: true, addToTabs: true },
     }
     await this.storage.replaceStore(storeId, {
       storeId, seq: 1, appliedOpIds: [], collections: {
@@ -381,7 +383,13 @@ export class HubAuth {
     succeeded = true
     const token = randomBytes(32).toString('base64url')
     const expiresAt = Date.now() + SESSION_MS
-    const actor: AuthenticatedActor = { storeId, userId: owner.id, role: 'admin', permissions: {}, stationOnly: false }
+    const actor: AuthenticatedActor = {
+      storeId,
+      userId: owner.id,
+      role: 'admin',
+      permissions: { manageCustomers: true, viewTabs: true, settleTabs: true, addToTabs: true },
+      stationOnly: false,
+    }
     this.sessions.set(hashToken(token), { actor, expiresAt })
     return { token, expiresAt: new Date(expiresAt).toISOString(), actor }
     } finally {

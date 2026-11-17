@@ -1,6 +1,8 @@
 import { round } from '../../src/lib/pricing-utils.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
 import { requireCapability } from './auth.ts'
+import { isQuick } from '../../src/lib/posMode.ts'
+import type { Store } from '../../src/types.ts'
 
 export function validateLedgerEntry(
   input: Record<string, unknown>,
@@ -19,8 +21,12 @@ export function validateLedgerEntry(
   if (input.type === 'payment' && (input.amount < 0 || !['cash', 'card'].includes(String(input.method)))) {
     throw new Error('A ledger payment must be positive and use cash or card.')
   }
+  const store = state.collections.stores?.[actor.storeId] as unknown as Store | undefined
+  if (!store?.settings) throw new Error('Store settings are unavailable for this tab payment.')
   if (input.type === 'charge' && input.amount < 0) requireCapability(actor, 'voidOrders')
-  else requireCapability(actor, input.type === 'charge' ? 'credit' : 'settle')
+  else requireCapability(actor, input.type === 'charge'
+    ? isQuick(store) ? 'addToTabs' : 'credit'
+    : isQuick(store) ? 'settleTabs' : 'settle')
 
   if (input.orderId !== undefined) {
     if (typeof input.orderId !== 'string' || state.collections.orders?.[input.orderId]?.storeId !== actor.storeId) {
@@ -39,8 +45,19 @@ export function validateLedgerEntry(
     throw new Error('Ledger credit adjustment flag is invalid.')
   }
   if (input.shiftId !== undefined &&
-    (typeof input.shiftId !== 'string' || state.collections.shifts?.[input.shiftId]?.storeId !== actor.storeId)) {
-    throw new Error('Ledger entry must reference a shift in this store.')
+    typeof input.shiftId !== 'string') {
+    throw new Error('Ledger entry must reference a valid register shift.')
+  }
+  if (typeof input.shiftId === 'string') {
+    const shift = state.collections.registerSessions?.[input.shiftId]
+    if (shift) {
+      const ownerId = typeof shift.staffId === 'string' ? shift.staffId : shift.openedById
+      if (shift.storeId !== actor.storeId || ownerId !== actor.userId) {
+        throw new Error('Ledger entry must reference the authenticated staff member’s register shift.')
+      }
+    } else if (actor.role === 'staff') {
+      throw new Error('Ledger entry must reference an existing register shift.')
+    }
   }
 
   const existing = state.collections.ledger?.[String(input.id)]

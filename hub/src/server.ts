@@ -25,9 +25,12 @@ import { stationBoardHtml } from './board.ts'
 import { validateOrderDocument } from './orderValidation.ts'
 import { validateLedgerEntry } from './ledgerValidation.ts'
 import { isUnavailable } from '../../src/shared/availability.ts'
-import type { InventoryItem, OrderItem, Product, Shift, Store, StoreSettings } from '../../src/types.ts'
+import { balanceFor } from '../../src/lib/selectors.ts'
+import type { InventoryItem, LedgerEntry, OrderItem, Product, Shift, Store, StoreSettings } from '../../src/types.ts'
 import { shiftOpenScheduleError, normalizeShiftAccessSettings } from '../../src/lib/shiftAccess.ts'
+import { isQuick } from '../../src/lib/posMode.ts'
 import { PIN_MAX_LENGTH } from '../../src/shared/pin.ts'
+import { round } from '../../src/lib/pricing-utils.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -45,6 +48,7 @@ const PRIVATE_COLLECTIONS: Record<string, string> = {
   expenses: 'manageSettings', inventoryItems: 'manageInventory', stockMovements: 'manageInventory',
   purchases: 'recordPurchases', purchasePayments: 'recordPurchases',
   payrolls: 'managePayroll', advances: 'managePayroll', suppliers: 'recordPurchases',
+  cashDifferences: 'manageCashDifferences',
   ledger: 'ledger',
 }
 const ORDER_COLLECTIONS = new Set(['orders', 'openOrders', 'orderItems', 'payments'])
@@ -597,7 +601,7 @@ export async function createHubServer(): Promise<HubRuntime> {
         session.storeId === actor.storeId && session.status === 'open' &&
         ((session.staffId as string | undefined) ?? (session.openedById as string | undefined)) === actor.userId,
       )
-      const allowedBeforeShift = ['registerSessions', 'auditLogs', 'attendance'].includes(operation.collection)
+      const allowedBeforeShift = ['registerSessions', 'auditLogs', 'attendance', 'cashDifferences'].includes(operation.collection)
       if (actor.role === 'staff' && !actor.stationOnly &&
         accessSettings.requireOpenShiftForStoreAccess && !hasOpenStaffShift && !allowedBeforeShift) {
         const message = operation.collection === 'orders' || operation.collection === 'openOrders'
@@ -608,7 +612,125 @@ export async function createHubServer(): Promise<HubRuntime> {
       const required = PRIVATE_COLLECTIONS[operation.collection]
       const previousForPermission = validationState.collections[operation.collection]?.[operation.id]
       const incomingForPermission = operation.kind === 'put' && record(operation.document) ? operation.document : undefined
+      if (operation.collection === 'customers') {
+        const storeDoc = validationState.collections.stores?.[actor.storeId] as unknown as Store | undefined
+        if (!storeDoc) throw new Error('Store not found.')
+        if (isQuick(storeDoc)) {
+          requireCapability(actor, 'manageCustomers')
+        } else if (actor.role !== 'admin') {
+          throw Object.assign(new Error('Only the store owner can manage customer profiles.'), { status: 403 })
+        }
+        if (operation.kind === 'delete') {
+          if (!record(previousForPermission) || previousForPermission.storeId !== actor.storeId) {
+            throw new Error('Customer not found in this store.')
+          }
+          const ledger = Object.values(validationState.collections.ledger ?? {}) as unknown as LedgerEntry[]
+          const balance = balanceFor(ledger, operation.id)
+          if (balance > 0) throw new Error('Settle the outstanding balance before removing this customer.')
+        } else {
+          const customer = incomingForPermission
+          if (!customer || customer.id !== operation.id || customer.storeId !== actor.storeId ||
+            typeof customer.name !== 'string' || !customer.name.trim() ||
+            typeof customer.phone !== 'string' ||
+            typeof customer.notes !== 'string' ||
+            typeof customer.limit !== 'number' || !Number.isFinite(customer.limit) || customer.limit < 0 ||
+            typeof customer.createdAt !== 'string' || !Number.isFinite(Date.parse(customer.createdAt)) ||
+            (customer.cycle !== undefined && !['monthly', 'weekly', 'on-demand'].includes(String(customer.cycle)))) {
+            throw new Error('Customer profile details are invalid.')
+          }
+          if (record(previousForPermission) &&
+            (customer.createdAt !== previousForPermission.createdAt ||
+              customer.storeId !== previousForPermission.storeId)) {
+            throw new Error('Customer profile ownership and creation details cannot be changed.')
+          }
+        }
+      }
+      if (operation.collection === 'users' && operation.kind === 'put' &&
+        incomingForPermission) {
+        if (incomingForPermission.tabCreditLimit !== undefined &&
+          (typeof incomingForPermission.tabCreditLimit !== 'number' ||
+            !Number.isFinite(incomingForPermission.tabCreditLimit) ||
+            incomingForPermission.tabCreditLimit < 0)) {
+          throw new Error('Staff tab credit limit is invalid.')
+        }
+        const previousLimit = record(previousForPermission) &&
+          typeof previousForPermission.tabCreditLimit === 'number'
+          ? previousForPermission.tabCreditLimit
+          : 0
+        const nextLimit = typeof incomingForPermission.tabCreditLimit === 'number'
+          ? incomingForPermission.tabCreditLimit
+          : previousLimit
+        if (actor.role !== 'admin' && nextLimit !== previousLimit) {
+          throw Object.assign(new Error('Only the store owner can set staff tab credit limits.'), { status: 403 })
+        }
+      }
+      const previousDifference = record(previousForPermission) ? previousForPermission : undefined
+      const incomingDifference = operation.collection === 'cashDifferences' ? incomingForPermission : undefined
+      let selfQuickDifferenceAction = false
+      if (actor.role === 'staff' && incomingDifference && previousDifference &&
+        previousDifference.staffId === actor.userId && previousDifference.storeId === actor.storeId &&
+        incomingDifference.staffId === actor.userId && incomingDifference.storeId === actor.storeId &&
+        incomingDifference.shiftId === previousDifference.shiftId &&
+        incomingDifference.amount === previousDifference.amount &&
+        incomingDifference.type === previousDifference.type && previousDifference.status === 'open') {
+        const storeDoc = validationState.collections.stores?.[actor.storeId] as unknown as Store | undefined
+        const shiftDoc = validationState.collections.registerSessions?.[String(previousDifference.shiftId)]
+        const shiftOwnerId = record(shiftDoc)
+          ? typeof shiftDoc.staffId === 'string' ? shiftDoc.staffId : shiftDoc.openedById
+          : undefined
+        const allowedFields = new Set([
+          'status', 'correctionEntries', 'resolvedAt', 'resolvedById', 'resolution', 'note',
+        ])
+        const stripAllowed = (document: Record<string, unknown>) => Object.fromEntries(
+          Object.entries(document).filter(([field]) => !allowedFields.has(field)),
+        )
+        const previousCorrections = Array.isArray(previousDifference.correctionEntries)
+          ? previousDifference.correctionEntries
+          : []
+        const nextCorrections = Array.isArray(incomingDifference.correctionEntries)
+          ? incomingDifference.correctionEntries
+          : []
+        const unchanged = isDeepStrictEqual(stripAllowed(previousDifference), stripAllowed(incomingDifference))
+        const accepted = isDeepStrictEqual(previousCorrections, nextCorrections) &&
+          incomingDifference.status === 'settled' &&
+          incomingDifference.resolution === 'waived' &&
+          incomingDifference.resolvedById === actor.userId &&
+          typeof incomingDifference.resolvedAt === 'string' &&
+          Number.isFinite(Date.parse(incomingDifference.resolvedAt))
+        const appendedCorrection = nextCorrections.length === previousCorrections.length + 1 &&
+          isDeepStrictEqual(nextCorrections.slice(0, -1), previousCorrections)
+        const correction = appendedCorrection ? nextCorrections[nextCorrections.length - 1] : undefined
+        const previousCorrectionTotal = previousCorrections.reduce((total, entry) =>
+          record(entry) && typeof entry.amount === 'number' ? total + entry.amount : total, 0)
+        const nextCorrectionTotal = nextCorrections.reduce((total, entry) =>
+          record(entry) && typeof entry.amount === 'number' ? total + entry.amount : total, 0)
+        const remaining = Math.abs(Number(previousDifference.amount)) - previousCorrectionTotal
+        const correctionIsValid = record(correction) &&
+          typeof correction.id === 'string' && typeof correction.amount === 'number' &&
+          Number.isFinite(correction.amount) && correction.amount > 0 &&
+          correction.amount <= remaining && correction.staffId === actor.userId &&
+          typeof correction.staffName === 'string' && typeof correction.at === 'string' &&
+          Number.isFinite(Date.parse(correction.at)) &&
+          (previousDifference.type === 'shortage') &&
+          (incomingDifference.status === 'open' || incomingDifference.status === 'settled') &&
+          (incomingDifference.status === 'open'
+            ? incomingDifference.resolvedById === previousDifference.resolvedById
+            : incomingDifference.resolution === 'paid_back' &&
+              incomingDifference.resolvedById === actor.userId &&
+              typeof incomingDifference.resolvedAt === 'string' &&
+              Number.isFinite(Date.parse(incomingDifference.resolvedAt))) &&
+          (incomingDifference.status !== 'settled' || nextCorrectionTotal >= Math.abs(Number(previousDifference.amount)))
+        selfQuickDifferenceAction = !!storeDoc && isQuick(storeDoc) &&
+          shiftOwnerId === actor.userId && unchanged && (accepted || correctionIsValid)
+      }
+      const selfQuickDifferenceLog = actor.role === 'staff' &&
+        operation.collection === 'auditLogs' && incomingForPermission?.action === 'cash_difference_resolved' &&
+        incomingForPermission.entity === 'cash_difference' &&
+        typeof incomingForPermission.entityId === 'string' &&
+        record(validationState.collections.cashDifferences?.[incomingForPermission.entityId]) &&
+        validationState.collections.cashDifferences[incomingForPermission.entityId].staffId === actor.userId
       if (actor.role === 'staff' && !hasOpenStaffShift && operation.collection === 'auditLogs' &&
+        !selfQuickDifferenceLog &&
         (operation.kind !== 'put' || incomingForPermission?.storeId !== actor.storeId ||
           incomingForPermission.userId !== actor.userId || incomingForPermission.action !== 'shift_access_denied')) {
         throw Object.assign(new Error('Before opening a shift, staff may only report their own blocked shift access.'), { status: 403 })
@@ -674,7 +796,8 @@ export async function createHubServer(): Promise<HubRuntime> {
           }
         }
       }
-      if (required && required !== 'ledger' && !availabilityOnly && !automaticSaleStockChange) {
+      if (required && required !== 'ledger' && !availabilityOnly && !automaticSaleStockChange &&
+        !selfQuickDifferenceAction) {
         requireCapability(actor, required)
       }
       if (verifiedSaleMovement) {
@@ -747,14 +870,15 @@ export async function createHubServer(): Promise<HubRuntime> {
         if (!record(doc)) throw new Error('Register session must be an object.')
         const ownerId = (session: Record<string, unknown>) =>
           typeof session.staffId === 'string' ? session.staffId : session.openedById
-        if (actor.role !== 'admin' && ownerId(doc) !== actor.userId) {
+        const isAuthorizedForceClose = actor.role !== 'admin' && can(actor, 'forceCloseShift')
+        if (actor.role !== 'admin' && ownerId(doc) !== actor.userId && !isAuthorizedForceClose) {
           throw Object.assign(new Error('You can only change your own register session.'), { status: 403 })
         }
         if (record(previous)) {
-          if (actor.role !== 'admin' && ownerId(previous) !== actor.userId) {
+          if (actor.role !== 'admin' && ownerId(previous) !== actor.userId && !isAuthorizedForceClose) {
             throw Object.assign(new Error('You can only change your own register session.'), { status: 403 })
           }
-          for (const field of ['id', 'storeId', 'openedAt', 'openedById', 'openedByName', 'staffId', 'shiftNumber', 'openingCash', 'autoOpened']) {
+          for (const field of ['id', 'storeId', 'openedAt', 'openedById', 'openedByName', 'staffId', 'shiftNumber', 'openingCash', 'openingFloat', 'autoOpened']) {
             if (doc[field] !== previous[field]) {
               throw new Error('Register session opening details cannot be changed.')
             }
@@ -795,16 +919,38 @@ export async function createHubServer(): Promise<HubRuntime> {
           )) {
             throw new Error('The store day is closed. Open a new shift on the next business day.')
           }
+          const storeDoc = validationState.collections.stores?.[actor.storeId] as unknown as Store | undefined
+          if (actor.role !== 'admin' && storeDoc && isQuick(storeDoc) &&
+            storeDoc.settings.allowQuickOpeningFloatEdit !== true) {
+            const previousClosed = Object.values(validationState.collections.registerSessions ?? {})
+              .filter((session) => session.storeId === actor.storeId && session.status === 'closed')
+              .sort((a, b) => String(b.closedAt ?? b.openedAt).localeCompare(String(a.closedAt ?? a.openedAt)))[0]
+            const expectedFloat = record(previousClosed)
+              ? typeof previousClosed.openingFloat === 'number'
+                ? previousClosed.openingFloat
+                : Number(previousClosed.openingCash) || 0
+              : 0
+            if (Number(doc.openingCash) !== expectedFloat || Number(doc.openingFloat) !== expectedFloat) {
+              throw Object.assign(new Error('The opening float is locked to the previous shift.'), { status: 403 })
+            }
+          }
         }
         const hasCashCount = doc.countedCash !== undefined || doc.difference !== undefined
         const isClosing = doc.status === 'closed' || doc.closedAt !== undefined || hasCashCount
-        if (isClosing) requireCapability(actor, 'closeShift')
+        if (isClosing) {
+          const isClosingAnotherShift = record(previous) && ownerId(previous) !== actor.userId
+          if (isClosingAnotherShift || (actor.role === 'manager' && can(actor, 'forceCloseShift'))) {
+            requireCapability(actor, 'forceCloseShift')
+          } else {
+            requireCapability(actor, 'closeShift')
+          }
+        }
         else requireCapability(actor, 'openShift')
       }
       if (operation.collection === 'registerDayReports') {
         const previous = validationState.collections.registerDayReports?.[operation.id]
-        if (actor.role !== 'admin') {
-          throw Object.assign(new Error('Only the owner can close the store-day Z report.'), { status: 403 })
+        if (actor.role !== 'admin' && !(actor.role === 'manager' && can(actor, 'forceCloseShift'))) {
+          throw Object.assign(new Error('Only the owner or an authorized manager can close the store-day Z report.'), { status: 403 })
         }
         if (operation.kind === 'delete' || record(previous)) {
           throw Object.assign(new Error('Store-day Z reports are immutable and cannot be deleted.'), { status: 403 })
@@ -819,6 +965,86 @@ export async function createHubServer(): Promise<HubRuntime> {
           !Number.isFinite(report.countedCash) || Number(report.countedCash) < 0 ||
           !Number.isFinite(report.difference) || !record(report.snapshot) || !record(report.reportDetails)) {
           throw new Error('Store-day Z report details are invalid.')
+        }
+        const storeDoc = validationState.collections.stores?.[actor.storeId] as unknown as Store | undefined
+        if (storeDoc && isQuick(storeDoc)) {
+          const summary = report.quickShiftSummary
+          if (!record(summary) || !Array.isArray(summary.shifts) ||
+            !Array.isArray(summary.staffDifferences) ||
+            !Number.isFinite(summary.declaredSales) || !Number.isFinite(summary.retainedFloat) ||
+            !Number.isFinite(summary.expectedCash) || !Number.isFinite(summary.countedCash) ||
+            !Number.isFinite(summary.difference)) {
+            throw new Error('Quick Z shift summary is invalid.')
+          }
+          const sourceShifts = Object.values(validationState.collections.registerSessions ?? {})
+            .filter((session) => session.storeId === actor.storeId &&
+              (localDateKey(String(session.openedAt)) === report.date ||
+                (session.status === 'closed' && session.closedById === actor.userId &&
+                  session.closedAt === report.closedAt)))
+          if (summary.shifts.length !== sourceShifts.length) {
+            throw new Error('Quick Z must include every shift for the store day.')
+          }
+          const shiftRows = summary.shifts.filter(record)
+          if (shiftRows.length !== sourceShifts.length) {
+            throw new Error('Quick Z contains an invalid shift row.')
+          }
+          const staffDifferences = new Map<string, { staffId: string; staffName: string; amount: number }>()
+          let declaredSales = 0
+          const sortedShifts = [...sourceShifts].sort((a, b) =>
+            String(a.openedAt).localeCompare(String(b.openedAt)),
+          )
+          for (const session of sourceShifts) {
+            if (session.status !== 'closed' || typeof session.id !== 'string' ||
+              typeof session.openingCash !== 'number' || typeof session.countedCash !== 'number') {
+              throw new Error('Quick Z cannot include an open or invalid shift.')
+            }
+            const row = shiftRows.find((candidate) => candidate.shiftId === session.id)
+            const openingFloat = typeof session.openingFloat === 'number' ? session.openingFloat : session.openingCash
+            const sessionSales = typeof session.declaredSales === 'number'
+              ? session.declaredSales
+              : round(session.countedCash - openingFloat)
+            const expectedDifference = typeof session.expectedSales === 'number'
+              ? Number(session.difference) || 0
+              : 0
+            const ownerId = typeof session.staffId === 'string' ? session.staffId : session.openedById
+            if (!row || row.staffId !== ownerId || row.openingFloat !== openingFloat ||
+              row.countedCash !== session.countedCash || row.declaredSales !== sessionSales ||
+              row.difference !== expectedDifference) {
+              throw new Error('Quick Z shift details do not match the stored register sessions.')
+            }
+            declaredSales = round(declaredSales + sessionSales)
+            const owner = validationState.collections.users?.[String(ownerId)]
+            const name = record(owner) && typeof owner.name === 'string' ? owner.name : String(ownerId)
+            const total = staffDifferences.get(String(ownerId)) ?? {
+              staffId: String(ownerId),
+              staffName: name,
+              amount: 0,
+            }
+            total.amount = round(total.amount + expectedDifference)
+            staffDifferences.set(String(ownerId), total)
+          }
+          const retainedFloat = sortedShifts.length
+            ? Number(sortedShifts[0].openingFloat ?? sortedShifts[0].openingCash)
+            : 0
+          const expectedCash = round(declaredSales + retainedFloat)
+          const finalDifference = round(Number(report.countedCash) - expectedCash)
+          const reportedStaffDifferences = summary.staffDifferences.filter(record)
+          if (summary.declaredSales !== declaredSales ||
+            summary.retainedFloat !== retainedFloat ||
+            summary.expectedCash !== expectedCash ||
+            summary.countedCash !== report.countedCash ||
+            summary.difference !== finalDifference ||
+            report.openingCash !== retainedFloat ||
+            report.snapshot.expectedCash !== expectedCash ||
+            report.difference !== finalDifference ||
+            reportedStaffDifferences.length !== staffDifferences.size ||
+            [...staffDifferences.values()].some((staff) =>
+              !reportedStaffDifferences.some((row) =>
+                row.staffId === staff.staffId && row.staffName === staff.staffName && row.amount === staff.amount,
+              ),
+            )) {
+            throw new Error('Quick Z totals do not match the shift declarations and manager count.')
+          }
         }
         if (Object.values(validationState.collections.registerSessions ?? {}).some((session) =>
           session.storeId === actor.storeId && session.status === 'open',
@@ -852,6 +1078,7 @@ export async function createHubServer(): Promise<HubRuntime> {
             availability: normalizeHubAvailability(settings.availability),
             orderRules: normalizeHubOrderRules(settings.orderRules),
             shiftAccess: normalizeShiftAccessSettings(settings.shiftAccess),
+            allowQuickOpeningFloatEdit: settings.allowQuickOpeningFloatEdit === true,
             coffeeTracking: normalizeHubCoffeeTracking(settings.coffeeTracking),
             inventoryYieldTracking: normalizeHubInventoryYieldTracking(settings.inventoryYieldTracking),
             staffConsumption: normalizeHubStaffConsumption(settings.staffConsumption),
@@ -1267,17 +1494,27 @@ export async function createHubServer(): Promise<HubRuntime> {
           shiftAccess.requireOpenShiftForStoreAccess && !hasOpenStaffShift
         const collections: Record<string, Array<Record<string, unknown>>> = {}
         for (const [name, documents] of Object.entries(state.collections)) {
-          if (waitingForShift && !['stores', 'users', 'shifts', 'registerSessions', 'attendance'].includes(name)) continue
+          if (waitingForShift && ![
+            'stores', 'users', 'shifts', 'registerSessions', 'attendance', 'cashDifferences', 'auditLogs',
+          ].includes(name)) continue
           const permission = PRIVATE_COLLECTIONS[name]
           if (name !== 'stores') {
             if (name === 'shifts' && !canManageSchedules(actor) &&
               actor.role !== 'staff' && actor.role !== 'admin' && actor.role !== 'manager') continue
             if (name === 'registerSessions' && actor.role !== 'admin' && actor.role !== 'manager' &&
               !can(actor, 'openShift') && !can(actor, 'closeShift')) continue
-            if (name === 'registerDayReports' && actor.role !== 'admin') continue
+            if (name === 'registerDayReports' && actor.role !== 'admin' &&
+              !(actor.role === 'manager' && can(actor, 'forceCloseShift'))) continue
             if (permission === 'ledger') {
-              if (actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
-            } else if (permission && !can(actor, permission)) continue
+              const quick = !!storeForAccess && isQuick(storeForAccess)
+              if (quick
+                ? !can(actor, 'viewTabs') && !can(actor, 'addToTabs') && !can(actor, 'settleTabs')
+                : actor.role !== 'admin' && actor.permissions.credit !== true && actor.permissions.settle !== true) continue
+            } else if (name === 'customers' && storeForAccess && isQuick(storeForAccess)) {
+              if (!can(actor, 'viewTabs') && !can(actor, 'addToTabs') &&
+                !can(actor, 'settleTabs') && !can(actor, 'manageCustomers')) continue
+            } else if (permission && !(name === 'cashDifferences' && actor.role === 'staff') &&
+              !can(actor, permission)) continue
           }
           collections[name] = Object.values(documents).filter((document) => {
             if (name === 'stores' ? document.id !== actor.storeId : document.storeId !== actor.storeId) return false
@@ -1287,9 +1524,12 @@ export async function createHubServer(): Promise<HubRuntime> {
               const ownerId = typeof session.staffId === 'string' ? session.staffId : session.openedById
               if (ownerId !== actor.userId) return false
             }
+            if (name === 'cashDifferences' && actor.role === 'staff' &&
+              document.staffId !== actor.userId) return false
             if (name === 'shifts' && actor.role === 'staff' && !canManageSchedules(actor) &&
               document.userId !== actor.userId) return false
             if (waitingForShift && name === 'attendance' && document.userId !== actor.userId) return false
+            if (waitingForShift && name === 'auditLogs' && document.userId !== actor.userId) return false
             if (actor.stationOnly) {
               if (name === 'stores') return true
               return name === 'openOrders' && Array.isArray(document.items) &&

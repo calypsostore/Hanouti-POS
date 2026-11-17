@@ -3,6 +3,7 @@ import type { Store, User } from '../../../types'
 import { Badge } from '../../../components/ui'
 import { fmtDate } from '../../../lib/utils'
 import { AppIcon } from '../../../components/AppIcon'
+import { isCashier, isQuick } from '../../../lib/posMode'
 
 export function AdminHeader({ store, user, registerOpen, now }: {
   store: Store
@@ -23,10 +24,10 @@ export function AdminHeader({ store, user, registerOpen, now }: {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={store.settings.posMode === 'quick' ? 'info' : 'accent'}>
-          {store.settings.posMode === 'quick' ? 'Quick sale' : 'Full cashier'}
+        <Badge tone={isQuick(store) ? 'info' : 'accent'}>
+          {isQuick(store) ? 'Quick sale' : 'Full cashier'}
         </Badge>
-        {store.settings.posMode === 'cashier' && (
+        {isCashier(store) && (
           <Badge tone={registerOpen ? 'success' : 'warning'}>
             <Clock3 className="h-3 w-3" /> Register {registerOpen ? 'open' : 'closed'}
           </Badge>

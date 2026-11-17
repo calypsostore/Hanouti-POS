@@ -12,6 +12,9 @@ import { isCashDifferenceWithinTolerance, shiftCashDifference } from '../lib/shi
 import { cashDifferenceDeduction } from '../lib/payroll'
 import { clearManualAvailability } from './availabilityMaintenance'
 import { shiftOpenScheduleError } from '../lib/shiftAccess'
+import { isQuick } from '../lib/posMode'
+import { canSettleCustomerTabs } from '../lib/customerTabs'
+import { calculateQuickDayClose, calculateQuickShiftClose } from '../lib/quickShifts'
 import type { AppContextValue } from './types'
 import type { StoreSliceDependencies } from './sliceTypes'
 
@@ -38,6 +41,15 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       }
       const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
       if (!store) return { ok: false, error: 'Store not found.' }
+      if (isQuick(store) && actor.role !== 'admin' && !store.settings.allowQuickOpeningFloatEdit) {
+        const previousShift = dbRef.current.registerSessions
+          .filter((session) => session.storeId === storeId && session.status === 'closed')
+          .sort((a, b) => (b.closedAt ?? b.openedAt).localeCompare(a.closedAt ?? a.openedAt))[0]
+        const expectedFloat = previousShift?.openingFloat ?? previousShift?.openingCash ?? 0
+        if (round(openingCash) !== round(expectedFloat)) {
+          return { ok: false, error: 'The opening float is locked to the previous shift. Ask the owner to allow staff edits.' }
+        }
+      }
       if (actor.role === 'staff' && !actor.stationOnly) {
         const scheduleError = shiftOpenScheduleError(
           store.settings.shiftAccess,
@@ -91,7 +103,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
   )
 
   const closeRegister = useCallback<AppContextValue['closeRegister']>(
-    (sessionId, countedCash, note, forceReason, leaveFloatForNextShift) => {
+    (sessionId, countedCash, note, forceReason, leaveFloatForNextShift, expectedSales) => {
       const current = dbRef.current
       const session = current.registerSessions.find((s) => s.id === sessionId)
       if (!session) return { ok: false, error: 'Register session not found.' }
@@ -111,6 +123,9 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       if (!Number.isFinite(countedCash) || countedCash < 0) {
         return { ok: false, error: 'Enter the cash you counted in the drawer.' }
       }
+      if (expectedSales !== undefined && (!Number.isFinite(expectedSales) || expectedSales < 0)) {
+        return { ok: false, error: 'Enter a valid expected sales amount or leave it blank.' }
+      }
 
       // The closed shift snapshot stays fixed; the store-day Z is closed separately by an admin.
       const closedAt = new Date().toISOString()
@@ -125,9 +140,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       const counted = round(countedCash)
 
       const store = current.stores.find((candidate) => candidate.id === session.storeId)
-      const difference = store?.settings.posMode === 'quick'
-        ? 0
-        : shiftCashDifference(counted, snapshot.expectedCash)
+      const quickClose = store && isQuick(store)
+        ? calculateQuickShiftClose(
+            session.openingFloat ?? session.openingCash,
+            counted,
+            expectedSales === undefined ? undefined : round(expectedSales),
+          )
+        : undefined
+      const difference = quickClose?.difference ?? shiftCashDifference(counted, snapshot.expectedCash)
       const tolerance = store?.settings.automation.cashDifferenceTolerance ?? 0
       const cashDifference = !isCashDifferenceWithinTolerance(difference, tolerance)
         ? {
@@ -157,6 +177,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
                 closedByName: actor.name,
                 countedCash: counted,
                 difference,
+                declaredSales: quickClose?.declaredSales,
+                expectedSales: quickClose && expectedSales !== undefined ? round(expectedSales) : undefined,
                 leaveFloatForNextShift: leaveFloatForNextShift === true,
                 note: [forceReason?.trim(), note?.trim()].filter(Boolean).join(' · ') || undefined,
                 snapshot,
@@ -170,7 +192,14 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         entity: 'register',
         entityId: session.id,
         summary: `${isOwner ? 'Closed' : 'Force-closed'} shift ${session.shiftNumber ?? ''} with ${counted.toFixed(3)} DT counted cash (difference ${difference.toFixed(3)} DT)`,
-        after: { countedCash: counted, difference, expectedCash: snapshot.expectedCash, forceReason: forceReason?.trim() ?? '' },
+        after: {
+          countedCash: counted,
+          difference,
+          expectedCash: snapshot.expectedCash,
+          declaredSales: quickClose?.declaredSales ?? 0,
+          expectedSales: quickClose && expectedSales !== undefined ? round(expectedSales) : 0,
+          forceReason: forceReason?.trim() ?? '',
+        },
         })
         return cashDifference
           ? addLog(closed, actor, {
@@ -188,19 +217,30 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     [commitDb, dbRef, requireActor],
   )
 
-  const closeRegisterDay = useCallback<AppContextValue['closeRegisterDay']>((storeId, staffFloat, countedCash, note) => {
+  const closeRegisterDay = useCallback<AppContextValue['closeRegisterDay']>((
+    storeId,
+    staffFloat,
+    countedCash,
+    note,
+    quickOpenShiftCounts,
+  ) => {
     const actorResult = requireActor(storeId)
     if (!actorResult.ok) return actorResult
     const actor = actorResult.actor
-    if (actor.role !== 'admin') return { ok: false, error: 'Only the owner can close the store-day Z report.' }
-    if (!Number.isFinite(staffFloat) || staffFloat < 0) {
+    const current = dbRef.current
+    const store = current.stores.find((candidate) => candidate.id === storeId)
+    if (!store) return { ok: false, error: 'Store not found.' }
+    const quick = isQuick(store)
+    if (actor.role !== 'admin' && !(quick && can(actor, 'forceCloseShift'))) {
+      return { ok: false, error: 'Only the owner or an authorized manager can close the store-day Z report.' }
+    }
+    if (!quick && (!Number.isFinite(staffFloat) || staffFloat < 0)) {
       return { ok: false, error: 'Enter the staff working float for this store day.' }
     }
     if (!Number.isFinite(countedCash) || countedCash < 0) {
       return { ok: false, error: 'Enter the cash counted at day end.' }
     }
 
-    const current = dbRef.current
     const day = dateKey(new Date())
     if (current.registerDayReports.some((report) => report.storeId === storeId && report.date === day)) {
       return { ok: false, error: 'The store-day Z report has already been closed.' }
@@ -208,7 +248,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     const openSessions = current.registerSessions.filter((session) =>
       session.storeId === storeId && session.status === 'open',
     )
-    const autoCloseable = openSessions.filter((session) => {
+    const autoCloseable = quick ? [] : openSessions.filter((session) => {
       if (!session.autoOpened) return false
       const ownerId = session.staffId ?? session.openedById
       return current.users.some((user) =>
@@ -216,18 +256,60 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         (user.role === 'admin' || user.role === 'manager'),
       )
     })
-    if (autoCloseable.length !== openSessions.length) {
+    if (!quick && autoCloseable.length !== openSessions.length) {
       return { ok: false, error: 'Close or hand over every register shift before closing the day.' }
     }
     const daySessions = current.registerSessions.filter((session) =>
-      session.storeId === storeId && dateKey(session.openedAt) === day,
+      session.storeId === storeId &&
+      (dateKey(session.openedAt) === day || (quick && session.status === 'open')),
     )
     if (!daySessions.length) return { ok: false, error: 'There are no register shifts to close for today.' }
 
     const closedAt = new Date().toISOString()
     const startISO = new Date(`${day}T00:00:00`).toISOString()
-    const openingCash = round(staffFloat)
-    const autoClosedSessions = autoCloseable.map((session) =>
+    const openingCash = quick
+      ? round([...daySessions].sort((a, b) => a.openedAt.localeCompare(b.openedAt))[0].openingFloat ??
+        [...daySessions].sort((a, b) => a.openedAt.localeCompare(b.openedAt))[0].openingCash)
+      : round(staffFloat)
+    const quickForceClosedSessions = quick
+      ? daySessions.filter((session) => session.status === 'open').flatMap((session) => {
+          const counted = quickOpenShiftCounts?.[session.id]
+          if (!Number.isFinite(counted) || Number(counted) < 0) return []
+          const sessionClosedAt = closedAt
+          const snapshot = computeRegisterTotals(
+            current,
+            storeId,
+            session.openedAt,
+            sessionClosedAt,
+            session.openingFloat ?? session.openingCash,
+            session.id,
+          )
+          const declared = calculateQuickShiftClose(
+            session.openingFloat ?? session.openingCash,
+            Number(counted),
+          )
+          return [{
+            ...session,
+            status: 'closed' as const,
+            closeType: 'shift' as const,
+            closedAt: sessionClosedAt,
+            closedById: actor.id,
+            closedByName: actor.name,
+            countedCash: round(Number(counted)),
+            declaredSales: declared.declaredSales,
+            expectedSales: undefined,
+            difference: 0,
+            leaveFloatForNextShift: false,
+            note: [session.note, 'Force-closed during Quick day Z', note?.trim()].filter(Boolean).join(' · ').slice(0, 500),
+            snapshot,
+            reportDetails: registerReportDetails(current, session, sessionClosedAt),
+          }]
+        })
+      : []
+    if (quick && quickForceClosedSessions.length !== daySessions.filter((session) => session.status === 'open').length) {
+      return { ok: false, error: 'Enter a valid counted total for every open shift before closing the day.' }
+    }
+    const autoClosedSessions = quick ? quickForceClosedSessions : autoCloseable.map((session) =>
       autoCloseRegisterSessionForZ(current, session, closedAt, actor),
     )
     const autoClosedById = new Map(autoClosedSessions.map((session) => [session.id, session]))
@@ -245,12 +327,38 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       openingCash,
       openingFloat: openingCash,
     }
-    const snapshot = computeRegisterTotals(reportSource, storeId, startISO, closedAt, openingCash)
+    const baseSnapshot = computeRegisterTotals(reportSource, storeId, startISO, closedAt, openingCash)
     const reportDetails = registerReportDetails(reportSource, daySession, closedAt)
     const counted = round(countedCash)
-    const store = current.stores.find((candidate) => candidate.id === storeId)
-    const difference = store?.settings.posMode === 'quick'
-      ? 0
+    const quickShiftSummary = quick
+      ? calculateQuickDayClose(daySessions.map((session) => {
+          const closedSession = autoClosedById.get(session.id) ?? session
+          const staffId = closedSession.staffId ?? closedSession.openedById
+          const staff = current.users.find((candidate) => candidate.id === staffId && candidate.storeId === storeId)
+          return {
+            shiftId: closedSession.id,
+            staffId,
+            staffName: staff?.name ?? closedSession.openedByName,
+            openedAt: closedSession.openedAt,
+            closedAt: closedSession.closedAt,
+            openingFloat: closedSession.openingFloat ?? closedSession.openingCash,
+            countedCash: closedSession.countedCash,
+            declaredSales: closedSession.declaredSales,
+            expectedSales: closedSession.expectedSales,
+            difference: closedSession.expectedSales === undefined ? 0 : closedSession.difference,
+            correctionEntries: current.cashDifferences
+              .filter((difference) => difference.shiftId === closedSession.id)
+              .flatMap((difference) => difference.correctionEntries ?? []),
+            note: closedSession.note,
+            forceClosed: quickForceClosedSessions.some((forced) => forced.id === closedSession.id),
+          }
+        }), openingCash, counted)
+      : undefined
+    const snapshot = quickShiftSummary
+      ? { ...baseSnapshot, expectedCash: quickShiftSummary.expectedCash }
+      : baseSnapshot
+    const difference = quickShiftSummary
+      ? quickShiftSummary.difference
       : shiftCashDifference(counted, snapshot.expectedCash)
     const zReportNumber = Math.max(
       ...current.registerDayReports.filter((report) => report.storeId === storeId).map((report) => report.zReportNumber),
@@ -272,6 +380,7 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       note: note?.trim().slice(0, 500) || undefined,
       snapshot,
       reportDetails,
+      quickShiftSummary,
     }
     commitDb((prev) => {
       let next = {
@@ -287,11 +396,13 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
           action: 'register_closed',
           entity: 'register',
           entityId: session.id,
-          summary: `Auto-closed shift ${session.shiftNumber ?? ''} for store-day Z`,
+          summary: `${quick ? 'Force-closed' : 'Auto-closed'} shift ${session.shiftNumber ?? ''} for store-day Z`,
           after: {
             countedCash: session.countedCash ?? 0,
+            declaredSales: session.declaredSales ?? 0,
             expectedCash: session.snapshot?.expectedCash ?? 0,
             difference: session.difference ?? 0,
+            staffId: session.staffId ?? session.openedById,
           },
         })
       }
@@ -307,9 +418,108 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
         countedCash: counted,
         difference,
         expectedCash: snapshot.expectedCash,
+        declaredSales: quickShiftSummary?.declaredSales ?? 0,
       },
       })
     })
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
+  const recordCashDifferenceCorrection = useCallback<AppContextValue['recordCashDifferenceCorrection']>((id, amount, note) => {
+    const current = dbRef.current
+    const difference = current.cashDifferences.find((item) => item.id === id)
+    if (!difference) return { ok: false, error: 'Cash difference not found.' }
+    const actorResult = requireActor(difference.storeId)
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    const store = current.stores.find((item) => item.id === difference.storeId)
+    if (!store || !isQuick(store)) return { ok: false, error: 'Staff corrections are only available for Quick shifts.' }
+    const mayResolveOwn = difference.staffId === actor.id && can(actor, 'closeShift')
+    if (!mayResolveOwn && !can(actor, 'manageCashDifferences')) {
+      return { ok: false, error: 'You do not have permission to correct this cash difference.' }
+    }
+    if (difference.status !== 'open' || difference.type !== 'shortage') {
+      return { ok: false, error: 'Only open shortages can receive a cash correction.' }
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, error: 'Enter a correction amount greater than zero.' }
+    }
+    const corrections = difference.correctionEntries ?? []
+    const corrected = round(corrections.reduce((total, entry) => total + entry.amount, 0))
+    const remaining = round(Math.abs(difference.amount) - corrected)
+    const correctionAmount = round(amount)
+    if (correctionAmount <= 0 || correctionAmount > remaining) {
+      return { ok: false, error: `Correction must not exceed the remaining ${remaining.toFixed(3)} DT shortage.` }
+    }
+    const at = new Date().toISOString()
+    const correction = {
+      id: uid('cashcorr'),
+      amount: correctionAmount,
+      staffId: actor.id,
+      staffName: actor.name,
+      at,
+      note: note?.trim().slice(0, 500) || undefined,
+    }
+    const fullyCorrected = correctionAmount === remaining
+    commitDb((prev) => addLog({
+      ...prev,
+      cashDifferences: prev.cashDifferences.map((item) => item.id === id
+        ? {
+            ...item,
+            correctionEntries: [...(item.correctionEntries ?? []), correction],
+            status: fullyCorrected ? 'settled' as const : item.status,
+            resolvedAt: fullyCorrected ? at : item.resolvedAt,
+            resolvedById: fullyCorrected ? actor.id : item.resolvedById,
+            resolution: fullyCorrected ? 'paid_back' as const : item.resolution,
+          }
+        : item),
+    }, actor, {
+      storeId: difference.storeId,
+      action: 'cash_difference_resolved',
+      entity: 'cash_difference',
+      entityId: difference.id,
+      summary: `Recorded a ${correctionAmount.toFixed(3)} DT cash correction for ${difference.staffId}`,
+      before: { remainingShortage: remaining, status: difference.status },
+      after: { correctionAmount, fullyCorrected, staffId: actor.id, at },
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
+  const acceptCashDifference = useCallback<AppContextValue['acceptCashDifference']>((id, note) => {
+    const difference = dbRef.current.cashDifferences.find((item) => item.id === id)
+    if (!difference) return { ok: false, error: 'Cash difference not found.' }
+    const actorResult = requireActor(difference.storeId)
+    if (!actorResult.ok) return actorResult
+    const actor = actorResult.actor
+    const store = dbRef.current.stores.find((item) => item.id === difference.storeId)
+    if (!store || !isQuick(store)) return { ok: false, error: 'Staff acceptance is only available for Quick shifts.' }
+    const mayResolveOwn = difference.staffId === actor.id && can(actor, 'closeShift')
+    if (!mayResolveOwn && !can(actor, 'manageCashDifferences')) {
+      return { ok: false, error: 'You do not have permission to accept this cash difference.' }
+    }
+    if (difference.status !== 'open') return { ok: false, error: 'Only open cash differences can be accepted.' }
+    const at = new Date().toISOString()
+    commitDb((prev) => addLog({
+      ...prev,
+      cashDifferences: prev.cashDifferences.map((item) => item.id === id
+        ? {
+            ...item,
+            status: 'settled' as const,
+            resolvedAt: at,
+            resolvedById: actor.id,
+            resolution: 'waived' as const,
+            note: note?.trim().slice(0, 500) || item.note,
+          }
+        : item),
+    }, actor, {
+      storeId: difference.storeId,
+      action: 'cash_difference_resolved',
+      entity: 'cash_difference',
+      entityId: difference.id,
+      summary: `Accepted ${Math.abs(difference.amount).toFixed(3)} DT cash difference`,
+      before: { amount: difference.amount, status: difference.status },
+      after: { amount: difference.amount, status: 'settled', resolution: 'waived', staffId: actor.id, at },
+    }))
     return { ok: true }
   }, [commitDb, dbRef, requireActor])
 
@@ -441,7 +651,16 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       const actorResult = requireActor(customer.storeId)
       if (!actorResult.ok) return actorResult
       const actor = actorResult.actor
-      if (actor.role !== 'admin' && !actor.permissions.settle) {
+      const store = current.stores.find((candidate) => candidate.id === customer.storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
+      if (method !== 'cash' && method !== 'card') {
+        return { ok: false, error: 'Choose cash or card for this tab payment.' }
+      }
+      const quick = isQuick(store)
+      if (quick && !store.settings.allowCredit) {
+        return { ok: false, error: 'Customer tabs are disabled for this store.' }
+      }
+      if (!canSettleCustomerTabs(store, actor)) {
         return { ok: false, error: 'You do not have permission to record payments.' }
       }
       const balance = balanceFor(current.ledger, customerId)
@@ -451,6 +670,9 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
       }
       const remainingBalance = round(balance - amount)
       const ensuredShift = ensureShiftForActor(current, customer.storeId, actor)
+      if (quick && actor.role === 'staff' && !ensuredShift.shift) {
+        return { ok: false, error: 'Open your shift before receiving a tab payment.' }
+      }
       commitDb((prev) => addLog(withEnsuredShift({
         ...prev,
         ledger: [
@@ -489,6 +711,8 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     closeRegisterDay,
     settleCredit,
     resolveCashDifference,
+    recordCashDifferenceCorrection,
+    acceptCashDifference,
     voidCashDifference,
     archiveCashDifference,
     restoreCashDifference,

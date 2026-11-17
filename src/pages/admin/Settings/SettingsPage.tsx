@@ -23,8 +23,12 @@ import AutomationTab from './AutomationTab'
 import ConnectivityTab from './ConnectivityTab'
 import { readDeviceReceiptPolicy, saveDeviceReceiptPolicy } from '../../../lib/printPreferences'
 import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../../../lib/shiftAccess'
+import { modeFeatures } from '../../../lib/posMode'
+import { can } from '../../../lib/permissions'
+import { StaffPermissionsTab } from './StaffPermissionsTab'
+import { visibleSettingsTabs, type SettingsTab } from '../../../lib/settingsTabs'
 
-type Tab = 'profile' | 'branding' | 'register' | 'receipt' | 'tables' | 'stations' | 'service' | 'devices' | 'automation' | 'connectivity' | 'data'
+type Tab = SettingsTab
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
 export type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
@@ -39,11 +43,10 @@ export default function SettingsPage() {
       : 'profile'
   })
   const requestedTab = searchParams.get('tab')
-  const activeTab: Tab = requestedTab === 'branding' || requestedTab === 'tables' || requestedTab === 'stations' ||
-    requestedTab === 'service' || requestedTab === 'devices' || requestedTab === 'automation' || requestedTab === 'connectivity'
-    ? requestedTab
-    : tab
   const changeTab = (next: Tab) => {
+    if (!visibleSettingsTabs(settings, user).includes(next)) {
+      next = 'register'
+    }
     setTab(next)
     setSearchParams(next === 'profile' ? {} : { tab: next })
   }
@@ -73,6 +76,7 @@ export default function SettingsPage() {
         guestRequirement: 'required',
         staffPickSectionsOnShift: false,
         requireShiftForOrders: true,
+        allowQuickOpeningFloatEdit: false,
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         accent: '7anouti',
         colorMode: 'system',
@@ -111,6 +115,18 @@ export default function SettingsPage() {
   const [testJob, setTestJob] = useState(false)
 
   useEffect(() => onPrinterState(setPrinter), [])
+
+  const featureSet = modeFeatures(settings)
+  const quick = !featureSet.payments
+  const validTabs = visibleSettingsTabs(settings, user)
+  const activeTab = requestedTab && validTabs.includes(requestedTab as Tab)
+    ? requestedTab as Tab
+    : validTabs.includes(tab) ? tab : quick ? 'register' : 'profile'
+  useEffect(() => {
+    if (requestedTab && requestedTab !== activeTab) {
+      setSearchParams(activeTab === 'profile' ? {} : { tab: activeTab }, { replace: true })
+    }
+  }, [activeTab, requestedTab, setSearchParams])
 
   if (!store) return null
 
@@ -191,19 +207,23 @@ export default function SettingsPage() {
           value={activeTab}
           onChange={(value) => changeTab(value as Tab)}
           className="w-max whitespace-nowrap"
-          options={[
-            { value: 'profile', label: 'Store profile' },
-            { value: 'branding', label: 'Branding' },
-            { value: 'register', label: 'Register & checkout' },
-            { value: 'receipt', label: 'Receipt' },
-            { value: 'tables' as const, label: 'Tables' },
-            { value: 'stations' as const, label: 'Stations' },
-            { value: 'service' as const, label: 'Service' },
-            { value: 'devices' as const, label: 'Devices & printing' },
-            { value: 'automation' as const, label: 'Automation' },
-            { value: 'connectivity' as const, label: 'Connection & logs' },
-            ...(user?.role === 'admin' ? [{ value: 'data' as const, label: 'Data' }] : []),
-          ]}
+          options={validTabs.map((value) => ({
+            value,
+            label: ({
+              profile: 'Store profile',
+              branding: 'Branding',
+              register: 'Register & checkout',
+              permissions: 'Staff permissions',
+              receipt: 'Receipt',
+              tables: 'Tables',
+              stations: 'Stations',
+              service: 'Service',
+              devices: 'Devices & printing',
+              automation: 'Automation',
+              connectivity: 'Connection & logs',
+              data: 'Data',
+            } satisfies Record<Tab, string>)[value],
+          }))}
         />
       </div>
 
@@ -230,6 +250,7 @@ export default function SettingsPage() {
           onEnableTables={enableExistingTables}
         />
       )}
+      {activeTab === 'permissions' && quick && user && can(user, 'manageStaff') && <StaffPermissionsTab />}
       {activeTab === 'receipt' && (
         <ReceiptTab
           form={form}

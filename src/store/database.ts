@@ -1,9 +1,10 @@
 import type {
-  Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType, CashDifference,
+  Advance, Attendance, AuditAction, AuditEntity, AuditJsonValue, AuditLog, AuditRole, BusinessType,
+  CashDifference, CashDifferenceCorrection,
   Category, Customer, Database, DiningTable, Expense, IconColor, IconName, InventoryItem,
   InventoryUnit, Order, OpenOrder, OrderModifier, PaymentMethod, Payroll, Product, ProductModifierGroup,
   ProductVariant, Purchase, PurchasePayment, RegisterDayReport, RegisterItemRow, RegisterReportDetails,
-  RegisterSession, RegisterSessionBreakdown, Role,
+  RegisterSession, RegisterSessionBreakdown, QuickShiftDaySummary, Role,
   SaleUnit, Shift, Station, StationDevice, StockMovement, Printer, PrintJob, PrintRoute,
   OrderItem, Store, StoreSettings, Supplier, TableOrderEvent, TableSection, User,
 } from '../types'
@@ -18,11 +19,12 @@ import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 import { normalizeShiftAccessSettings } from '../lib/shiftAccess'
 import { parseLoginFailures, serializeLoginFailures, type LoginFailureState } from '../lib/localAuthLockouts'
+import { isQuick } from '../lib/posMode'
 
-export const DB_KEY = '7anouti.db.v38'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v41'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -521,7 +523,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             weightItems: isRecord(s.settings.features) && typeof s.settings.features.weightItems === 'boolean'
               ? s.settings.features.weightItems : template.features.weightItems,
           },
-          posMode: s.settings.posMode === 'quick' ? 'quick' as const : 'cashier' as const,
+          posMode: isQuick(s) ? 'quick' as const : 'cashier' as const,
           currency: typeof s.settings.currency === 'string' ? s.settings.currency : 'TND',
           taxRate: isFiniteNumber(s.settings.taxRate) ? s.settings.taxRate : 0,
           taxInclusive: typeof s.settings.taxInclusive === 'boolean' ? s.settings.taxInclusive : true,
@@ -543,7 +545,8 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           staffPickSectionsOnShift: s.settings.staffPickSectionsOnShift === true,
           requireShiftForOrders: typeof s.settings.requireShiftForOrders === 'boolean'
             ? s.settings.requireShiftForOrders
-            : s.settings.posMode !== 'quick',
+            : !isQuick(s),
+          allowQuickOpeningFloatEdit: s.settings.allowQuickOpeningFloatEdit === true,
           shiftAccess: normalizeShiftAccessSettings(s.settings.shiftAccess),
           accent: isAccentPalette(s.settings.accent) ? s.settings.accent : '7anouti',
           colorMode: s.settings.colorMode === 'dark' || s.settings.colorMode === 'light' || s.settings.colorMode === 'system'
@@ -1184,6 +1187,12 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         openingFloat: isFiniteNumber(session.openingFloat) && session.openingFloat >= 0
           ? round(session.openingFloat)
           : round(session.openingCash),
+        declaredSales: isFiniteNumber(session.declaredSales)
+          ? round(session.declaredSales)
+          : undefined,
+        expectedSales: isFiniteNumber(session.expectedSales) && session.expectedSales >= 0
+          ? round(session.expectedSales)
+          : undefined,
         staffId,
         shiftNumber: typeof session.shiftNumber === 'string' && /^S-\d{6}$/.test(session.shiftNumber)
           ? session.shiftNumber
@@ -1191,6 +1200,90 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
         zReportNumber: reportNumbers.get(session),
       }
     })
+  const normalizeCorrectionEntries = (value: unknown, storeId: string): CashDifferenceCorrection[] =>
+    Array.isArray(value)
+      ? value.flatMap((entry) =>
+          isRecord(entry) && typeof entry.id === 'string' &&
+          isFiniteNumber(entry.amount) && entry.amount > 0 &&
+          typeof entry.staffId === 'string' && typeof entry.staffName === 'string' &&
+          typeof entry.at === 'string' && Number.isFinite(Date.parse(entry.at)) &&
+          users.some((member) => member.id === entry.staffId && member.storeId === storeId)
+            ? [{
+                id: entry.id,
+                amount: round(entry.amount),
+                staffId: entry.staffId,
+                staffName: entry.staffName.slice(0, 100),
+                at: entry.at,
+                note: typeof entry.note === 'string' ? entry.note.slice(0, 500) : undefined,
+              }]
+            : [],
+        )
+      : []
+  const normalizeQuickShiftSummary = (value: unknown): QuickShiftDaySummary | undefined => {
+    if (!isRecord(value) || !Array.isArray(value.shifts) ||
+      !isFiniteNumber(value.declaredSales) || !isFiniteNumber(value.retainedFloat) ||
+      !isFiniteNumber(value.expectedCash) || !isFiniteNumber(value.countedCash) ||
+      !isFiniteNumber(value.difference) || !Array.isArray(value.staffDifferences)) return undefined
+    const rawShifts: unknown[] = value.shifts
+    const rawStaffDifferences: unknown[] = value.staffDifferences
+    const shifts = rawShifts.flatMap((entry) => {
+      if (!isRecord(entry) || typeof entry.shiftId !== 'string' ||
+        typeof entry.staffId !== 'string' || typeof entry.staffName !== 'string' ||
+        typeof entry.openedAt !== 'string' || !Number.isFinite(Date.parse(entry.openedAt)) ||
+        !isFiniteNumber(entry.openingFloat) || entry.openingFloat < 0 ||
+        !isFiniteNumber(entry.declaredSales) || !isFiniteNumber(entry.difference) ||
+        typeof entry.forceClosed !== 'boolean') return []
+      return [{
+        shiftId: entry.shiftId,
+        staffId: entry.staffId,
+        staffName: entry.staffName.slice(0, 100),
+        openedAt: entry.openedAt,
+        closedAt: typeof entry.closedAt === 'string' && Number.isFinite(Date.parse(entry.closedAt))
+          ? entry.closedAt
+          : undefined,
+        openingFloat: round(entry.openingFloat),
+        countedCash: isFiniteNumber(entry.countedCash) && entry.countedCash >= 0
+          ? round(entry.countedCash)
+          : undefined,
+        declaredSales: round(entry.declaredSales),
+        expectedSales: isFiniteNumber(entry.expectedSales) && entry.expectedSales >= 0
+          ? round(entry.expectedSales)
+          : undefined,
+        difference: round(entry.difference),
+        correctionEntries: [],
+        note: typeof entry.note === 'string' ? entry.note.slice(0, 500) : undefined,
+        forceClosed: entry.forceClosed,
+      }]
+    })
+    const staffDifferences = rawStaffDifferences.flatMap((entry) =>
+      isRecord(entry) && typeof entry.staffId === 'string' &&
+      typeof entry.staffName === 'string' && isFiniteNumber(entry.amount)
+        ? [{
+            staffId: entry.staffId,
+            staffName: entry.staffName.slice(0, 100),
+            amount: round(entry.amount),
+          }]
+        : [],
+    )
+    return {
+      shifts: shifts.map((shift) => {
+        const source = rawShifts.find((entry) => isRecord(entry) && entry.shiftId === shift.shiftId)
+        return {
+          ...shift,
+          correctionEntries: normalizeCorrectionEntries(
+            isRecord(source) ? source.correctionEntries : undefined,
+            String(value.storeId ?? ''),
+          ),
+        }
+      }),
+      declaredSales: round(value.declaredSales),
+      retainedFloat: round(value.retainedFloat),
+      expectedCash: round(value.expectedCash),
+      countedCash: round(value.countedCash),
+      difference: round(value.difference),
+      staffDifferences,
+    }
+  }
   const registerDayReports = collection<RegisterDayReport>('registerDayReports', (item): item is RegisterDayReport =>
     hasId(item) && typeof item.storeId === 'string' &&
     typeof item.date === 'string' && isDateKey(item.date) &&
@@ -1207,9 +1300,13 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
     snapshot: report.snapshot as RegisterDayReport['snapshot'],
     reportDetails: normalizeReportDetails(report.reportDetails) as RegisterDayReport['reportDetails'],
     note: typeof report.note === 'string' ? report.note.slice(0, 500) : undefined,
+    quickShiftSummary: isRecord(report.quickShiftSummary)
+      ? normalizeQuickShiftSummary({ ...report.quickShiftSummary, storeId: report.storeId })
+      : undefined,
   })).filter((report) =>
     stores.some((store) => store.id === report.storeId) &&
-    users.some((actor) => actor.id === report.closedById && actor.storeId === report.storeId && actor.role === 'admin'),
+    users.some((actor) => actor.id === report.closedById && actor.storeId === report.storeId &&
+      (actor.role === 'admin' || actor.role === 'manager')),
   )
   const cashDifferences = collection<CashDifference>('cashDifferences', (item): item is CashDifference =>
     hasId(item) && typeof item.storeId === 'string' && typeof item.staffId === 'string' &&
@@ -1221,6 +1318,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
   ).map((item) => ({
     ...item,
     amount: round(item.amount),
+    correctionEntries: normalizeCorrectionEntries(item.correctionEntries, item.storeId),
     resolvedAt: typeof item.resolvedAt === 'string' && Number.isFinite(Date.parse(item.resolvedAt))
       ? item.resolvedAt
       : undefined,

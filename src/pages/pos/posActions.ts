@@ -3,6 +3,7 @@ import type { AppContextValue } from '../../store/types'
 import { money, uid } from '../../lib/utils.ts'
 import { orderNumberLabel } from '../../lib/orderNumber.ts'
 import { unassignedStationItems } from '../../lib/tickets.ts'
+import { modeFeatures } from '../../lib/posMode.ts'
 
 /** Guard against double taps while a checkout is being applied. */
 let checkoutInFlight = false
@@ -71,6 +72,7 @@ export const createPOSActions = (props: Props) => {
   }
 
   const sendPendingItems = (orderId: string, hadPreviouslySentItems: boolean): string | null => {
+    if (!modeFeatures(props.store).kitchenStations) return null
     const result = props.sendToStations(orderId)
     if (!result.ok) {
       props.push(result.error, 'error')
@@ -189,11 +191,16 @@ export const createPOSActions = (props: Props) => {
         return fail(result.error)
       }
       checkoutKey = null
-      props.push(`Order #${orderNumberLabel(result.order, props.store.settings)} · ${money(result.order.total)} completed`, 'success')
+      props.push(
+        props.quick
+          ? `Order #${orderNumberLabel(result.order, props.store.settings)} completed`
+          : `Order #${orderNumberLabel(result.order, props.store.settings)} · ${money(result.order.total)} completed`,
+        'success',
+      )
       props.setPaymentOpen(false)
       props.setMobileCartOpen(false)
       resetSale()
-      props.setReceipt(result.order)
+      if (!props.quick) props.setReceipt(result.order)
       return null
     } finally {
       checkoutInFlight = false
@@ -212,6 +219,10 @@ export const createPOSActions = (props: Props) => {
       return
     }
     if (props.openOrder && props.quick) {
+      completeSale('unpaid')
+      return
+    }
+    if (props.quick) {
       completeSale('unpaid')
       return
     }

@@ -25,6 +25,8 @@ import { TrackedOrdersCard } from './TrackedOrdersCard'
 import ShiftAlertsCard from './ShiftAlertsCard'
 import { backupHealthIsStale, printerOfflineAlertDue } from '../../../lib/automation'
 import { Link } from 'react-router-dom'
+import { modeFeatures } from '../../../lib/posMode'
+import { QuickModeDashboard } from './QuickModeDashboard'
 
 function trend(current: number, previous: number) {
   const value = percentChange(current, previous)
@@ -41,6 +43,8 @@ export default function AdminDashboard() {
   const data = useMemo(() => store ? getAdminDashboardData({ db, store, now }) : null, [db, now, store])
   if (!store || !user || !data) return null
   const isTracking = data.isTrackingMode
+  const features = modeFeatures(store)
+  const quick = !features.payments
   const todayCount = data.todayOrders.length
   const ordersMetric = todayCount
   const backupNeedsAttention = user.role === 'admin' && providerMode === 'hub' &&
@@ -84,7 +88,9 @@ export default function AdminDashboard() {
           ))}
         </div>
       )}
-      {isTracking ? (
+      {quick ? (
+        <QuickModeDashboard data={data} store={store} />
+      ) : isTracking ? (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <GradientKpiCard icon={ClipboardList} tone="blue" label="Tracked orders" value={data.trackedOrders} caption="Recorded without payment" />
           <GradientKpiCard icon={PackageCheck} tone="amber" label="Items sold" value={data.itemsSold} caption="Tracked quantity today" />
@@ -99,7 +105,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {!isTracking && (
+      {!quick && !isTracking && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard icon={TrendingUp} tone="blue" label="Average ticket" value={money(data.averageTicket)} caption="Today's completed sales" />
           <StatCard icon={ShoppingBasket} tone="purple" label="Items sold" value={data.itemsSold} caption="Today" />
@@ -110,13 +116,13 @@ export default function AdminDashboard() {
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
         <div className="min-w-0 space-y-4">
-          <StockAlertsCard data={data} enabled={store.settings.automation.lowStockAlerts} />
+          {features.inventory && <StockAlertsCard data={data} enabled={store.settings.automation.lowStockAlerts} />}
           <ShiftAlertsCard db={db} store={store} now={now} />
-          {!isTracking && <DashboardCharts data={data} />}
-          {!isTracking && <HourlyHeatStrip data={data.hourly} />}
-          {!isTracking && <TopTabsAndOrders data={data} />}
-          {isTracking && <TrackedOrdersCard data={data} />}
-          {!isTracking && <BestSellersCard data={data} />}
+          {!quick && !isTracking && <DashboardCharts data={data} />}
+          {!quick && !isTracking && <HourlyHeatStrip data={data.hourly} />}
+          {!quick && !isTracking && <TopTabsAndOrders data={data} />}
+          {!quick && isTracking && <TrackedOrdersCard data={data} />}
+          {!quick && !isTracking && <BestSellersCard data={data} />}
         </div>
         <DashboardRail now={now} />
       </div>

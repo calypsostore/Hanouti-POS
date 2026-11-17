@@ -23,6 +23,10 @@ export type Capability =
   | 'viewStaffAnalytics'
   | 'manage86'
   | 'overrideStock'
+  | 'manageCustomers'
+  | 'viewTabs'
+  | 'settleTabs'
+  | 'addToTabs'
 export type InventoryUnit = 'g' | 'ml' | 'piece'
 export type StockMovementType =
   | 'opening'
@@ -285,6 +289,7 @@ export interface StoreSettings {
   guestRequirement: GuestRequirement
   staffPickSectionsOnShift: boolean
   requireShiftForOrders: boolean
+  allowQuickOpeningFloatEdit: boolean
   shiftAccess: ShiftAccessSettings
   accent: string
   colorMode: 'system' | 'light' | 'dark'
@@ -340,6 +345,7 @@ export interface User {
   photo?: string
   salaryType: SalaryType
   salaryAmount: number
+  tabCreditLimit?: number
   createdAt: string
   stationId?: string
   goStraightToStation?: boolean
@@ -377,6 +383,10 @@ export interface User {
     manage86?: boolean
     /** May confirm an over-stock sale (admin/manager default, staff off). */
     overrideStock?: boolean
+    manageCustomers?: boolean
+    viewTabs?: boolean
+    settleTabs?: boolean
+    addToTabs?: boolean
   }
 }
 
@@ -970,6 +980,8 @@ export interface RegisterSession {
   openingCash: number
   autoOpened?: boolean
   openingFloat?: number
+  declaredSales?: number
+  expectedSales?: number
   leaveFloatForNextShift?: boolean
   closedAt?: string
   closedById?: string
@@ -996,6 +1008,33 @@ export interface RegisterDayReport {
   note?: string
   snapshot: RegisterSnapshot
   reportDetails: RegisterReportDetails
+  quickShiftSummary?: QuickShiftDaySummary
+}
+
+export interface QuickShiftDayEntry {
+  shiftId: string
+  staffId: string
+  staffName: string
+  openedAt: string
+  closedAt?: string
+  openingFloat: number
+  countedCash?: number
+  declaredSales: number
+  expectedSales?: number
+  difference: number
+  correctionEntries: CashDifferenceCorrection[]
+  note?: string
+  forceClosed: boolean
+}
+
+export interface QuickShiftDaySummary {
+  shifts: QuickShiftDayEntry[]
+  declaredSales: number
+  retainedFloat: number
+  expectedCash: number
+  countedCash: number
+  difference: number
+  staffDifferences: Array<{ staffId: string; staffName: string; amount: number }>
 }
 
 export type CashDifferenceStatus = 'open' | 'settled' | 'voided' | 'archived'
@@ -1014,7 +1053,17 @@ export interface CashDifference {
   resolvedById?: string
   resolution?: CashDifferenceResolution
   note?: string
+  correctionEntries?: CashDifferenceCorrection[]
   archivedFromStatus?: Exclude<CashDifferenceStatus, 'archived'>
+}
+
+export interface CashDifferenceCorrection {
+  id: string
+  amount: number
+  staffId: string
+  staffName: string
+  at: string
+  note?: string
 }
 
 export interface AuditLog {

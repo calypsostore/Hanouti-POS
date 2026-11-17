@@ -2,6 +2,7 @@ import { Check, CreditCard, Zap } from 'lucide-react'
 import type { StoreSettings } from '../../../types'
 import { Card, Field, Input, Toggle } from '../../../components/ui'
 import { cn } from '../../../lib/utils'
+import { modeFeatures } from '../../../lib/posMode'
 
 type SettingsSetter = <K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) => void
 
@@ -16,6 +17,7 @@ export default function RegisterTab({
   hasTablesHidden: boolean
   onEnableTables: () => void
 }) {
+  const features = modeFeatures(settings)
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       <div className="space-y-5 lg:col-span-2">
@@ -44,29 +46,28 @@ export default function RegisterTab({
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <ModeCard
-              active={settings.posMode === 'quick'}
+              active={!features.payments}
               onClick={() => set('posMode', 'quick')}
               icon={<Zap className="h-5 w-5" />}
               title="Quick order"
               badge="Track only"
               points={[
                 'Tap items, press complete',
-                'No cash or change handling',
-                'Perfect for order tracking',
-                'Tabs still available',
+                'Declare cash at shift close',
+                'No payment or receipt screen',
+                'Kitchen tickets only when enabled',
               ]}
             />
             <ModeCard
-              active={settings.posMode === 'cashier'}
+              active={features.payments}
               onClick={() => set('posMode', 'cashier')}
               icon={<CreditCard className="h-5 w-5" />}
               title="Cashier"
               badge="Full POS"
               points={[
-                'Cash, card or on-tab payment',
-                'Change calculation',
-                'Receipt printing',
-                'Daily cash reconciliation',
+                ...(features.payments
+                  ? ['Cash, card or on-tab payment', 'Change calculation', 'Receipt printing', 'Daily cash reconciliation']
+                  : []),
               ]}
             />
           </div>
@@ -82,11 +83,21 @@ export default function RegisterTab({
               checked={settings.requireShiftForOrders}
               onChange={(value) => set('requireShiftForOrders', value)}
               label="Require an open shift to take orders"
-              description={settings.posMode === 'quick'
-                ? 'Optional in Quick mode; Quick mode does not calculate expected cash.'
+              description={!features.payments
+                ? 'Quick shifts record declared cash when staff close their shift.'
                 : 'Cashier mode requires staff to open their own shift before taking orders.'}
             />
           </div>
+          {!features.payments && (
+            <div className="mt-3.5 border-t border-line pt-3.5">
+              <Toggle
+                checked={settings.allowQuickOpeningFloatEdit}
+                onChange={(value) => set('allowQuickOpeningFloatEdit', value)}
+                label="Allow staff to edit the opening float"
+                description="When off, each new Quick shift starts with the prior shift's opening float."
+              />
+            </div>
+          )}
           <div className="mt-3.5 border-t border-line pt-3.5">
             <Toggle
               checked={settings.shiftAccess.requireOpenShiftForStoreAccess}
@@ -161,7 +172,7 @@ export default function RegisterTab({
           </div>
         </Card>
 
-        <Card className="p-5">
+        {features.payments && <Card className="p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Totals & tax</h3>
           <div className="mt-4 grid gap-3.5 sm:grid-cols-2">
             <Field label="Tax rate (%)" hint="0 for no tax">
@@ -195,12 +206,12 @@ export default function RegisterTab({
               description="Menu prices already contain the tax. Turn off to add it at checkout."
             />
           </div>
-        </Card>
+        </Card>}
 
         <Card className="p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Customer tabs</h3>
           <p className="mt-0.5 text-[12px] text-muted">
-            Let regulars pay at the end of the month.
+            Keep regular customer tabs and settlements organized.
           </p>
           <div className="mt-3.5 space-y-3.5">
             <Toggle
@@ -229,7 +240,7 @@ export default function RegisterTab({
               ['kitchenScreen', 'Kitchen screen', 'Enable kitchen ticket workflows.'],
               ['barcode', 'Barcode scanning', 'Show the POS scan field and support product barcodes.'],
               ['weightItems', 'Weight-based items', 'Allow sales by kg, g or fractional piece.'],
-            ] as const).map(([key, label, description]) => (
+            ] as const).filter(([key]) => features.payments || key === 'kitchenScreen').map(([key, label, description]) => (
               <Toggle
                 key={key}
                 checked={settings.features[key]}
@@ -243,7 +254,7 @@ export default function RegisterTab({
       </div>
 
       <div className="space-y-5">
-        <Card className="p-5">
+        {features.inventory && <Card className="p-5">
           <h3 className="text-[15px] font-semibold tracking-tight">Inventory</h3>
           <div className="mt-3.5">
             <Field label="Low stock warning at" hint="units">
@@ -259,7 +270,7 @@ export default function RegisterTab({
               Items you choose to track will warn you at this level.
             </p>
           </div>
-        </Card>
+        </Card>}
 
         <Card className="border-accent-foreground/20 bg-accent-50/50 p-5">
           <h3 className="text-[13.5px] font-semibold text-accent-foreground">A note on switching</h3>

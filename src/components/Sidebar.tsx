@@ -31,6 +31,9 @@ import { BrandLogo } from './BrandLogo'
 import { Avatar, Badge } from './ui'
 import { AppIcon } from './AppIcon'
 import { can } from '../lib/permissions'
+import { isQuick, modeFeatures } from '../lib/posMode'
+import { canViewCustomerTabs } from '../lib/customerTabs'
+import { quickSidebarPaths } from '../lib/posNavigation'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; tone: DashboardTone; end?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
@@ -90,16 +93,68 @@ export function Sidebar({
   const isSuper = user.role === 'super'
   const isStaff = user.role === 'staff'
   const isManager = user.role === 'manager'
+  const quick = store ? isQuick(store) : false
+  const features = store ? modeFeatures(store) : null
   const groups: NavGroup[] = isSuper
     ? [{ label: 'MAIN', items: [
         { to: '/super', label: 'Overview', icon: LayoutDashboard, tone: 'blue', end: true },
         { to: '/super/stores', label: 'Stores', icon: StoreIcon, tone: 'amber' },
       ] }]
-    : isStaff
+    : quick
+      ? isStaff
+        ? [{ label: 'QUICK', items: [
+            { to: '/pos', label: 'POS', icon: ShoppingBag, tone: 'amber' },
+            { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
+            ...(features?.kitchenStations && can(user, 'viewStation')
+              ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
+              : []),
+            ...(features?.customerCredit && store && canViewCustomerTabs(store, user)
+              ? [{ to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' as const }]
+              : []),
+            ...(user.permissions.supervisor || can(user, 'manageStaff')
+              ? [{ to: '/admin/staff', label: 'Staff', icon: Users, tone: 'purple' as const }]
+              : []),
+            ...(can(user, 'viewReports')
+              ? [{ to: '/admin/reports', label: 'Reports', icon: BarChart3, tone: 'green' as const }]
+              : []),
+            { to: '/admin/expenses', label: 'Expenses', icon: Wallet, tone: 'rose' },
+            ...(can(user, 'openShift') || can(user, 'closeShift')
+              ? [{ to: '/admin/register', label: 'Register', icon: Calculator, tone: 'teal' as const }]
+              : []),
+            ...(can(user, 'viewReports')
+              ? [{ to: '/admin/logs', label: 'Activity log', icon: ClipboardList, tone: 'purple' as const }]
+              : []),
+            ...(can(user, 'manageSettings')
+              ? [{ to: '/admin/settings', label: 'Settings', icon: Settings, tone: 'blue' as const }]
+              : []),
+          ] }]
+        : [
+            { label: 'QUICK', items: [
+              { to: '/pos', label: 'POS', icon: ShoppingBag, tone: 'amber' },
+              { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
+              ...(features?.kitchenStations && can(user, 'viewStation')
+                ? [{ to: '/kitchen', label: 'Stations', icon: ChefHat, tone: 'green' as const }]
+                : []),
+              ...(features?.customerCredit && store && canViewCustomerTabs(store, user)
+                ? [{ to: '/admin/customers', label: 'Regulars & tabs', icon: Users, tone: 'teal' as const }]
+                : []),
+            ] },
+            { label: 'TEAM', items: [
+              { to: '/admin/staff', label: 'Staff', icon: Users, tone: 'purple' },
+            ] },
+            { label: 'OPERATIONS', items: [
+              { to: '/admin/reports', label: 'Reports', icon: BarChart3, tone: 'green' },
+              { to: '/admin/expenses', label: 'Expenses', icon: Wallet, tone: 'rose' },
+              { to: '/admin/register', label: 'Register', icon: Calculator, tone: 'teal' },
+              { to: '/admin/logs', label: 'Activity log', icon: ClipboardList, tone: 'purple' },
+              { to: '/admin/settings', label: 'Settings', icon: Settings, tone: 'blue' },
+            ] },
+          ]
+      : isStaff
       ? [{ label: 'MAIN', items: [
           { to: '/staff', label: 'Dashboard', icon: LayoutDashboard, tone: 'blue', end: true },
           { to: '/pos', label: 'New order', icon: ShoppingBag, tone: 'amber' },
-          ...(store?.settings.features.tables
+          ...(features?.tablesFloor
             ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils, tone: 'teal' as const }]
             : []),
           ...(can(user, 'viewStation')
@@ -148,8 +203,15 @@ export function Sidebar({
           ] },
         ]
 
-  const visibleGroups = isManager
+  const quickPaths = quick && store ? new Set(quickSidebarPaths(store, user)) : undefined
+  const modeFilteredGroups = quickPaths
     ? groups.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => quickPaths.has(item.to)),
+      })).filter((group) => group.items.length > 0)
+    : groups
+  const visibleGroups = isManager
+    ? modeFilteredGroups.map((group) => ({
         ...group,
         items: group.items.filter((item) => {
           if (item.to === '/admin') return can(user, 'viewReports')
@@ -159,13 +221,15 @@ export function Sidebar({
           if (item.to === '/admin/staff') return can(user, 'manageStaff')
           if (item.to === '/admin/reports' || item.to === '/admin/logs') return can(user, 'viewReports')
           if (item.to === '/admin/register') return can(user, 'openShift') || can(user, 'closeShift')
-          if (item.to === '/admin/customers') return user.permissions.credit
+          if (item.to === '/admin/customers') {
+            return quick ? quickPaths?.has(item.to) === true : user.permissions.credit
+          }
           if (item.to === '/admin/settings') return can(user, 'manageSettings')
           if (item.to === '/admin/expenses') return can(user, 'managePayroll')
           return true
         }),
       })).filter((group) => group.items.length > 0)
-    : groups
+    : modeFilteredGroups
 
   const outstanding = store ? getOutstandingBalance(db, store.id) : 0
   const allItems = visibleGroups.flatMap((group) => group.items)
@@ -264,7 +328,7 @@ export function Sidebar({
               <div className="mt-0.5 flex items-center gap-1 text-[9px] text-white/55">
                 {isSuper ? 'All stores' : <>
                   <span className="capitalize">{store?.plan}</span>
-                  {store?.settings.posMode === 'quick' ? <><Zap className="h-2.5 w-2.5" /> Quick sale</> : <><ReceiptText className="h-2.5 w-2.5" /> Full cashier</>}
+                  {store && isQuick(store) ? <><Zap className="h-2.5 w-2.5" /> Quick sale</> : <><ReceiptText className="h-2.5 w-2.5" /> Full cashier</>}
                 </>}
               </div>
             </div>

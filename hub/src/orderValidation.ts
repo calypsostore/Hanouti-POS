@@ -10,6 +10,8 @@ import { requireCapability } from './auth.ts'
 import type { AuthenticatedActor, HubStoreState } from './types.ts'
 import { staffConsumptionDiscount, staffConsumptionError } from '../../src/lib/staffConsumption.ts'
 import { dineInTableError } from '../../src/lib/tableService.ts'
+import { isQuick } from '../../src/lib/posMode.ts'
+import { quickTabLimitError } from '../../src/lib/customerTabs.ts'
 
 const VALID_ITEM_STATUSES = ['draft', 'sent', 'preparing', 'ready', 'served', 'void']
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -305,7 +307,7 @@ export function validateOrderDocument(
       if (!store.settings.allowCredit || typeof input.customerId !== 'string') {
         throw new Error('Credit sales require credit to be enabled and a customer selected.')
       }
-      requireCapability(actor, 'credit')
+      requireCapability(actor, isQuick(store) ? 'addToTabs' : 'credit')
       const customer = state.collections.customers?.[input.customerId]
       if (!customer || customer.storeId !== actor.storeId) {
         throw new Error('Order customerId must reference an entity in this store.')
@@ -324,6 +326,17 @@ export function validateOrderDocument(
   }
   const payableItems = items.filter((item) => item.status !== 'void')
   const totals = computeTotals(payableItems, store.settings, discount)
+  if (collection === 'orders' && input.paymentMethod === 'credit' && isQuick(store) && creditCustomer) {
+    const rawLimit = user.tabCreditLimit
+    if (rawLimit !== undefined && (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit) || rawLimit < 0)) {
+      throw new Error('Staff tab credit limit is invalid.')
+    }
+    const limitError = quickTabLimitError({
+      role: actor.role,
+      tabCreditLimit: typeof rawLimit === 'number' ? rawLimit : 0,
+    }, creditCustomer.balance, totals.total)
+    if (limitError) throw new Error(limitError)
+  }
   if (discount > round(totals.subtotal + totals.service)) throw new Error('Order discount exceeds the order amount.')
   const checkoutIssues = validateOrderLines(payableItems, {
     ...rulesContext,

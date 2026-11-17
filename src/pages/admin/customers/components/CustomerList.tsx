@@ -36,7 +36,7 @@ type Props = {
   onQueryChange: (query: string) => void
   view: CustomerView
   onViewChange: (view: CustomerView) => void
-  isAdmin: boolean
+  canManageCustomers: boolean
   canSettle: boolean
   onAdd: () => void
   onSelect: (customer: Customer) => void
@@ -56,7 +56,7 @@ export default function CustomerList({
   onQueryChange,
   view,
   onViewChange,
-  isAdmin,
+  canManageCustomers,
   canSettle,
   onAdd,
   onSelect,
@@ -73,14 +73,14 @@ export default function CustomerList({
             Monthly customer cards for regulars who settle at the end of the month.
           </p>
         </div>
-        {isAdmin && (
+        {canManageCustomers && (
           <Button onClick={onAdd}>
             <UserPlus className="h-4 w-4" /> New customer
           </Button>
         )}
       </div>
 
-      {!isAdmin && (
+      {!canManageCustomers && (
         <div className="flex items-start gap-2.5 rounded-xl border border-line bg-white px-3.5 py-3 text-[12px] leading-relaxed text-muted">
           <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-foreground" />
           <span>
@@ -141,7 +141,7 @@ export default function CustomerList({
                 : 'Create a profile for regulars who pay at the end of the month.'
             }
             action={
-              isAdmin && !customers.length ? (
+              canManageCustomers && !customers.length ? (
                 <Button size="sm" onClick={onAdd}>
                   <Plus className="h-4 w-4" /> Add customer
                 </Button>
@@ -235,7 +235,7 @@ export default function CustomerList({
                       <HandCoins className="h-3.5 w-3.5" /> Take payment
                     </button>
                   )}
-                  {isAdmin && (
+                  {canManageCustomers && (
                     <button
                       onClick={() => onEdit(customer)}
                       className="rounded-lg p-1.5 text-muted transition hover:bg-white hover:text-ink"

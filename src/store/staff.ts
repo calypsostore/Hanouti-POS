@@ -14,6 +14,7 @@ const CAPABILITIES: Capability[] = [
   'manageStaff', 'manageSettings', 'managePayroll', 'manageTables', 'manageSections',
   'viewStation', 'openShift', 'closeShift', 'takeOverTables', 'forceCloseShift',
   'manageCashDifferences', 'viewStaffAnalytics', 'manage86', 'overrideStock',
+  'manageCustomers', 'viewTabs', 'settleTabs', 'addToTabs',
 ]
 const LEGACY_PERMISSION_KEYS = ['discount', 'credit', 'settle', 'reports', 'register', 'supervisor'] as const
 
@@ -43,7 +44,9 @@ const permissionsForRole = (
           capability !== 'takeOverTables' && capability !== 'forceCloseShift' &&
           capability !== 'manageCashDifferences' && capability !== 'viewStaffAnalytics' &&
           capability !== 'manage86' && capability !== 'overrideStock' &&
-          capability !== 'useStaffAllowances') {
+          capability !== 'useStaffAllowances' &&
+          capability !== 'manageCustomers' && capability !== 'viewTabs' &&
+          capability !== 'settleTabs' && capability !== 'addToTabs') {
         permissions[capability] = false
       }
     }
@@ -63,6 +66,7 @@ const staffSnapshot = (user: User): Record<string, AuditJsonValue> => ({
   active: user.active,
   salaryType: user.salaryType,
   salaryAmount: user.salaryAmount,
+  tabCreditLimit: user.tabCreditLimit ?? 0,
   permissions: { ...user.permissions },
 })
 
@@ -101,6 +105,14 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
           (data.salaryType !== 'none' && data.salaryAmount <= 0)) {
         return { ok: false, error: 'Enter a valid salary type and non-negative amount.' }
       }
+      if (data.tabCreditLimit !== undefined &&
+          (!Number.isFinite(data.tabCreditLimit) || data.tabCreditLimit < 0)) {
+        return { ok: false, error: 'Enter a valid non-negative tab credit limit.' }
+      }
+      if (data.tabCreditLimit !== undefined && data.tabCreditLimit > 0 &&
+          actorResult.actor.role !== 'admin') {
+        return { ok: false, error: 'Only the owner can set staff tab credit limits.' }
+      }
       let password: string
       let pin: string
       try {
@@ -121,6 +133,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
         name: data.name.trim(),
         salaryType: data.role === 'manager' ? 'none' : data.salaryType,
         salaryAmount: data.role === 'manager' || data.salaryType === 'none' ? 0 : round(data.salaryAmount),
+        tabCreditLimit: round(Math.max(0, data.tabCreditLimit ?? 0)),
         username,
         email: '',
         password,
@@ -216,6 +229,13 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
           ((patch.salaryType ?? member.salaryType) !== 'none' && patch.salaryAmount <= 0))) {
       return { ok: false, error: 'Salary amount must be a non-negative number.' }
     }
+    if (patch.tabCreditLimit !== undefined &&
+        (!Number.isFinite(patch.tabCreditLimit) || patch.tabCreditLimit < 0)) {
+      return { ok: false, error: 'Tab credit limit must be a non-negative number.' }
+    }
+    if (patch.tabCreditLimit !== undefined && actorResult.actor.role !== 'admin') {
+      return { ok: false, error: 'Only the owner can set staff tab credit limits.' }
+    }
     if (nextRole === 'staff' && (patch.salaryType ?? member.salaryType) !== 'none' &&
         (patch.salaryAmount ?? member.salaryAmount) <= 0) {
       return { ok: false, error: 'Enter a salary amount greater than zero.' }
@@ -245,6 +265,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     }
     if (username !== undefined) safePatch.username = username
     if (patch.salaryAmount !== undefined) safePatch.salaryAmount = round(patch.salaryAmount)
+    if (patch.tabCreditLimit !== undefined) safePatch.tabCreditLimit = round(patch.tabCreditLimit)
     if (patch.salaryType === 'none') safePatch.salaryAmount = 0
     delete safePatch.id
     delete safePatch.storeId

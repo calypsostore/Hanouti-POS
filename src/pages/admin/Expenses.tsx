@@ -18,6 +18,7 @@ import { cn, csvDownload, dateKey, fmtDate, money, sum } from '../../lib/utils'
 import PayrollTab from './PayrollTab'
 import { can } from '../../lib/permissions'
 import { Navigate } from 'react-router-dom'
+import { modeFeatures } from '../../lib/posMode'
 
 const categories = ['Rent', 'Supplies', 'Utilities', 'Salaries', 'Salary advance', 'Internet', 'Maintenance', 'Marketing', 'Other']
 
@@ -44,8 +45,27 @@ export default function Expenses() {
   const [category, setCategory] = useState('all')
 
   if (!store || !user) return null
-  if (user.role === 'staff') return <PayrollTab />
-  if (user.role === 'manager' && !can(user, 'managePayroll')) return <Navigate to="/admin" replace />
+  const features = modeFeatures(store)
+  const activeTab = features.payroll ? tab : 'expenses'
+  if (user.role === 'staff' && features.payroll) return <PayrollTab />
+  if (user.role === 'staff' && !features.payroll) {
+    const staffExpenses = db.expenses.filter((expense) => expense.storeId === store.id)
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl font-extrabold">Expenses</h2>
+        <Card className="divide-y divide-line/70">
+          {staffExpenses.length ? staffExpenses.map((expense) => (
+            <div key={expense.id} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
+              <span className="min-w-0 truncate">{expense.category} · {expense.note}</span>
+              <span className="shrink-0 font-semibold tabular">{money(expense.amount)}</span>
+            </div>
+          )) : <p className="p-5 text-center text-xs text-muted">No expenses recorded.</p>}
+        </Card>
+      </div>
+    )
+  }
+  if (user.role === 'manager' && !can(user, 'managePayroll') && features.payroll) return <Navigate to="/admin" replace />
+  const canManageExpenses = user.role === 'admin' || can(user, 'managePayroll')
 
   const expenses = db.expenses.filter((e) => e.storeId === store.id)
 
@@ -103,26 +123,26 @@ export default function Expenses() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-[20px] font-extrabold tracking-tight">{tab === 'expenses' ? 'Expenses' : 'Payroll'}</h2>
+          <h2 className="text-[20px] font-extrabold tracking-tight">{activeTab === 'expenses' ? 'Expenses' : 'Payroll'}</h2>
           <p className="mt-1 text-[13px] text-muted">
-            {tab === 'expenses' ? 'Rent, supplies, salaries — keep everything in one place.' : 'Track attendance, advances and salary payments.'}
+            {activeTab === 'expenses' ? 'Rent, supplies, salaries — keep everything in one place.' : 'Track attendance, advances and salary payments.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={tab === 'expenses' ? 'primary' : 'secondary'} onClick={() => setTab('expenses')}>Expenses</Button>
-          <Button size="sm" variant={tab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>
-          {tab === 'expenses' && <>
+          <Button size="sm" variant={activeTab === 'expenses' ? 'primary' : 'secondary'} onClick={() => setTab('expenses')}>Expenses</Button>
+          {features.payroll && <Button size="sm" variant={activeTab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>}
+          {activeTab === 'expenses' && <>
             <Button variant="secondary" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Export
             </Button>
-            <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
+            {canManageExpenses && <Button onClick={() => { setEditTarget(null); setOpen(true) }}>
               <Plus className="h-4 w-4" /> Add expense
-            </Button>
+            </Button>}
           </>}
         </div>
       </div>
 
-      {tab === 'payroll' ? <PayrollTab /> : <>
+      {activeTab === 'payroll' ? <PayrollTab /> : <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Month total</div>
@@ -137,12 +157,12 @@ export default function Expenses() {
             {Math.abs(change).toFixed(1)}% vs last month
           </div>
         </Card>
-        <Card className="p-4">
+        {features.payments && <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Sales this month</div>
           <div className="mt-1 text-[22px] font-extrabold tracking-tight tabular">{money(revenue)}</div>
           <div className="mt-1 text-[11px] text-muted">Before expenses</div>
-        </Card>
-        <Card className="p-4">
+        </Card>}
+        {features.payments && <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Net this month</div>
           <div
             className={cn(
@@ -153,7 +173,7 @@ export default function Expenses() {
             {money(revenue - monthTotal)}
           </div>
           <div className="mt-1 text-[11px] text-muted">Sales − expenses</div>
-        </Card>
+        </Card>}
         <Card className="p-4">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Entries</div>
           <div className="mt-1 text-[22px] font-extrabold tracking-tight tabular">{monthExpenses.length}</div>
@@ -197,11 +217,11 @@ export default function Expenses() {
               icon={<Receipt className="h-5 w-5" />}
               title="No expenses this period"
               description="Add an expense to keep your net profit accurate."
-              action={
+              action={canManageExpenses ? (
                 <Button size="sm" onClick={() => setOpen(true)}>
                   <Plus className="h-4 w-4" /> Add expense
                 </Button>
-              }
+              ) : undefined}
             />
           ) : (
             <div className="divide-y divide-line/60">
@@ -227,7 +247,7 @@ export default function Expenses() {
                       </div>
                     </div>
                     <span className="text-[13px] font-bold tabular">{money(e.amount)}</span>
-                    <button
+                    {canManageExpenses && <button
                       type="button"
                       onClick={() => { setEditTarget(e); setOpen(true) }}
                       aria-label={`Edit ${e.category} expense`}
@@ -235,8 +255,8 @@ export default function Expenses() {
                       className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-brand-tint hover:text-accent-foreground group-hover:opacity-100"
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                    </button>}
+                    {canManageExpenses && <button
                       type="button"
                       onClick={() => setDeleteTarget(e)}
                       aria-label={`Delete ${e.category} expense`}
@@ -244,7 +264,7 @@ export default function Expenses() {
                       className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </button>}
                   </div>
                 ))}
             </div>

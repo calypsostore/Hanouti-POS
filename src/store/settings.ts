@@ -11,6 +11,8 @@ import { defaultStationsForStore } from '../lib/stations'
 import { ensureShiftForActor } from '../lib/registerShifts'
 import { validAutomationSettings } from '../lib/automation'
 import { validShiftAccessSettings } from '../lib/shiftAccess'
+import { isCashier } from '../lib/posMode'
+import { replaceStore } from '../lib/storeSettings'
 import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 import { addLog, changedAuditFields } from './audit'
 import { withEnsuredShift } from './registerShiftHelpers'
@@ -39,6 +41,7 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   guestRequirement: settings.guestRequirement,
   staffPickSectionsOnShift: settings.staffPickSectionsOnShift,
   requireShiftForOrders: settings.requireShiftForOrders,
+  allowQuickOpeningFloatEdit: settings.allowQuickOpeningFloatEdit,
   shiftAccess: { ...settings.shiftAccess },
   accent: settings.accent,
   colorMode: settings.colorMode,
@@ -349,12 +352,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       },
     }
     const changes = changedAuditFields(settingsSnapshot(store.settings), settingsSnapshot(updated.settings))
-    commitDb((prev) => addLog({
-      ...prev,
-      stores: prev.stores.map((s) =>
-        s.id === storeId ? updated : s,
-      ),
-    }, actorResult.actor, {
+    commitDb((prev) => addLog(replaceStore(prev, updated), actorResult.actor, {
       storeId,
       action: 'settings_updated',
       entity: 'settings',
@@ -406,7 +404,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         settings: {
           ...currentStore.settings,
           posMode: template.posMode,
-          requireShiftForOrders: template.posMode === 'cashier',
+          requireShiftForOrders: isCashier(template.posMode),
           shiftAccess: { ...currentStore.settings.shiftAccess },
           receiptFooter: template.receiptFooter,
           features: template.features,
@@ -528,7 +526,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       settings: {
         posMode: template.posMode,
-        requireShiftForOrders: template.posMode === 'cashier',
+        requireShiftForOrders: isCashier(template.posMode),
+        allowQuickOpeningFloatEdit: false,
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         currency: 'TND',
         taxRate: 0,

@@ -6,6 +6,7 @@ import { fmtDate, fmtTime, fmtDateTime, money } from '../../../../lib/utils'
 import { round } from '../../../../lib/pricing-utils'
 import { orderNumberLabel } from '../../../../lib/orderNumber'
 import { PaymentBadge } from './OrderPrimitives'
+import { modeFeatures } from '../../../../lib/posMode'
 
 type Props = {
   order: Order | null
@@ -28,6 +29,8 @@ export default function OrderDetailsDrawer({
   onVoid,
   onReprint,
 }: Props) {
+  const features = modeFeatures(store)
+  const quick = !features.payments
   return (
     <Drawer
       open={!!order}
@@ -45,9 +48,9 @@ export default function OrderDetailsDrawer({
               <span />
             )}
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => onReprint(order)}>
+              {features.receiptPrinting && <Button variant="secondary" onClick={() => onReprint(order)}>
                 <Printer className="h-4 w-4" /> Print
-              </Button>
+              </Button>}
               <Button onClick={onClose}>Done</Button>
             </div>
           </div>
@@ -57,7 +60,7 @@ export default function OrderDetailsDrawer({
       {order && (
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <PaymentBadge method={order.paymentMethod} />
+            {features.payments && <PaymentBadge method={order.paymentMethod} />}
             <Badge tone={order.status === 'void' ? 'danger' : order.status === 'recorded' ? 'warning' : 'success'}>
               {order.status === 'void' ? 'Voided' : order.status === 'recorded' ? 'Recorded' : 'Completed'}
             </Badge>
@@ -92,24 +95,25 @@ export default function OrderDetailsDrawer({
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-semibold text-ink">{item.name}</div>
                     <div className="text-[10.5px] text-muted">
-                      {item.soldByWeight ? `${item.qty.toFixed(3)} ${item.saleUnit ?? 'piece'}` : `${item.qty} × ${money(item.price)}`}
+                      {item.soldByWeight ? `${item.qty.toFixed(3)} ${item.saleUnit ?? 'piece'}` : `${item.qty} ×${quick ? '' : ` ${money(item.price)}`}`}
                     </div>
                     {item.variantName && <div className="text-[10px] text-muted">{item.variantName}</div>}
                     {!!item.modifiers?.length && <div className="text-[10px] text-muted">{item.modifiers.map((modifier) => modifier.optionName).join(', ')}</div>}
                     {item.addedByName && <div className="text-[10px] text-muted">Added by {item.addedByName}</div>}
                     {item.note && <div className="text-[10px] italic text-muted">{item.note}</div>}
                   </div>
-                  <span className="text-[12.5px] font-semibold tabular">
+                  {!quick && <span className="text-[12.5px] font-semibold tabular">
                     {money(round(item.price * item.qty))}
-                  </span>
+                  </span>}
                 </div>
               ))}
             </div>
-            <div className="mt-3 space-y-1 border-t border-dashed border-line pt-3 text-[12px]">
-              <div className="flex justify-between text-muted">
-                <span>Subtotal</span>
-                <span className="tabular">{money(order.subtotal)}</span>
-              </div>
+            {!quick && (
+              <div className="mt-3 space-y-1 border-t border-dashed border-line pt-3 text-[12px]">
+                <div className="flex justify-between text-muted">
+                  <span>Subtotal</span>
+                  <span className="tabular">{money(order.subtotal)}</span>
+                </div>
               {order.service > 0 && (
                 <div className="flex justify-between text-muted">
                   <span>Service</span>
@@ -132,10 +136,17 @@ export default function OrderDetailsDrawer({
                 <span>Total</span>
                 <span className="tabular">{money(order.total)}</span>
               </div>
-            </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {quick ? (
+            <div className="rounded-xl border border-line bg-white p-3">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{order.tableName ? 'Closed by' : 'Completed by'}</div>
+              <div className="mt-1 text-[12.5px] font-semibold">{order.staffName}</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-line bg-white p-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{order.tableName ? 'Closed by' : 'Served by'}</div>
               <div className="mt-1 text-[12.5px] font-semibold">{order.staffName}</div>
@@ -154,7 +165,8 @@ export default function OrderDetailsDrawer({
                     : 'Paid by card'}
               </div>
             </div>
-          </div>
+           </div>
+          )}
 
           {!!order.tableHistory?.length && (
             <section className="rounded-2xl border border-line bg-white p-4">
@@ -181,11 +193,12 @@ export default function OrderDetailsDrawer({
             </div>
           )}
 
-          <div className="rounded-2xl bg-cream-200/60 p-4">
+          {features.receiptPrinting && <div className="rounded-2xl bg-cream-200/60 p-4">
             <div className="receipt-print">
               <ReceiptView order={order} store={store} />
             </div>
           </div>
+          }
         </div>
       )}
     </Drawer>

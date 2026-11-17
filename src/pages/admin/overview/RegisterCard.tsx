@@ -5,9 +5,10 @@ import { sessionSnapshot } from '../../../lib/reports'
 import { money } from '../../../lib/utils'
 import { Badge } from '../../../components/ui'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
+import { isCashier } from '../../../lib/posMode'
 
 export function RegisterCard({ db, store, now }: { db: Database; store: Store; now: Date }) {
-  if (store.settings.posMode !== 'cashier') return null
+  if (!isCashier(store)) return null
   const session = db.registerSessions.find((item) => item.storeId === store.id && item.status === 'open')
   const snapshot = session ? sessionSnapshot(db, session, now.toISOString()) : null
   return (

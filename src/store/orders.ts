@@ -12,6 +12,8 @@ import { nextOrderNumber, provisionalOrderNumber } from '../lib/orderNumber'
 import { roundQuantity } from '../lib/inventory'
 import { maintainAvailabilityAfterStockChange } from './availabilityMaintenance'
 import { staffConsumptionDiscount, staffConsumptionError } from '../lib/staffConsumption'
+import { isQuick } from '../lib/posMode'
+import { canAddOrdersToTabs, quickTabLimitError } from '../lib/customerTabs'
 import {
   planStockDeductions, resolveOrderLines, stockKey, stockOverrideAccepted, validateOrderLines,
 } from '../shared/orderRules'
@@ -43,7 +45,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       if (staffConsumption && !can(seller, 'useStaffAllowances')) {
         return { ok: false, error: 'You do not have permission to record staff items.' }
       }
-      if (!['cash', 'card', 'credit'].includes(input.paymentMethod) ||
+      if (!['cash', 'card', 'credit', 'unpaid'].includes(input.paymentMethod) ||
         !['takeaway', 'dine-in', 'delivery'].includes(input.channel)) {
         return { ok: false, error: 'Choose a valid order type and payment method.' }
       }
@@ -52,6 +54,9 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       }
       const target = current.stores.find((s) => s.id === seller.storeId)
       if (!target) return { ok: false, error: 'Store not found.' }
+      if (input.paymentMethod === 'unpaid' && !isQuick(target)) {
+        return { ok: false, error: 'Unpaid order tracking is available only in Quick mode.' }
+      }
       if (staffConsumption && (seller.stationOnly || input.channel !== 'takeaway' || input.customerId)) {
         return { ok: false, error: 'Staff items must be recorded for yourself as a takeaway order.' }
       }
@@ -174,7 +179,7 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
 
       if (input.paymentMethod === 'credit') {
         if (!target.settings.allowCredit) return { ok: false, error: 'Credit tabs are disabled for this store.' }
-        if (seller.role !== 'admin' && !seller.permissions.credit) {
+        if (!canAddOrdersToTabs(target, seller)) {
           return { ok: false, error: 'You do not have permission to add orders to tabs.' }
         }
         if (!input.customerId) return { ok: false, error: 'Select a customer to add this order to a tab.' }
@@ -192,6 +197,14 @@ export function useOrdersSlice(dependencies: StoreSliceDependencies) {
       }
       const discount = round(requestedDiscount)
       const totals = computeTotals(checkedItems, target.settings, discount)
+      if (isQuick(target) && input.paymentMethod === 'credit') {
+        const limitError = quickTabLimitError(
+          seller,
+          balanceFor(current.ledger, input.customerId ?? ''),
+          totals.total,
+        )
+        if (limitError) return { ok: false, error: limitError }
+      }
 
       const checkoutIssues = validateOrderLines(checkedItems, {
         ...rulesContext,

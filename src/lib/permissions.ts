@@ -24,6 +24,10 @@ export const MANAGER_DEFAULT_PERMISSIONS: Pick<User['permissions'], Capability> 
   viewStaffAnalytics: true,
   manage86: true,
   overrideStock: true,
+  manageCustomers: false,
+  viewTabs: false,
+  settleTabs: false,
+  addToTabs: false,
 }
 
 export function canOverrideStock(user: User, rules: { stockOverrideRoles: { admin: boolean; manager: boolean; staff: boolean } }): boolean {
@@ -47,7 +51,9 @@ export function can(user: User, capability: Capability): boolean {
   }
   if (capability === 'takeOverTables' || capability === 'forceCloseShift' ||
       capability === 'manage86' ||
-      capability === 'manageCashDifferences' || capability === 'viewStaffAnalytics') {
+      capability === 'manageCashDifferences' || capability === 'viewStaffAnalytics' ||
+      capability === 'manageCustomers' || capability === 'viewTabs' ||
+      capability === 'settleTabs' || capability === 'addToTabs') {
     return user.permissions[capability] === true
   }
   if (capability === 'recordPurchases' && user.role === 'staff') {

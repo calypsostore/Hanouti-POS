@@ -22,6 +22,7 @@ import OrdersList from './components/OrdersList'
 import OrderDetailsDrawer from './components/OrderDetailsDrawer'
 import VoidOrderModal from './components/VoidOrderModal'
 import type { OrderMethod, OrderRange, OrderStatus } from './types'
+import { modeFeatures } from '../../../lib/posMode'
 
 export default function OrdersPage() {
   const { db, store, user, voidOrder } = useApp()
@@ -40,6 +41,8 @@ export default function OrdersPage() {
   const [limit, setLimit] = useState(20)
 
   if (!store || !user) return null
+  const features = modeFeatures(store)
+  const quick = !features.payments
 
   const customers = db.customers.filter((customer) => customer.storeId === store.id)
   const customerName = (id?: string) => customers.find((customer) => customer.id === id)?.name
@@ -93,7 +96,7 @@ export default function OrdersPage() {
 
   const exportCsv = () => {
     const rows: (string | number)[][] = [
-      ['Order', 'Date', 'Time', 'Channel', 'Table', 'Guests', 'Customer', 'Staff', 'Payment', 'Status', 'Items', 'Total (DT)'],
+      ['Order', 'Date', 'Time', 'Channel', 'Table', 'Guests', 'Customer', 'Staff', ...(quick ? [] : ['Payment']), 'Status', 'Items', ...(quick ? [] : ['Total (DT)'])],
       ...filtered.map((order) => [
         order.number,
         fmtDate(order.createdAt),
@@ -103,10 +106,10 @@ export default function OrdersPage() {
         order.guests ?? '',
         customerName(order.customerId) ?? 'Guest',
         order.staffName,
-        order.paymentMethod,
+        ...(quick ? [] : [order.paymentMethod]),
         order.status,
         order.items.map((item) => `${item.qty}x ${item.name}`).join(' | '),
-        order.total.toFixed(3),
+        ...(quick ? [] : [order.total.toFixed(3)]),
       ]),
     ]
     csvDownload(`orders-${store.slug}-${range}.csv`, rows)
@@ -148,7 +151,7 @@ export default function OrdersPage() {
         <div>
           <h2 className="text-[20px] font-extrabold tracking-tight">Orders</h2>
           <p className="mt-1 text-[13px] text-muted">
-            {myOrders ? 'Your sales and voids — searchable and exportable.' : 'Every sale, tab and void — searchable and exportable.'}
+            {quick ? 'Track completed orders by time, items and staff.' : myOrders ? 'Your sales and voids — searchable and exportable.' : 'Every sale, tab and void — searchable and exportable.'}
           </p>
         </div>
         <Button variant="secondary" onClick={exportCsv}>
@@ -158,6 +161,11 @@ export default function OrdersPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniStat label="Orders" value={String(filtered.length)} icon={<ReceiptText className="h-4 w-4" />} />
+        {quick ? <MiniStat
+          label="Items"
+          value={String(filtered.reduce((count, order) => count + order.items.reduce((quantity, item) => quantity + item.qty, 0), 0))}
+          icon={<ReceiptText className="h-4 w-4" />}
+        /> : <>
         <MiniStat label="Revenue" value={money(revenue)} icon={<Banknote className="h-4 w-4" />} />
         <MiniStat
           label="Average ticket"
@@ -165,10 +173,12 @@ export default function OrdersPage() {
           icon={<CreditCard className="h-4 w-4" />}
         />
         <MiniStat label="Charged to tabs" value={money(creditTotal)} icon={<Wallet className="h-4 w-4" />} />
+        </>}
       </div>
 
       <OrdersList
         filtered={filtered}
+        quick={quick}
         customerName={customerName}
         query={query}
         onQueryChange={setQuery}
@@ -221,7 +231,7 @@ export default function OrdersPage() {
         }}
         onConfirm={confirmVoid}
       />
-      <PrintModal job={printJob} onClose={() => setPrintJob(null)} />
+      {features.receiptPrinting && <PrintModal job={printJob} onClose={() => setPrintJob(null)} />}
     </div>
   )
 }

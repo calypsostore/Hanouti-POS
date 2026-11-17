@@ -25,6 +25,33 @@ implemented in the client store.
 The current audit status below supersedes older roadmap statuses later in this
 document.
 
+### Quick and Cashier products — implemented; browser verification pending
+
+- `settings.posMode` remains `quick` or `cashier`. Shared capability decisions
+  now drive Quick POS, dashboard/report views, navigation, settings tabs and
+  direct-route guards. Cashier payment and checkout behavior is unchanged.
+- Quick checkout has no payment modal, receipt printing, cash/card tender or
+  change calculation. It records orders as finished; station tickets remain
+  available only when the store enables kitchen stations. Quick navigation and
+  settings omit cashier-only inventory, purchasing, payroll, floor and receipt
+  workflows. Mode changes update settings only; orders, customers, ledger,
+  products and inventory remain stored and reappear when enabled again.
+- Quick shifts use staff-declared cash: counted amount less opening float is
+  the declared sales figure; optional expected-sales tallies create staff
+  differences. Staff may record corrections or accept a difference. Manager Z
+  aggregates daily declared sales, one retained float, staff differences and
+  manager-counted cash, then locks the included shifts and stores its Z number.
+- Quick customer tabs are permissioned separately for profile management,
+  viewing, settlement and adding orders. Staff limits default to zero and are
+  owner-configurable; the owner can override them. Quick settlements record
+  staff/shift attribution. The v41 migration normalizes the added permissions
+  and limits without deleting existing data.
+- `npm run build` and `npm run test:all` pass (112 tests). Sidebar/settings,
+  route access, tab permissions/limits, mode-switch retention and the
+  Sarra/Sami declared-cash example have automated coverage. Phone/tablet flows,
+  multi-device Hub synchronization, real kitchen tickets and physical printer
+  output still need live-browser/hardware verification.
+
 ### Staff access and scheduled shifts — implemented; browser verification pending
 
 - Staff without an open shift are routed to a limited screen with only their
@@ -215,8 +242,9 @@ document.
   import; no frontend bootstrap form currently calls those endpoints.
 - Order item prices and totals are rebuilt from store catalog/settings;
   permission-gated ledger writes are append-only and credit charges are checked
-  against their order. Payment tender reconciliation, customer credit limits
-  and authoritative close-report arithmetic remain unimplemented.
+  against their order. Quick staff tab limits and declared-cash Z totals are
+  validated by the Hub. Payment tender reconciliation and some authoritative
+  cashier close-report calculations remain unimplemented.
 - Automated hub API coverage passes, including store scoping, multiple WebSocket
   clients, a virtual TCP printer, concurrent table-order coalescing and shift/
   owner preservation. Build, lint and all 43 Node tests pass. A single-browser
@@ -576,7 +604,7 @@ wage or timekeeping system.
 | Auth | Browser-local demo auth | Hub async PBKDF2 login, role-scoped PINs, setup token and persistent local demo lockouts; production identity/session management still needed |
 | POS | Quick + cashier mode, customer attach, tabs, discounts | + auto/manual printing, kitchen tickets and persistent table orders |
 | Orders | History, void (admin only) | + manager-PIN void authorization, reprint, `voidedByName` audit |
-| Customers | Regulars cards, monthly settlements, staff read-only profiles | Unchanged |
+| Customers | Regulars cards, monthly settlements, staff read-only profiles | + Quick customer/tab permissions, staff limits, and attributed settlements |
 | Reports | Daily/monthly charts, CSV export | + X/Z register reports (new page) |
 | Register | **None** — no session concept | X report, Z close with counted cash + difference, immutable history |
 | Activity log | Derived dashboard notices only | Append-only browser-local log, admin filters, details, CSV and pagination |
@@ -586,7 +614,7 @@ wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Hub sync/outbox and PWA shell; cloud sync is unavailable |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Standalone data lives in IndexedDB under `7anouti.db.v30`, migrated from prior
+Standalone data lives in IndexedDB under `7anouti.db.v41`, migrated from prior
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. Hub mode persists
 store data in local JSONL files and uses IndexedDB as the client cache/outbox.
 Standalone persistence and authorization remain demo-grade; the hub is a
@@ -606,8 +634,8 @@ What remains:
 
 - No production PostgreSQL schema/migrations or hosted API were written.
 - The hub does not yet enforce every business invariant, including complete
-  payment tender reconciliation, customer credit limits, inventory costing,
-  and all register calculations. Some checks remain in the browser store layer.
+  payment tender reconciliation, inventory costing, and all cashier register
+  calculations. Some checks remain in the browser store layer.
 - Client-side controls can be bypassed by a user who can alter IndexedDB,
   localStorage, or the running JavaScript. They are defense-in-depth for the
   demo, not production authorization or tamper-resistant audit history.

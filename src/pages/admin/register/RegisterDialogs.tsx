@@ -5,6 +5,8 @@ import { RegisterItemsTable } from '../../../components/RegisterItemsTable'
 import type { OpenOrder, RegisterItemsReport, RegisterSession, User } from '../../../types'
 import { cn, fmtTime, money } from '../../../lib/utils'
 import { shiftCashDifference } from '../../../lib/shiftCash'
+import { isQuick } from '../../../lib/posMode'
+import { calculateQuickShiftClose } from '../../../lib/quickShifts'
 
 type Store = NonNullable<ReturnType<typeof import('../../../store/AppStore').useApp>['store']>
 
@@ -15,6 +17,7 @@ export function RegisterDialogs({
   warnAboutOpenTables,
   expected,
   openingInput,
+  canEditOpeningFloat,
   onOpeningInputChange,
   openModal,
   onOpenModalChange,
@@ -22,7 +25,9 @@ export function RegisterDialogs({
   closeModal,
   onCloseModalChange,
   countedInput,
+  expectedSalesInput,
   onCountedInputChange,
+  onExpectedSalesInputChange,
   closeNote,
   onCloseNoteChange,
   itemsReport,
@@ -46,6 +51,7 @@ export function RegisterDialogs({
   warnAboutOpenTables: boolean
   expected: number
   openingInput: string
+  canEditOpeningFloat: boolean
   onOpeningInputChange: (value: string) => void
   openModal: boolean
   onOpenModalChange: (open: boolean) => void
@@ -53,7 +59,9 @@ export function RegisterDialogs({
   closeModal: boolean
   onCloseModalChange: (open: boolean) => void
   countedInput: string
+  expectedSalesInput: string
   onCountedInputChange: (value: string) => void
+  onExpectedSalesInputChange: (value: string) => void
   closeNote: string
   onCloseNoteChange: (value: string) => void
   itemsReport?: RegisterItemsReport
@@ -72,12 +80,28 @@ export function RegisterDialogs({
   onPrintClose: () => void
 }) {
   const countedValue = Number(countedInput) || 0
-  const difference = store.settings.posMode === 'quick' ? 0 : shiftCashDifference(countedValue, expected)
+  const quick = isQuick(store)
+  const expectedSalesValue = expectedSalesInput.trim() === '' ? undefined : Number(expectedSalesInput)
+  const quickClose = quick && open
+    ? calculateQuickShiftClose(
+        open.openingFloat ?? open.openingCash,
+        countedValue,
+        expectedSalesValue !== undefined && Number.isFinite(expectedSalesValue) && expectedSalesValue >= 0
+          ? expectedSalesValue
+          : undefined,
+      )
+    : undefined
+  const difference = quick ? quickClose?.difference ?? 0 : shiftCashDifference(countedValue, expected)
+  const declaredSales = quickClose?.declaredSales ?? 0
   const differenceTone = difference === 0
     ? 'text-[var(--semantic-green-text)]'
     : difference > 0
       ? 'text-[var(--semantic-amber-text)]'
       : 'text-[var(--semantic-red-text)]'
+  const countedInputValid = countedInput.trim() !== '' &&
+    Number.isFinite(Number(countedInput)) && Number(countedInput) >= 0
+  const expectedSalesInputValid = expectedSalesInput.trim() === '' ||
+    (Number.isFinite(Number(expectedSalesInput)) && Number(expectedSalesInput) >= 0)
 
   return (
     <>
@@ -133,10 +157,11 @@ export function RegisterDialogs({
             <Input
               type="number"
               min={0}
-              step={10}
+              step={quick ? 0.001 : 10}
               inputMode="decimal"
               value={openingInput}
               onChange={(event) => onOpeningInputChange(event.target.value)}
+              disabled={!canEditOpeningFloat}
               placeholder="e.g. 120"
               className="h-12 text-lg font-bold tabular"
               autoFocus
@@ -152,7 +177,7 @@ export function RegisterDialogs({
       <Modal
         open={closeModal}
         onClose={() => onCloseModalChange(false)}
-        title="Close shift — X report"
+        title={quick ? 'Close shift' : 'Close shift — X report'}
         subtitle={open ? `${open.shiftNumber ?? open.id} · ${fmtTime(open.openedAt)}` : ''}
         size="sm"
         footer={
@@ -164,18 +189,20 @@ export function RegisterDialogs({
               <Button variant="secondary" onClick={() => onCloseModalChange(false)}>
                 Cancel
               </Button>
-              <Button disabled={!(countedValue >= 0)} onClick={onCloseRegister}>
+              <Button disabled={!countedInputValid || !expectedSalesInputValid} onClick={onCloseRegister}>
                 <Square className="h-4 w-4" /> Close shift
               </Button>
             </div>
-            <label className="flex items-start gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={leaveFloatForNextShift}
-                onChange={(event) => onLeaveFloatForNextShiftChange(event.target.checked)}
-              />
-              Leave the counted float for the next shift
-            </label>
+            {!quick && (
+              <label className="flex items-start gap-2 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={leaveFloatForNextShift}
+                  onChange={(event) => onLeaveFloatForNextShiftChange(event.target.checked)}
+                />
+                Leave the counted float for the next shift
+              </label>
+            )}
           </div>
         }
       >
@@ -187,20 +214,20 @@ export function RegisterDialogs({
           )}
           <div className="rounded-2xl bg-espresso-900 px-5 py-4 text-cream-50">
             <div className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/40">
-              {store.settings.posMode === 'quick' ? 'Cash accountability is off in Quick mode' : 'Expected cash (from orders & ledger)'}
+              {quick ? 'Quick shift declaration' : 'Expected cash (from orders & ledger)'}
             </div>
-            <div className="mt-1 text-[28px] font-extrabold tracking-tight tabular">{money(expected)}</div>
+            <div className="mt-1 text-[28px] font-extrabold tracking-tight tabular">{money(quick ? declaredSales : expected)}</div>
             <div className="mt-1 text-[11px] text-white/45">
-              {store.settings.posMode === 'quick'
-                ? 'No cash expected or cash difference is calculated.'
+              {quick
+                ? `Declared sales so far: counted total ${money(countedValue)} less opening float ${money(open?.openingFloat ?? open?.openingCash ?? 0)}.`
                 : `Opening ${money(open?.openingCash ?? 0)} + cash sales + tab payments − expenses − refunds`}
             </div>
           </div>
-          <Field label="Counted cash in drawer (DT)">
+          <Field label={quick ? 'Counted total cash (DT, including opening float)' : 'Counted cash in drawer (DT)'}>
             <Input
               type="number"
               min={0}
-              step={1}
+              step={0.001}
               inputMode="decimal"
               value={countedInput}
               onChange={(event) => onCountedInputChange(event.target.value)}
@@ -208,6 +235,19 @@ export function RegisterDialogs({
               autoFocus
             />
           </Field>
+          {quick && (
+            <Field label="Expected sales (optional)" hint="Your own tally. Leave blank to record declared sales without a difference check.">
+              <Input
+                type="number"
+                min={0}
+                step={0.001}
+                inputMode="decimal"
+                value={expectedSalesInput}
+                onChange={(event) => onExpectedSalesInputChange(event.target.value)}
+                className="tabular"
+              />
+            </Field>
+          )}
           <div className={cn('rounded-2xl border px-5 py-4 text-center', difference === 0
             ? 'border-[var(--semantic-green-border)] bg-[var(--semantic-green-soft)]'
             : difference > 0
@@ -218,11 +258,13 @@ export function RegisterDialogs({
               {difference > 0 ? '+' : ''}{money(difference)}
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => onCountedInputChange(expected.toFixed(3))}>
-              Match expected
-            </Button>
-          </div>
+          {!quick && (
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => onCountedInputChange(expected.toFixed(3))}>
+                Match expected
+              </Button>
+            </div>
+          )}
           <Field label="Note" hint="Optional — recorded on the shift X report">
             <Textarea
               value={closeNote}

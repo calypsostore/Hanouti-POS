@@ -13,9 +13,12 @@ import { can } from '../../../lib/permissions'
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { shiftCashDifference } from '../../../lib/shiftCash'
 import { shiftOpenScheduleError } from '../../../lib/shiftAccess'
+import { isQuick } from '../../../lib/posMode'
+import { calculateQuickDayClose } from '../../../lib/quickShifts'
 import { useApp } from '../../../store/AppStore'
 import { LiveRegister } from './LiveRegister'
 import { RegisterDialogs } from './RegisterDialogs'
+import { QuickManagerZPanel } from './QuickManagerZPanel'
 import { SessionHistory } from './SessionHistory'
 
 export default function RegisterPage() {
@@ -33,9 +36,11 @@ export default function RegisterPage() {
   const [forceCountedInput, setForceCountedInput] = useState('')
   const [forceReason, setForceReason] = useState('')
   const [countedInput, setCountedInput] = useState('')
+  const [expectedSalesInput, setExpectedSalesInput] = useState('')
   const [closeNote, setCloseNote] = useState('')
   const [dayStaffFloatInput, setDayStaffFloatInput] = useState('')
   const [dayCountedInput, setDayCountedInput] = useState('')
+  const [dayOpenShiftCounts, setDayOpenShiftCounts] = useState<Record<string, string>>({})
   const [dayCloseNote, setDayCloseNote] = useState('')
   const [leaveFloatForNextShift, setLeaveFloatForNextShift] = useState(false)
   const [printJob, setPrintJob] = useState<PrintJob | null>(null)
@@ -52,7 +57,8 @@ export default function RegisterPage() {
 
   const beginClose = () => {
     if (!open) return
-    setCountedInput(expected.toFixed(3))
+    setCountedInput((isQuick(store) ? open.openingFloat ?? open.openingCash : expected).toFixed(3))
+    setExpectedSalesInput('')
     setCloseNote('')
     setLeaveFloatForNextShift(false)
     if (ownedOpenTables.length > 0) {
@@ -116,11 +122,14 @@ export default function RegisterPage() {
   const today = dateKey(now)
   const todayStart = new Date(`${today}T00:00:00`).toISOString()
   const todaySessions = allSessions.filter((session) => dateKey(session.openedAt) === today)
+  const quickDaySessions = isQuick(store)
+    ? allSessions.filter((session) => dateKey(session.openedAt) === today || session.status === 'open')
+    : todaySessions
   const dayReports = db.registerDayReports
     .filter((report) => report.storeId === store.id)
     .sort((a, b) => b.date.localeCompare(a.date))
   const todayDayReport = dayReports.find((report) => report.date === today)
-  const firstTodaySession = todaySessions.reduce<RegisterSession | undefined>((first, session) =>
+  const firstTodaySession = quickDaySessions.reduce<RegisterSession | undefined>((first, session) =>
     !first || session.openedAt < first.openedAt ? session : first,
   undefined)
   const dayOpeningCash = firstTodaySession
@@ -133,14 +142,19 @@ export default function RegisterPage() {
   const dayCloseSnapshot = todaySessions.length && Number.isFinite(staffFloatValue) && staffFloatValue >= 0
     ? computeRegisterTotals(db, store.id, todayStart, nowISO, staffFloatValue)
     : null
-  const canCloseDay = user.role === 'admin' && !todayDayReport && todaySessions.length > 0 &&
-    allSessions.filter((session) => session.status === 'open').every((session) => {
-      if (!session.autoOpened) return false
-      const owner = db.users.find((candidate) =>
-        candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
-      )
-      return owner?.role === 'admin' || owner?.role === 'manager'
-    })
+  const canManageDayZ = user.role === 'admin' ||
+    (user.role === 'manager' && can(user, 'forceCloseShift'))
+  const canSeeDayZ = isQuick(store) ? canManageDayZ : user.role === 'admin'
+  const canCloseDay = isQuick(store)
+    ? canManageDayZ && !todayDayReport && quickDaySessions.length > 0
+    : user.role === 'admin' && !todayDayReport && todaySessions.length > 0 &&
+      allSessions.filter((session) => session.status === 'open').every((session) => {
+        if (!session.autoOpened) return false
+        const owner = db.users.find((candidate) =>
+          candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
+        )
+        return owner?.role === 'admin' || owner?.role === 'manager'
+      })
   const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
   const liveBreakdown = open ? registerBreakdown(db, open, nowISO, itemScope) : null
@@ -172,8 +186,71 @@ export default function RegisterPage() {
   }
   const liveItems = open ? itemDetailsForSession(open, nowISO, itemScope).report : null
   const expected = liveSnapshot?.expectedCash ?? 0
-  const dayExpectedCash = dayCloseSnapshot?.expectedCash ?? 0
-  const dayCashDifference = shiftCashDifference(Number(dayCountedInput) || 0, dayExpectedCash)
+  const quickRetainedFloat = firstTodaySession
+    ? firstTodaySession.openingFloat ?? firstTodaySession.openingCash
+    : 0
+  const quickDayPreview = isQuick(store)
+    ? calculateQuickDayClose(quickDaySessions.map((session) => {
+        const openingFloat = session.openingFloat ?? session.openingCash
+        const counted = session.status === 'open'
+          ? Number(dayOpenShiftCounts[session.id] ?? openingFloat.toFixed(3))
+          : session.countedCash
+        return {
+          shiftId: session.id,
+          staffId: session.staffId ?? session.openedById,
+          staffName: db.users.find((candidate) =>
+            candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
+          )?.name ?? session.openedByName,
+          openedAt: session.openedAt,
+          closedAt: session.closedAt,
+          openingFloat,
+          countedCash: counted,
+          declaredSales: session.status === 'open'
+            ? typeof counted === 'number' && Number.isFinite(counted) ? counted - openingFloat : 0
+            : session.declaredSales,
+          expectedSales: session.expectedSales,
+          difference: session.expectedSales === undefined ? 0 : session.difference ?? 0,
+          correctionEntries: db.cashDifferences
+            .filter((difference) => difference.shiftId === session.id)
+            .flatMap((difference) => difference.correctionEntries ?? []),
+          note: session.note,
+          forceClosed: false,
+        }
+      }), quickRetainedFloat, Number(dayCountedInput) || 0)
+    : null
+  const quickDaySummary = todayDayReport?.quickShiftSummary ?? quickDayPreview
+  const dayExpectedCash = isQuick(store)
+    ? quickDaySummary?.expectedCash ?? 0
+    : dayCloseSnapshot?.expectedCash ?? 0
+  const dayCashDifference = isQuick(store)
+    ? quickDaySummary?.difference ?? 0
+    : shiftCashDifference(Number(dayCountedInput) || 0, dayExpectedCash)
+  const quickOpenCountsValid = quickDaySessions.filter((session) => session.status === 'open').every((session) => {
+    const value = dayOpenShiftCounts[session.id] ?? (session.openingFloat ?? session.openingCash).toFixed(3)
+    return value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0
+  })
+  const beginDayClose = () => {
+    setDayCloseNote('')
+    if (isQuick(store)) {
+      setDayStaffFloatInput(quickRetainedFloat.toFixed(3))
+      setDayOpenShiftCounts((previous) => {
+        const next = { ...previous }
+        for (const session of quickDaySessions) {
+          if (session.status === 'open' && next[session.id] === undefined) {
+            next[session.id] = (session.openingFloat ?? session.openingCash).toFixed(3)
+          }
+        }
+        return next
+      })
+      if (dayCountedInput.trim() === '') {
+        setDayCountedInput((quickDayPreview?.expectedCash ?? 0).toFixed(3))
+      }
+    } else {
+      setDayStaffFloatInput(dayOpeningCash.toFixed(3))
+      setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
+    }
+    setDayCloseModal(true)
+  }
   const ownScheduledShifts = db.shifts.filter((shift) =>
     shift.storeId === store.id && shift.userId === user.id && shift.date === today,
   )
@@ -259,12 +336,20 @@ export default function RegisterPage() {
     }
     push(`Register opened with ${money(openingCash)}`, 'success')
     setOpenModal(false)
-    setOpeningInput('100')
+    setOpeningInput(openingCash.toFixed(3))
   }
 
   const handleCloseRegister = () => {
     if (!open) return
-    const result = closeRegister(open.id, Number(countedInput) || 0, closeNote, undefined, leaveFloatForNextShift)
+    const expectedSales = expectedSalesInput.trim() === '' ? undefined : Number(expectedSalesInput)
+    const result = closeRegister(
+      open.id,
+      Number(countedInput) || 0,
+      closeNote,
+      undefined,
+      leaveFloatForNextShift,
+      expectedSales,
+    )
     if (!result.ok) {
       push(result.error, 'error')
       return
@@ -274,11 +359,20 @@ export default function RegisterPage() {
   }
 
   const handleCloseRegisterDay = () => {
+    const quickOpenCounts = isQuick(store)
+      ? Object.fromEntries(quickDaySessions
+          .filter((session) => session.status === 'open')
+          .map((session) => {
+            const value = dayOpenShiftCounts[session.id]
+            return [session.id, value?.trim() ? Number(value) : Number.NaN]
+          }))
+      : undefined
     const result = closeRegisterDay(
       store.id,
       Number(dayStaffFloatInput),
       Number(dayCountedInput),
       dayCloseNote,
+      quickOpenCounts,
     )
     if (!result.ok) {
       push(result.error, 'error')
@@ -327,9 +421,14 @@ export default function RegisterPage() {
   const beginOpen = () => {
     const previous = [...db.registerSessions]
       .filter((session) => session.storeId === store.id && session.status === 'closed' &&
-        session.leaveFloatForNextShift && typeof session.countedCash === 'number')
+        (session.openingFloat !== undefined || session.openingCash >= 0))
       .sort((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''))[0]
-    setOpeningInput(previous?.countedCash?.toFixed(3) ?? '100')
+    const fallback = isQuick(store) ? '0.000' : '100'
+    setOpeningInput(
+      previous
+        ? (previous.openingFloat ?? previous.openingCash).toFixed(3)
+        : fallback,
+    )
     setOpenModal(true)
   }
 
@@ -379,6 +478,7 @@ export default function RegisterPage() {
               step={0.001}
               value={openingInput}
               onChange={(event) => setOpeningInput(event.target.value)}
+              disabled={isQuick(store) && !store.settings.allowQuickOpeningFloatEdit}
             />
           </Field>
         </Modal>
@@ -392,7 +492,9 @@ export default function RegisterPage() {
         <div>
           <h2 className="text-[20px] font-extrabold tracking-tight">Cash register</h2>
           <p className="mt-1 text-[13px] text-muted">
-            {canSeeAll
+            {isQuick(store)
+              ? 'Staff declare cash at shift close. The manager Z totals declarations, differences, corrections, and the retained float.'
+              : canSeeAll
               ? 'Staff can open and close shifts independently. The owner closes one frozen Z after the day’s work is finished.'
               : 'Open your own shift, print an X report any time, and close your shift when you hand over.'}
           </p>
@@ -409,16 +511,11 @@ export default function RegisterPage() {
             >
               <Square className="h-4 w-4" /> Close shift
             </Button>
-            {user.role === 'admin' && (
+            {canSeeDayZ && (
               <Button
                 variant="secondary"
                 disabled={!canCloseDay}
-                onClick={() => {
-                  setDayStaffFloatInput(dayOpeningCash.toFixed(3))
-                  setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
-                  setDayCloseNote('')
-                  setDayCloseModal(true)
-                }}
+                onClick={beginDayClose}
               >
                 <Square className="h-4 w-4" /> Close day (Z)
               </Button>
@@ -429,16 +526,11 @@ export default function RegisterPage() {
             <Button onClick={beginOpen}>
               <Play className="h-4 w-4" /> Open shift
             </Button>
-            {user.role === 'admin' && (
+            {canSeeDayZ && (
               <Button
                 variant="secondary"
                 disabled={!canCloseDay}
-                onClick={() => {
-                  setDayStaffFloatInput(dayOpeningCash.toFixed(3))
-                  setDayCountedInput((liveDaySnapshot?.expectedCash ?? 0).toFixed(3))
-                  setDayCloseNote('')
-                  setDayCloseModal(true)
-                }}
+                onClick={beginDayClose}
               >
                 <Square className="h-4 w-4" /> Close day (Z)
               </Button>
@@ -450,6 +542,7 @@ export default function RegisterPage() {
       <LiveRegister
         open={open}
         anyOpen={anyOpen}
+        quick={isQuick(store)}
         canSeeAll={canSeeAll}
         liveSnapshot={liveSnapshot}
         liveBreakdown={liveBreakdown}
@@ -457,13 +550,31 @@ export default function RegisterPage() {
         onOpen={beginOpen}
       />
 
+      {isQuick(store) && canManageDayZ && quickDaySummary && (
+        <QuickManagerZPanel
+          date={today}
+          summary={quickDaySummary}
+          canClose={canCloseDay && quickOpenCountsValid}
+          countedInput={todayDayReport?.countedCash.toFixed(3) ?? dayCountedInput}
+          openShiftCounts={dayOpenShiftCounts}
+          onCountedChange={setDayCountedInput}
+          onOpenShiftCountChange={(shiftId, value) => setDayOpenShiftCounts((previous) => ({
+            ...previous,
+            [shiftId]: value,
+          }))}
+          onCloseDay={beginDayClose}
+        />
+      )}
+
       {can(user, 'forceCloseShift') && allSessions.filter((session) =>
         session.status === 'open' && session.id !== open?.id,
       ).map((session) => (
         <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
           <div className="text-sm font-semibold">{session.openedByName} · {session.shiftNumber}</div>
           <Button size="sm" variant="danger" onClick={() => {
-            setForceCountedInput((sessionSnapshot(db, session, nowISO)?.expectedCash ?? 0).toFixed(3))
+            setForceCountedInput((isQuick(store)
+              ? session.openingFloat ?? session.openingCash
+              : sessionSnapshot(db, session, nowISO)?.expectedCash ?? 0).toFixed(3))
             setForceReason('')
             setForceSession(session)
           }}>Force close</Button>
@@ -490,7 +601,7 @@ export default function RegisterPage() {
         onPrint={(session, kind) => printReport(kind, session)}
       />
 
-      {user.role === 'admin' && (
+      {canSeeDayZ && (
         <div>
           <h3 className="mb-2 text-[13.5px] font-bold text-ink">Store-day Z reports</h3>
           <div className="divide-y divide-line/60 rounded-2xl border border-line bg-surface">
@@ -519,6 +630,7 @@ export default function RegisterPage() {
         expected={expected}
         itemsReport={open ? itemDetailsForSession(open, nowISO).report : undefined}
         openingInput={openingInput}
+        canEditOpeningFloat={!isQuick(store) || user.role === 'admin' || store.settings.allowQuickOpeningFloatEdit}
         onOpeningInputChange={setOpeningInput}
         openModal={openModal}
         onOpenModalChange={setOpenModal}
@@ -526,7 +638,9 @@ export default function RegisterPage() {
         closeModal={closeModal}
         onCloseModalChange={setCloseModal}
         countedInput={countedInput}
+        expectedSalesInput={expectedSalesInput}
         onCountedInputChange={setCountedInput}
+        onExpectedSalesInputChange={setExpectedSalesInput}
         closeNote={closeNote}
         onCloseNoteChange={setCloseNote}
         onCloseRegister={handleCloseRegister}
@@ -546,7 +660,7 @@ export default function RegisterPage() {
       <Modal
         open={dayCloseModal}
         onClose={() => setDayCloseModal(false)}
-        title="Close store day — Z report"
+        title={isQuick(store) ? 'Close Quick day — Z report' : 'Close store day — Z report'}
         subtitle={`${store.name} · ${today}`}
         size="sm"
         footer={<div className="flex justify-end gap-2">
@@ -554,9 +668,11 @@ export default function RegisterPage() {
           <Button
             variant="danger"
             disabled={
-              !Number.isFinite(Number(dayStaffFloatInput)) ||
-              Number(dayStaffFloatInput) < 0 ||
+              (!isQuick(store) && (!Number.isFinite(Number(dayStaffFloatInput)) ||
+                Number(dayStaffFloatInput) < 0)) ||
+              dayCountedInput.trim() === '' ||
               !Number.isFinite(Number(dayCountedInput)) ||
+              (isQuick(store) && !quickOpenCountsValid) ||
               Number(dayCountedInput) < 0
             }
             onClick={handleCloseRegisterDay}
@@ -567,20 +683,53 @@ export default function RegisterPage() {
       >
         <div className="space-y-3">
           <p className="text-sm text-muted">
-            This closes the whole store day, not one staff shift. It is available only after every shift is closed.
+            {isQuick(store)
+              ? 'This locks the day and bulk force-closes any open shifts, retaining each shift’s staff owner.'
+              : 'This closes the whole store day, not one staff shift. It is available only after every shift is closed.'}
           </p>
           <Field label="Expected day-end cash">
             <div className="text-xl font-bold text-ink">{money(dayExpectedCash)}</div>
           </Field>
-          <Field label="Staff working float (DT)" hint="Enter the amount set aside for staff to work with today. It can change each day.">
-            <Input
-              type="number"
-              min={0}
-              step={0.001}
-              value={dayStaffFloatInput}
-              onChange={(event) => setDayStaffFloatInput(event.target.value)}
-            />
-          </Field>
+          {isQuick(store) ? (
+            <>
+              <Field label="Retained float (DT)">
+                <div className="text-sm font-bold text-ink">{money(quickDaySummary?.retainedFloat ?? 0)}</div>
+              </Field>
+              {quickDaySessions.filter((session) => session.status === 'open').map((session) => {
+                const staffName = db.users.find((candidate) =>
+                  candidate.id === (session.staffId ?? session.openedById),
+                )?.name ?? session.openedByName
+                return (
+                  <Field
+                    key={session.id}
+                    label={`${staffName} · force-close counted total (DT)`}
+                    hint="The shift remains attributed to its original staff member."
+                  >
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.001}
+                      value={dayOpenShiftCounts[session.id] ?? (session.openingFloat ?? session.openingCash).toFixed(3)}
+                      onChange={(event) => setDayOpenShiftCounts((previous) => ({
+                        ...previous,
+                        [session.id]: event.target.value,
+                      }))}
+                    />
+                  </Field>
+                )
+              })}
+            </>
+          ) : (
+            <Field label="Staff working float (DT)" hint="Enter the amount set aside for staff to work with today. It can change each day.">
+              <Input
+                type="number"
+                min={0}
+                step={0.001}
+                value={dayStaffFloatInput}
+                onChange={(event) => setDayStaffFloatInput(event.target.value)}
+              />
+            </Field>
+          )}
           <Field label="Counted cash (DT)">
             <Input type="number" min={0} step={0.001} value={dayCountedInput} onChange={(event) => setDayCountedInput(event.target.value)} />
           </Field>

@@ -8,6 +8,7 @@ import type { OrderMethod, OrderRange, OrderStatus } from '../types'
 
 type Props = {
   filtered: Order[]
+  quick: boolean
   customerName: (id?: string) => string | undefined
   query: string
   onQueryChange: (query: string) => void
@@ -27,6 +28,7 @@ type Props = {
 
 export default function OrdersList({
   filtered,
+  quick,
   customerName,
   query,
   onQueryChange,
@@ -67,7 +69,7 @@ export default function OrdersList({
               { value: 'all', label: 'All' },
             ]}
           />
-          <Select
+          {!quick && <Select
             value={method}
             onChange={(event) => onMethodChange(event.target.value as OrderMethod)}
             className="h-9 w-[130px] text-[12.5px]"
@@ -77,7 +79,7 @@ export default function OrdersList({
             <option value="card">Card</option>
             <option value="credit">On tab</option>
             <option value="unpaid">Unpaid</option>
-          </Select>
+          </Select>}
           <Select
             value={status}
             onChange={(event) => onStatusChange(event.target.value as OrderStatus)}
@@ -115,8 +117,8 @@ export default function OrdersList({
                   <th className="px-4 py-2.5 font-semibold">Customer</th>
                   <th className="px-4 py-2.5 font-semibold">Items</th>
                   <th className="px-4 py-2.5 font-semibold">Staff</th>
-                  <th className="px-4 py-2.5 font-semibold">Payment</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                  {!quick && <th className="px-4 py-2.5 font-semibold">Payment</th>}
+                  {!quick && <th className="px-4 py-2.5 text-right font-semibold">Total</th>}
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -148,14 +150,14 @@ export default function OrdersList({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted">{order.staffName.split(' ')[0]}</td>
-                    <td className="px-4 py-3">
+                    {!quick && <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <PaymentBadge method={order.paymentMethod} />
                         {order.status === 'recorded' && <Badge tone="warning">Recorded</Badge>}
                         {order.status === 'void' && <Badge tone="danger">Void</Badge>}
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold tabular">{money(order.total)}</td>
+                    </td>}
+                    {!quick && <td className="px-4 py-3 text-right font-bold tabular">{money(order.total)}</td>}
                     <td className="px-4 py-3 text-right">
                       <button
                         className="rounded-lg p-1.5 text-muted transition hover:bg-cream-200 hover:text-ink"
@@ -193,10 +195,11 @@ export default function OrdersList({
                     {order.items.map((item) => `${item.qty}× ${item.name}`).join(', ')}
                   </div>
                 </div>
-                <div className="text-right">
+                {!quick && <div className="text-right">
                   <div className="text-[12.5px] font-bold tabular">{money(order.total)}</div>
                   <div className="text-[10px] text-muted">{fmtTime(order.createdAt)}</div>
-                </div>
+                </div>}
+                {quick && <div className="text-right text-[10px] text-muted">{fmtTime(order.createdAt)}</div>}
               </button>
             ))}
           </div>

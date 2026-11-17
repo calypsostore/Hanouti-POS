@@ -36,6 +36,7 @@ import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
 import { isValidUsername, normalizeUsername, suggestStaffUsername } from '../../lib/staff'
 import { getStaffSalesThisMonth } from '../../lib/staffDetails'
+import { isQuick } from '../../lib/posMode'
 import StaffPermissionsEditor from './staff/StaffPermissionsEditor'
 import type { Result } from '../../store/types'
 
@@ -50,6 +51,7 @@ type StaffForm = {
   active: boolean
   salaryType: User['salaryType']
   salaryAmount: number
+  tabCreditLimit?: number
   permissions: User['permissions']
 }
 
@@ -77,6 +79,10 @@ const stationOnlyPermissions = (): User['permissions'] => ({
   viewStation: true,
   openShift: false,
   closeShift: false,
+  manageCustomers: false,
+  viewTabs: false,
+  settleTabs: false,
+  addToTabs: false,
 })
 
 export default function Staff() {
@@ -97,6 +103,8 @@ export default function Staff() {
   const canManageStaff = can(user, 'manageStaff')
   const canManagePayroll = can(user, 'managePayroll')
   const canChangeRoles = user.role === 'admin'
+  const canManageTabLimits = user.role === 'admin'
+  const quick = store ? isQuick(store) : false
   const canOpenStaffDetails = canManageStaff || (user.role === 'staff' && user.permissions.supervisor)
   if (!canOpenStaffDetails) return <Navigate to="/staff" replace />
   if (!store) return null
@@ -413,6 +421,8 @@ export default function Staff() {
           users={db.users}
           canChangeRoles={canChangeRoles && editor.member?.role !== 'admin'}
           canManagePayroll={canManagePayroll}
+          canManageTabLimits={canManageTabLimits}
+          quick={quick}
           onClose={() => setEditor({ open: false })}
           onSave={async (data) => {
             if (editor.member) {
@@ -514,6 +524,8 @@ function StaffEditor({
   users,
   canChangeRoles,
   canManagePayroll,
+  canManageTabLimits,
+  quick,
   onClose,
   onSave,
 }: {
@@ -523,6 +535,8 @@ function StaffEditor({
   users: User[]
   canChangeRoles: boolean
   canManagePayroll: boolean
+  canManageTabLimits: boolean
+  quick: boolean
   onClose: () => void
   onSave: (data: StaffForm) => Promise<Result>
 }) {
@@ -538,6 +552,7 @@ function StaffEditor({
   const [attendanceEnabled, setAttendanceEnabled] = useState(member?.attendanceEnabled ?? !member?.stationOnly)
   const [salaryType, setSalaryType] = useState<User['salaryType']>(member?.salaryType ?? 'none')
   const [salaryAmount, setSalaryAmount] = useState(String(member?.salaryAmount ?? 0))
+  const [tabCreditLimit, setTabCreditLimit] = useState(String(member?.tabCreditLimit ?? 0))
   const [permissions, setPermissions] = useState(member?.permissions ?? defaultPermissions('staff'))
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -558,6 +573,11 @@ function StaffEditor({
     (!Number.isFinite(salaryValue) || salaryValue <= 0)
     ? 'Enter a salary amount greater than zero.'
     : ''
+  const tabCreditLimitValue = Number(tabCreditLimit)
+  const tabCreditLimitError = canManageTabLimits &&
+    (!Number.isFinite(tabCreditLimitValue) || tabCreditLimitValue < 0)
+    ? 'Enter a valid non-negative tab limit.'
+    : ''
   const usernameSaveError = /username/i.test(saveError) ? saveError : ''
   const pinSaveError = /pin/i.test(saveError) ? saveError : ''
   const salarySaveError = /salary/i.test(saveError) ? saveError : ''
@@ -566,6 +586,7 @@ function StaffEditor({
     usernameError || usernameSaveError,
     pinError || pinSaveError,
     salaryError || salarySaveError,
+    tabCreditLimitError,
   ].filter(Boolean)
   const valid = visibleErrors.length === 0
   const disabledReason = visibleErrors[0]
@@ -604,6 +625,7 @@ function StaffEditor({
                 active,
                 salaryType: role === 'manager' ? 'none' : salaryType,
                 salaryAmount: role === 'manager' || salaryType === 'none' ? 0 : Number(salaryAmount),
+                ...(canManageTabLimits ? { tabCreditLimit: tabCreditLimitValue } : {}),
                 permissions,
               })
               setSaving(false)
@@ -721,9 +743,24 @@ function StaffEditor({
           </div>
         )}
 
+        {canManageTabLimits && role !== 'manager' && (
+          <Field label="Staff tab credit limit (DT)" hint="0.000 blocks staff tab charges; the owner can override the limit.">
+            <Input
+              type="number"
+              min={0}
+              step="0.001"
+              value={tabCreditLimit}
+              onChange={(event) => { setTabCreditLimit(event.target.value); setSaveError('') }}
+              aria-invalid={Boolean(tabCreditLimitError)}
+            />
+            {tabCreditLimitError && <p className="mt-1 text-xs text-red-600">{tabCreditLimitError}</p>}
+          </Field>
+        )}
+
         <StaffPermissionsEditor
           role={role}
           stationOnly={stationOnly}
+          quick={quick}
           permissions={permissions}
           onChange={(nextPermissions) => { setPermissions(nextPermissions); setSaveError('') }}
         />

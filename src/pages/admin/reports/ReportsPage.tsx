@@ -6,12 +6,15 @@ import { csvDownload, money } from '../../../lib/utils'
 import { BRAND_NAME } from '../../../lib/brand'
 import { ReportCharts } from './ReportCharts'
 import { ReportDetails } from './ReportDetails'
-import { createReportData, type Period } from './reportData'
+import { createReportData, getRange, type Period } from './reportData'
 import { ReportSummary } from './ReportSummary'
 import { getStaffPerformance } from '../../../lib/staffPerformance'
 import { DataTable, type DataTableColumn } from '../../../components/data/DataTable'
 import { Card, Badge } from '../../../components/ui'
 import { can } from '../../../lib/permissions'
+import { modeFeatures } from '../../../lib/posMode'
+import { QuickReports } from './QuickReports'
+import { registerDifferenceTotal } from '../../../lib/reports'
 
 export default function ReportsPage() {
   const { db, store, user } = useApp()
@@ -20,7 +23,8 @@ export default function ReportsPage() {
   if (!store) return null
 
   const data = createReportData(db, store, period, now)
-  const staffRows = user && can(user, 'viewStaffAnalytics')
+  const features = modeFeatures(store)
+  const staffRows = features.payments && user && can(user, 'viewStaffAnalytics')
     ? db.users.filter((member) => member.storeId === store.id && member.role === 'staff')
       .map((member) => ({
         member,
@@ -40,6 +44,28 @@ export default function ReportsPage() {
     { key: 'status', header: 'Status', render: (row) => <Badge tone={row.stats.status === 'Excellent' ? 'success' : row.stats.status === 'Good' ? 'warning' : 'danger'}>{row.stats.status}</Badge> },
   ]
   const exportSummary = () => {
+    if (!features.payments) {
+      const { start } = getRange(period, now)
+      const itemsSold = data.orders.reduce((count, order) =>
+        count + order.items.reduce((quantity, item) => quantity + item.qty, 0), 0)
+      csvDownload(`report-${store.slug}-${period}.csv`, [
+        [`${BRAND_NAME} order report`, `${store.name} — ${data.label}`],
+        [],
+        ['Orders', data.orders.length],
+        ['Items sold', itemsSold],
+        ['Expenses', data.expenses.toFixed(3)],
+        ['Shift differences', registerDifferenceTotal(
+          db.registerSessions,
+          store.id,
+          start.toISOString(),
+          now.toISOString(),
+        ).toFixed(3)],
+        [],
+        ['Staff', 'Orders'],
+        ...data.staffList.map((staff) => [staff.name, staff.orders]),
+      ])
+      return
+    }
     csvDownload(`report-${store.slug}-${period}.csv`, [
       [`${BRAND_NAME} report`, `${store.name} — ${data.label}`],
       [],
@@ -87,6 +113,9 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {!features.payments ? (
+        <QuickReports data={data} db={db} storeId={store.id} period={period} now={now} />
+      ) : <>
       <ReportSummary
         sales={data.sales}
         orderCount={data.orders.length}
@@ -109,6 +138,7 @@ export default function ReportsPage() {
         paymentTotal={data.paymentTotal}
       />
       <ReportDetails data={data} customers={db.customers} ledger={db.ledger} storeId={store.id} />
+      </>}
     </div>
   )
 }

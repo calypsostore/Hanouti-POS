@@ -11,6 +11,7 @@ import StaffLogsTab from './StaffLogsTab'
 import { can } from '../../../lib/permissions'
 import CashDifferencesTab from './CashDifferencesTab'
 import StaffConsumptionTab from './StaffConsumptionTab'
+import { modeFeatures } from '../../../lib/posMode'
 
 type DetailTab = 'overview' | 'payments' | 'attendance' | 'schedule' | 'activity' | 'cash' | 'items'
 
@@ -29,18 +30,21 @@ export default function StaffDetail() {
   const navigate = useNavigate()
   const {
     db, store, user, resolveCashDifference, voidCashDifference,
-    archiveCashDifference, restoreCashDifference,
+    archiveCashDifference, restoreCashDifference, recordCashDifferenceCorrection,
+    acceptCashDifference,
   } = useApp()
   const [tab, setTab] = useState<DetailTab>('overview')
   const isSelf = user?.role === 'staff' && user.id === id
   const canOpen = (user ? can(user, 'manageStaff') : false) ||
     (user?.role === 'staff' && (user.permissions.supervisor || isSelf))
-  const showPayroll = user ? can(user, 'managePayroll') : false
+  const features = store ? modeFeatures(store) : null
+  const showPayroll = user ? can(user, 'managePayroll') && features?.payroll === true : false
   const showCash = !!user && (can(user, 'manageCashDifferences') || isSelf)
   const showAnalytics = !!user && can(user, 'viewStaffAnalytics')
   const tabs = TABS.filter((item) =>
     (showPayroll || !['payments', 'attendance'].includes(item.value)) &&
-    (showCash || item.value !== 'cash'),
+    (showCash || item.value !== 'cash') &&
+    (features?.staffAllowances || item.value !== 'items'),
   )
   const logs = useMemo(
     () => canOpen && id ? getStaffActivityLogs(db, id).filter((log) => log.storeId === store?.id) : [],
@@ -103,6 +107,9 @@ export default function StaffDetail() {
             voidDifference={voidCashDifference}
             archive={archiveCashDifference}
             restore={restoreCashDifference}
+            canResolveOwn={user.id === member.id && can(user, 'closeShift')}
+            correct={recordCashDifferenceCorrection}
+            accept={acceptCashDifference}
           />}
           {tab === 'items' && <StaffConsumptionTab
             orders={db.orders.filter((order) => order.storeId === store.id && order.staffId === member.id)}

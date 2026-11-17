@@ -1,10 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import type { Customer, SettlementCycle } from '../../../types'
 import { useApp } from '../../../store/AppStore'
 import { useToast } from '../../../components/toast'
 import { balanceFor, customerActivity } from '../../../lib/selectors'
 import { dateKey, money } from '../../../lib/utils'
+import {
+  canManageCustomerProfiles,
+  canSettleCustomerTabs,
+  canViewCustomerTabs,
+} from '../../../lib/customerTabs'
 import CustomerList from './components/CustomerList'
 import CustomerDetailsDrawer from './components/CustomerDetailsDrawer'
 import CustomerEditor from './components/CustomerEditor'
@@ -25,8 +30,9 @@ export default function CustomersPage() {
 
   if (!store || !user) return null
 
-  const isAdmin = user.role === 'admin'
-  const canSettle = isAdmin || user.permissions.settle
+  const canManageCustomers = canManageCustomerProfiles(store, user)
+  const canSettle = canSettleCustomerTabs(store, user)
+  if (!canViewCustomerTabs(store, user)) return <Navigate to={user.role === 'manager' ? '/pos' : '/admin'} replace />
   const customers = db.customers.filter((customer) => customer.storeId === store.id)
   const selected = customers.find((customer) => customer.id === selectedId) ?? null
   const settleTarget = customers.find((customer) => customer.id === settleCustomerId) ?? null
@@ -126,7 +132,7 @@ export default function CustomersPage() {
         onQueryChange={setQuery}
         view={view}
         onViewChange={setView}
-        isAdmin={isAdmin}
+        canManageCustomers={canManageCustomers}
         canSettle={canSettle}
         onAdd={() => setEditor({ open: true })}
         onSelect={(customer) => {
@@ -145,7 +151,7 @@ export default function CustomersPage() {
         orders={orders}
         detailTab={detailTab}
         onDetailTabChange={setDetailTab}
-        isAdmin={isAdmin}
+        canManageCustomers={canManageCustomers}
         canSettle={canSettle}
         onClose={() => setSelectedId(null)}
         onEdit={() => selected && setEditor({ open: true, customer: selected })}

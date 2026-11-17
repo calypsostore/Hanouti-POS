@@ -44,4 +44,5 @@ export const handoverOpenOrder = (
 export const openCashDifferenceBalance = (differences: CashDifference[], staffId: string) =>
   round(differences
     .filter((difference) => difference.staffId === staffId && difference.status === 'open')
-    .reduce((total, difference) => total + difference.amount, 0))
+    .reduce((total, difference) => total + difference.amount +
+      (difference.correctionEntries ?? []).reduce((corrected, entry) => corrected + entry.amount, 0), 0))
