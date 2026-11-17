@@ -13,8 +13,8 @@ interface ApkInstallerPlugin {
   installApk(options: { path: string }): Promise<void>
 }
 
-const VERSION_URL = 'https://github.com/calypsostore/cafeteria-POS/releases/latest/download/version.json'
-const APK_URL_PREFIX = 'https://github.com/calypsostore/cafeteria-POS/releases/download/'
+const VERSION_URL = 'https://github.com/calypsostore/Hanouti-POS/releases/latest/download/version.json'
+const APK_URL_PREFIX = 'https://github.com/calypsostore/Hanouti-POS/releases/download/'
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const LAST_CHECK_KEY = '7anouti.appUpdate.lastCheck'
 const UPDATE_CACHE_KEY = '7anouti.appUpdate.available'
