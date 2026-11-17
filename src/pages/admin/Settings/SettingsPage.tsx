@@ -77,6 +77,7 @@ export default function SettingsPage() {
         staffPickSectionsOnShift: false,
         requireShiftForOrders: true,
         allowQuickOpeningFloatEdit: false,
+        staffLoginDestination: 'pos',
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         accent: '7anouti',
         colorMode: 'system',

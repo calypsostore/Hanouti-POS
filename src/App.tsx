@@ -24,7 +24,7 @@ import Settings from './pages/admin/Settings'
 import SetupWizard from './pages/admin/SetupWizard'
 import SuperOverview from './pages/super/Overview'
 import SuperStores from './pages/super/Stores'
-import type { Role, User } from './types'
+import type { Role, Store, User } from './types'
 import type { Capability } from './types'
 import { can } from './lib/permissions'
 import { canViewCustomerTabs } from './lib/customerTabs'
@@ -34,11 +34,12 @@ import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
 import { SessionAutomationGuard } from './components/SessionAutomationGuard'
+import { staffLandingPath } from './lib/posNavigation'
 
-function homeFor(user: User) {
+function homeFor(user: User, store?: Store | null) {
   if (user.stationOnly) return user.stationId ? `/station/${encodeURIComponent(user.stationId)}` : '/kitchen'
   if (user.role === 'super') return '/super'
-  if (user.role === 'staff') return '/staff'
+  if (user.role === 'staff') return staffLandingPath(store)
   return '/admin'
 }
 
@@ -60,10 +61,10 @@ function Protected({ children }: { children: React.ReactNode }) {
 }
 
 function StationOnlyGate({ children }: { children: React.ReactNode }) {
-  const { user } = useApp()
+  const { user, store } = useApp()
   const { pathname } = useLocation()
   if (user?.stationOnly && pathname !== '/kitchen' && !/^\/station\/[^/]+$/.test(pathname)) {
-    return <Navigate to={homeFor(user)} replace />
+    return <Navigate to={homeFor(user, store)} replace />
   }
   return <>{children}</>
 }
@@ -77,9 +78,9 @@ function DeviceKioskGate({ children }: { children: React.ReactNode }) {
 }
 
 function RoleGate({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
-  const { user } = useApp()
+  const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  if (!roles.includes(user.role)) return <Navigate to={homeFor(user)} replace />
+  if (!roles.includes(user.role)) return <Navigate to={homeFor(user, store)} replace />
   return <>{children}</>
 }
 
@@ -91,18 +92,18 @@ function CapabilityGate({ capability, quickOnly = false, children }: {
   const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
   if (quickOnly && store && !isQuick(store)) return <>{children}</>
-  if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user)} replace />
+  if (!can(user, capability)) return <Navigate to={user.role === 'manager' ? '/pos' : homeFor(user, store)} replace />
   return <>{children}</>
 }
 
 function StaffAccessGate({ detail = false, children }: { detail?: boolean; children: React.ReactNode }) {
-  const { user } = useApp()
+  const { user, store } = useApp()
   const { id } = useParams()
   if (!user) return <Navigate to="/login" replace />
   const canManageTeam = can(user, 'manageStaff') ||
     (user.role === 'staff' && user.permissions.supervisor === true)
   const canViewOwnDetail = detail && user.role === 'staff' && user.id === id
-  if (!canManageTeam && !canViewOwnDetail) return <Navigate to={homeFor(user)} replace />
+  if (!canManageTeam && !canViewOwnDetail) return <Navigate to={homeFor(user, store)} replace />
   return <>{children}</>
 }
 
@@ -113,14 +114,14 @@ function ModeFeatureGate({ feature, children }: {
   const { store, user } = useApp()
   if (!store || !user) return <Navigate to="/login" replace />
   if (feature === 'tablesFloor' && isCashier(store)) return <>{children}</>
-  if (!modeFeatures(store)[feature]) return <Navigate to={homeFor(user)} replace />
+  if (!modeFeatures(store)[feature]) return <Navigate to={homeFor(user, store)} replace />
   return <>{children}</>
 }
 
 function CustomerTabsGate({ children }: { children: React.ReactNode }) {
   const { store, user } = useApp()
   if (!store || !user) return <Navigate to="/login" replace />
-  if (!canViewCustomerTabs(store, user)) return <Navigate to={homeFor(user)} replace />
+  if (!canViewCustomerTabs(store, user)) return <Navigate to={homeFor(user, store)} replace />
   return <>{children}</>
 }
 
@@ -131,7 +132,7 @@ function RegisterGate({ children }: { children: React.ReactNode }) {
     if (user.role === 'staff' && store?.settings.shiftAccess.requireOpenShiftForStoreAccess) {
       return <div className="p-6 text-sm text-muted">Ask the store owner to enable shift access for your account.</div>
     }
-    return <Navigate to={user.role === 'staff' ? '/pos' : '/admin'} replace />
+    return <Navigate to={user.role === 'staff' ? staffLandingPath(store) : '/admin'} replace />
   }
   return <>{children}</>
 }
@@ -148,15 +149,9 @@ function StaffShiftAccessGate({ children }: { children: React.ReactNode }) {
 }
 
 function LoginRoute() {
-  const { user } = useApp()
-  if (user) return <Navigate to={homeFor(user)} replace />
+  const { user, store } = useApp()
+  if (user) return <Navigate to={homeFor(user, store)} replace />
   return <Login />
-}
-
-function StaffHomeGate({ children }: { children: React.ReactNode }) {
-  const { store, user } = useApp()
-  if (user?.role === 'staff' && store && isQuick(store)) return <Navigate to="/pos" replace />
-  return <>{children}</>
 }
 
 function AdminShell() {
@@ -180,9 +175,9 @@ function StoreSetupGate({ children }: { children: React.ReactNode }) {
 }
 
 function HomeRoute() {
-  const { user } = useApp()
+  const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={homeFor(user)} replace />
+  return <Navigate to={homeFor(user, store)} replace />
 }
 
 export default function App() {
@@ -206,9 +201,7 @@ export default function App() {
               element={
                 <Protected>
                   <RoleGate roles={['staff']}>
-                    <StaffHomeGate>
-                      <AppShell />
-                    </StaffHomeGate>
+                    <AppShell />
                   </RoleGate>
                 </Protected>
               }

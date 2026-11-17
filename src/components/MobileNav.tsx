@@ -17,7 +17,7 @@ export function MobileNav() {
     ? [{ to: '/super', label: 'Overview', icon: LayoutDashboard, end: true }, { to: '/super/stores', label: 'Stores', icon: Store }]
     : user.role === 'staff'
       ? [
-          { to: '/staff', label: 'Home', icon: LayoutDashboard, end: true },
+          { to: '/staff', label: quick ? 'Dashboard' : 'Home', icon: LayoutDashboard, end: true },
           { to: '/pos', label: 'POS', icon: ShoppingBag },
           ...(store?.settings.features.tables
             ? [{ to: '/pos/floor', label: 'Floor', icon: Utensils }]

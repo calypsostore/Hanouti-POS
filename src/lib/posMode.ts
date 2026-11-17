@@ -46,7 +46,7 @@ export function modeFeatures(source: PosModeStore): PosModeFeatures {
     inventory: cashier,
     recipesYield: cashier,
     staffAllowances: cashier,
-    payroll: cashier,
+    payroll: true,
     tablesFloor: cashier && settings.features.tables,
     kitchenStations: cashier || settings.features.kitchenScreen,
     customerCredit: cashier || settings.allowCredit,

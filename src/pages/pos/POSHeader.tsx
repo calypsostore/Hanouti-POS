@@ -6,6 +6,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { ReprintLastReceipt } from '../../components/ReprintLastReceipt'
 import { can } from '../../lib/permissions'
 import { isQuick, modeFeatures } from '../../lib/posMode'
+import { canViewCustomerTabs } from '../../lib/customerTabs'
 
 type POSHeaderProps = {
   store: Store
@@ -25,6 +26,8 @@ export function POSHeader({
 }: POSHeaderProps) {
   const quick = isQuick(store)
   const features = modeFeatures(store)
+  const canViewTabs = !quick || canViewCustomerTabs(store, user)
+  const canOpenDashboard = user.role === 'staff' || user.role === 'admin' || can(user, 'viewReports')
   const hasUnavailableItems = eightySixCount > 0
 
   return (
@@ -77,7 +80,7 @@ export function POSHeader({
               <span className="hidden sm:inline">86 list</span>
             </button>
           )}
-          {(user.role === 'admin' || user.role === 'manager' || user.role === 'staff') && (
+          {canOpenDashboard && (
             <Link
               to={user.role === 'admin' || user.role === 'manager' ? '/admin' : '/staff'}
               aria-label="Dashboard"
@@ -100,20 +103,20 @@ export function POSHeader({
           {features.receiptPrinting && <ReprintLastReceipt compact />}
           {(user.role === 'staff' || user.role === 'manager') && (
             <>
-              <Link
+              {canViewTabs && <Link
                 to="/admin/customers"
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white px-2 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:h-9 sm:px-3"
                 title="Regulars & tabs"
               >
                 <Users className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Regulars</span>
-              </Link>
-              <Link
+              </Link>}
+              {can(user, 'viewOrders') && <Link
                 to="/admin/orders"
                 className="hidden h-9 items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-[12.5px] font-semibold text-ink transition hover:bg-cream-100 dark:bg-espresso-800 sm:inline-flex"
               >
                 <ReceiptText className="h-3.5 w-3.5" /> Orders
-              </Link>
+              </Link>}
             </>
           )}
           <div className="hidden items-center gap-2 rounded-xl border border-line px-2 py-1 sm:flex">

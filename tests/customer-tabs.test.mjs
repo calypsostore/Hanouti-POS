@@ -51,7 +51,7 @@ test('Quick sidebar paths keep permitted tabs and omit cashier-only product area
   })
   const paths = quickSidebarPaths(store, staff)
   assert.deepEqual(paths, [
-    '/pos', '/admin/orders', '/kitchen', '/admin/customers', '/admin/register',
+    '/staff', '/pos', '/admin/orders', '/kitchen', '/admin/customers', '/admin/register',
   ])
   for (const hidden of ['/admin/inventory', '/admin/purchases', '/admin/payroll', '/pos/floor']) {
     assert.equal(paths.includes(hidden), false)

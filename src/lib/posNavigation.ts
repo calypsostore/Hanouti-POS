@@ -3,9 +3,13 @@ import { can } from './permissions.ts'
 import { canViewCustomerTabs } from './customerTabs.ts'
 import { modeFeatures } from './posMode.ts'
 
+export function staffLandingPath(store?: Pick<Store, 'settings'> | null): '/pos' | '/staff' {
+  return store?.settings.staffLoginDestination === 'dashboard' ? '/staff' : '/pos'
+}
+
 export function quickSidebarPaths(store: Store, user: User): string[] {
   const features = modeFeatures(store)
-  const paths = ['/pos']
+  const paths = user.role === 'staff' ? ['/staff', '/pos'] : ['/pos']
   if (can(user, 'viewOrders')) paths.push('/admin/orders')
   if (can(user, 'viewReports')) paths.push('/admin')
   if (features.kitchenStations && can(user, 'viewStation')) paths.push('/kitchen')

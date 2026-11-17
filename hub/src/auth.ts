@@ -357,7 +357,7 @@ export class HubAuth {
       businessType: 'cafe', setupComplete: false, createdAt: now,
       settings: {
         taxRate: 0, taxInclusive: false, serviceCharge: 0, allowCredit: false,
-        allowQuickOpeningFloatEdit: false, features: { weightItems: false },
+        allowQuickOpeningFloatEdit: false, staffLoginDestination: 'pos', features: { weightItems: false },
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         availability: {
           enabled: true, autoEightySixAtZero: true, autoReturnOnRestock: true,

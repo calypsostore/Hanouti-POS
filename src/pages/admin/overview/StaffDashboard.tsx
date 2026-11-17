@@ -8,9 +8,10 @@ import { GradientKpiCard } from '../../../components/dashboard/GradientKpiCard'
 import { QuickActionTile } from '../../../components/dashboard/QuickActionTile'
 import { SectionCard } from '../../../components/dashboard/SectionCard'
 import { AdminHeader } from './AdminHeader'
-import { ChefHat, ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
+import { ChefHat, CreditCard, ReceiptText, ShoppingBag, Utensils, Users, Wallet } from 'lucide-react'
 import { openShiftForStaff } from '../../../lib/registerShifts'
 import { can } from '../../../lib/permissions'
+import { canAddOrdersToTabs, canSettleCustomerTabs, canViewCustomerTabs } from '../../../lib/customerTabs'
 import { useToast } from '../../../components/toast'
 import { modeFeatures } from '../../../lib/posMode'
 
@@ -40,9 +41,9 @@ export default function StaffDashboard() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
         <GradientKpiCard icon={ReceiptText} tone="blue" label="Your orders today" value={data.count} caption={`${data.items} items sold`} sparkline={Array.from({ length: 24 }, (_, hour) => data.orders.filter((order) => new Date(order.createdAt).getHours() === hour).length)} />
         {canSeeMoney && <GradientKpiCard icon={Wallet} tone="green" label="Your sales today" value={money(data.total)} caption="Completed orders only" />}
-        <GradientKpiCard icon={ShoppingBag} tone="amber" label="Shift status" value={openRegister ? 'Open' : 'Closed'} caption={can(user, 'openShift') ? 'Your personal shift' : 'Ask a manager about shift access'} />
+        <GradientKpiCard icon={ShoppingBag} tone="amber" label="Shift status" value={openRegister ? 'Open' : 'Closed'} caption={can(user, 'openShift') || can(user, 'closeShift') ? 'Your personal shift' : 'Ask a manager about shift access'} />
       </div>
-      {!can(user, 'openShift') && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Ask a manager to enable shift access.</div>}
+      {!can(user, 'openShift') && !can(user, 'closeShift') && <div className="rounded-2xl border border-line bg-white px-4 py-3 text-xs text-muted dark:bg-espresso-800">Ask a manager to enable shift access.</div>}
       <SectionCard icon={ShoppingBag} tone="amber" title="Quick actions" subtitle="Pick up where you left off" bodyClassName="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-5">
         <QuickActionTile icon={ShoppingBag} tone="amber" label="New order" href="/pos" />
         {features.kitchenStations && can(user, 'viewStation') && (
@@ -63,10 +64,24 @@ export default function StaffDashboard() {
             href="/pos/floor"
           />
         )}
-        <QuickActionTile icon={ReceiptText} tone="blue" label="My orders" href="/admin/orders?mine=true" />
+        {can(user, 'viewOrders') && <QuickActionTile icon={ReceiptText} tone="blue" label="My orders" href="/admin/orders?mine=true" />}
         <QuickActionTile icon={Users} tone="teal" label="My profile" href={`/admin/staff/${encodeURIComponent(user.id)}`} />
-        {can(user, 'openShift') && <QuickActionTile icon={Wallet} tone="green" label={openRegister ? 'My shift' : 'Open shift'} href="/admin/register" />}
-        {user.permissions.settle && <QuickActionTile icon={Users} tone="teal" label="Collect tab" href="/admin/customers" />}
+        {(can(user, 'openShift') || can(user, 'closeShift')) && (
+          <QuickActionTile
+            icon={Wallet}
+            tone="green"
+            label={openRegister ? (can(user, 'closeShift') ? 'Close shift' : 'My shift') : (can(user, 'openShift') ? 'Open shift' : 'My shift')}
+            href="/admin/register"
+          />
+        )}
+        {canViewCustomerTabs(store, user) && (
+          <QuickActionTile
+            icon={CreditCard}
+            tone="teal"
+            label={canSettleCustomerTabs(store, user) ? 'Collect tab' : canAddOrdersToTabs(store, user) ? 'Add to tab' : 'Customer tabs'}
+            href="/admin/customers"
+          />
+        )}
       </SectionCard>
       {can(user, 'viewStation') && !user.stationOnly && (
         <SectionCard icon={ChefHat} tone="green" title="Station access" subtitle="Choose where your next sign-in opens">

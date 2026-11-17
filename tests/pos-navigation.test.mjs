@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { cashierSidebarPaths, quickSidebarPaths } from '../src/lib/posNavigation.ts'
+import { cashierSidebarPaths, quickSidebarPaths, staffLandingPath } from '../src/lib/posNavigation.ts'
 import { defaultPermissions, normalizeUser } from '../src/lib/defaults.ts'
 import { can, MANAGER_DEFAULT_PERMISSIONS } from '../src/lib/permissions.ts'
 
@@ -54,15 +54,24 @@ test('Cashier staff paths include enabled features allowed by staff permissions'
   ])
 })
 
-test('Quick staff defaults expose only POS, Orders, and their own shift', () => {
+test('Quick staff defaults expose Dashboard, POS, Orders, and their own shift', () => {
   const permissions = defaultPermissions('staff')
   const paths = quickSidebarPaths(storeFor('quick'), userFor('staff', permissions))
 
-  assert.deepEqual(paths, ['/pos', '/admin/orders', '/admin/register'])
+  assert.deepEqual(paths, ['/staff', '/pos', '/admin/orders', '/admin/register'])
   assert.equal(can(userFor('staff', permissions), 'viewExpenses'), false)
   assert.equal(permissions.viewExpenses, false)
   assert.equal(permissions.addExpenses, false)
   assert.equal(permissions.editExpenses, false)
+})
+
+test('Quick staff Dashboard stays directly navigable with either configured sign-in destination', () => {
+  const store = storeFor('quick')
+  const paths = quickSidebarPaths(store, userFor('staff', defaultPermissions('staff')))
+
+  assert.ok(paths.includes('/staff'))
+  assert.equal(staffLandingPath(store), '/pos')
+  assert.equal(staffLandingPath({ settings: { ...store.settings, staffLoginDestination: 'dashboard' } }), '/staff')
 })
 
 test('Quick expense visibility requires the explicit permission for staff and managers', () => {

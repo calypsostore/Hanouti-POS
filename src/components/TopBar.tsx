@@ -23,6 +23,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { InstallAppButton } from './InstallAppButton'
 import { Avatar, Badge } from './ui'
 import { can } from '../lib/permissions'
+import { modeFeatures } from '../lib/posMode'
 import { hasPrintCapability } from '../lib/printQueue'
 import { useToast } from './toast'
 import { ReprintLastReceipt } from './ReprintLastReceipt'
@@ -63,6 +64,7 @@ export function TopBar({
 
   const isSuper = user.role === 'super'
   const notices = store && can(user, 'viewReports') ? getDashboardNotices(db, store) : []
+  const showTableFloor = store ? modeFeatures(store).tablesFloor : false
   const staffOnShift = Boolean(store && db.registerSessions.some((session) =>
     session.storeId === store.id && session.status === 'open' &&
     (session.staffId ?? session.openedById) === user.id,
@@ -127,7 +129,7 @@ export function TopBar({
         {!isSuper && store && (
           <div className="hidden items-center rounded-xl border border-line bg-cream-100 p-1 dark:bg-espresso-900 md:flex">
             <Link to="/pos" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'pos' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>POS</Link>
-            {store.settings.features.tables && (
+            {showTableFloor && (
               <Link to="/pos?channel=dine-in&focus=table" className={`rounded-lg px-3 py-1.5 text-[11px] font-bold ${activeMode === 'tables' ? 'bg-white text-ink shadow-sm dark:bg-espresso-700' : 'text-muted'}`}>Tables</Link>
             )}
           </div>
@@ -180,7 +182,7 @@ export function TopBar({
               Print here instead
             </button>
           )}
-        {providerMode === 'hub' && providerStatus.conflicts.length > 0 && (
+        {providerMode === 'hub' && providerStatus.conflicts.length > 0 && can(user, 'manageProducts') && (
           <Link
             to="/admin/products"
             onClick={acknowledgeProviderConflicts}
@@ -235,7 +237,7 @@ export function TopBar({
         {can(user, 'manageSettings') && (
           <Link to="/admin/settings" aria-label="Settings" title="Settings" className="rounded-xl border border-line bg-white p-2 text-ink hover:bg-cream-100 dark:bg-espresso-800"><Settings className="h-4 w-4" /></Link>
         )}
-        {failedPrintCount > 0 && (
+        {failedPrintCount > 0 && can(user, 'manageSettings') && (
           <Link to="/admin/settings?tab=devices" aria-label={`${failedPrintCount} prints failed`} title={`${failedPrintCount} prints failed`} className="flex items-center gap-1 rounded-xl border border-danger/30 bg-danger/5 px-2 py-1.5 text-danger">
             <Printer className="h-4 w-4" /><Badge tone="danger">{failedPrintCount}</Badge>
           </Link>

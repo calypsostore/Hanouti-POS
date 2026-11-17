@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useApp } from '../store/AppStore'
+import { staffLandingPath } from '../lib/posNavigation'
 import { Button, Field, Input, Segmented } from '../components/ui'
 import { cn, money } from '../lib/utils'
 import { BRAND_NAME } from '../lib/brand'
@@ -76,12 +77,15 @@ export default function Login() {
   const canSubmit = databaseReady && !databaseError && !isSubmitting
 
   const go = (role: string, account?: User) => {
+    const accountStore = account?.storeId
+      ? db.stores.find((candidate) => candidate.id === account.storeId)
+      : undefined
     if (account?.stationOnly) {
       navigate(account.stationId ? `/station/${encodeURIComponent(account.stationId)}` : '/kitchen')
     } else if (account?.goStraightToStation && account.stationId) {
       navigate(`/station/${encodeURIComponent(account.stationId)}`)
     } else if (role === 'super') navigate('/super')
-    else if (role === 'staff') navigate('/pos')
+    else if (role === 'staff') navigate(staffLandingPath(accountStore))
     else navigate('/admin')
   }
 

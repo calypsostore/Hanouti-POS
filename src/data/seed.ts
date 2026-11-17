@@ -57,6 +57,7 @@ const defaultSettings = (
   staffPickSectionsOnShift: false,
   requireShiftForOrders: (over.posMode ?? businessTemplate(businessType).posMode) === 'cashier',
   allowQuickOpeningFloatEdit: false,
+  staffLoginDestination: 'pos',
   shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
   accent: '7anouti',
   colorMode: 'system',

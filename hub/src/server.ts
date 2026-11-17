@@ -1092,6 +1092,7 @@ export async function createHubServer(): Promise<HubRuntime> {
             orderRules: normalizeHubOrderRules(settings.orderRules),
             shiftAccess: normalizeShiftAccessSettings(settings.shiftAccess),
             allowQuickOpeningFloatEdit: settings.allowQuickOpeningFloatEdit === true,
+            staffLoginDestination: settings.staffLoginDestination === 'dashboard' ? 'dashboard' : 'pos',
             coffeeTracking: normalizeHubCoffeeTracking(settings.coffeeTracking),
             inventoryYieldTracking: normalizeHubInventoryYieldTracking(settings.inventoryYieldTracking),
             staffConsumption: normalizeHubStaffConsumption(settings.staffConsumption),

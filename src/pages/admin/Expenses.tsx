@@ -47,8 +47,8 @@ export default function Expenses() {
   if (!store || !user) return null
   const features = modeFeatures(store)
   const quick = isQuick(store)
-  const activeTab = features.payroll ? tab : 'expenses'
-  if (user.role === 'staff' && features.payroll) return <PayrollTab />
+  const activeTab = features.payroll && !quick ? tab : 'expenses'
+  if (user.role === 'staff' && features.payroll && !quick) return <PayrollTab />
   if (user.role === 'staff' && !features.payroll && !quick) {
     const staffExpenses = db.expenses.filter((expense) => expense.storeId === store.id)
     return (
@@ -65,7 +65,7 @@ export default function Expenses() {
       </div>
     )
   }
-  if (user.role === 'manager' && !can(user, 'managePayroll') && features.payroll) return <Navigate to="/admin" replace />
+  if (user.role === 'manager' && !can(user, 'managePayroll') && features.payroll && !quick) return <Navigate to="/admin" replace />
   const canManageCashierExpenses = user.role === 'admin' ||
     (user.role === 'manager' && (!features.payroll || can(user, 'managePayroll')))
   const canAddExpenses = quick ? can(user, 'addExpenses') : canManageCashierExpenses
@@ -135,7 +135,7 @@ export default function Expenses() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={activeTab === 'expenses' ? 'primary' : 'secondary'} onClick={() => setTab('expenses')}>Expenses</Button>
-          {features.payroll && <Button size="sm" variant={activeTab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>}
+          {features.payroll && !quick && <Button size="sm" variant={activeTab === 'payroll' ? 'primary' : 'secondary'} onClick={() => setTab('payroll')}>Payroll</Button>}
           {activeTab === 'expenses' && <>
             {canSeeAmounts && <Button variant="secondary" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Export

@@ -103,6 +103,7 @@ export function Sidebar({
     : quick
       ? isStaff
         ? [{ label: 'QUICK', items: [
+            { to: '/staff', label: 'Dashboard', icon: LayoutDashboard, tone: 'blue' as const },
             { to: '/pos', label: 'POS', icon: ShoppingBag, tone: 'amber' },
             { to: '/admin/orders', label: 'Orders', icon: ReceiptText, tone: 'purple' },
             ...(features?.kitchenStations && can(user, 'viewStation')
@@ -117,7 +118,9 @@ export function Sidebar({
             ...(can(user, 'viewReports')
               ? [{ to: '/admin/reports', label: 'Reports', icon: BarChart3, tone: 'green' as const }]
               : []),
-            { to: '/admin/expenses', label: 'Expenses', icon: Wallet, tone: 'rose' },
+            ...(can(user, 'viewExpenses')
+              ? [{ to: '/admin/expenses', label: 'Expenses', icon: Wallet, tone: 'rose' as const }]
+              : []),
             ...(can(user, 'openShift') || can(user, 'closeShift')
               ? [{ to: '/admin/register', label: 'Register', icon: Calculator, tone: 'teal' as const }]
               : []),

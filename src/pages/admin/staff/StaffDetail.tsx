@@ -64,7 +64,7 @@ export default function StaffDetail() {
   )
   if (!member) return <Navigate to="/admin/staff" replace />
 
-  const close = () => navigate('/admin/staff')
+  const close = () => navigate(isSelf ? '/staff' : '/admin/staff')
 
   return (
     <Drawer

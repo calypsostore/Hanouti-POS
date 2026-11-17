@@ -1,6 +1,6 @@
 import { Check, CreditCard, Zap } from 'lucide-react'
 import type { StoreSettings } from '../../../types'
-import { Card, Field, Input, Toggle } from '../../../components/ui'
+import { Card, Field, Input, Select, Toggle } from '../../../components/ui'
 import { cn } from '../../../lib/utils'
 import { modeFeatures } from '../../../lib/posMode'
 
@@ -78,6 +78,22 @@ export default function RegisterTab({
           <p className="mt-0.5 text-[12px] text-muted">
             Each person has an independent shift and cash report.
           </p>
+          <div className="mt-3.5">
+            <Field label="Staff landing page" hint="Where staff go after sign-in">
+              <Select
+                value={settings.staffLoginDestination}
+                onChange={(event) => set('staffLoginDestination',
+                  event.target.value === 'dashboard' ? 'dashboard' : 'pos',
+                )}
+              >
+                <option value="pos">POS</option>
+                <option value="dashboard">Staff dashboard</option>
+              </Select>
+              <p className="mt-1 text-[11px] text-muted">
+                The Dashboard link remains available from the sidebar either way.
+              </p>
+            </Field>
+          </div>
           <div className="mt-3.5">
             <Toggle
               checked={settings.requireShiftForOrders}

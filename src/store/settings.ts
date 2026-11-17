@@ -44,6 +44,7 @@ const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValu
   staffPickSectionsOnShift: settings.staffPickSectionsOnShift,
   requireShiftForOrders: settings.requireShiftForOrders,
   allowQuickOpeningFloatEdit: settings.allowQuickOpeningFloatEdit,
+  staffLoginDestination: settings.staffLoginDestination,
   shiftAccess: { ...settings.shiftAccess },
   accent: settings.accent,
   colorMode: settings.colorMode,
@@ -234,6 +235,10 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (patch.requireShiftForOrders !== undefined &&
       typeof patch.requireShiftForOrders !== 'boolean') {
       return { ok: false, error: 'Choose whether staff need an open shift to take orders.' }
+    }
+    if (patch.staffLoginDestination !== undefined &&
+      !['pos', 'dashboard'].includes(patch.staffLoginDestination)) {
+      return { ok: false, error: 'Choose a valid staff landing page.' }
     }
     if (patch.shiftAccess !== undefined && !validShiftAccessSettings(patch.shiftAccess)) {
       return { ok: false, error: 'Check the staff access and schedule settings.' }
@@ -540,6 +545,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         posMode: template.posMode,
         requireShiftForOrders: isCashier(template.posMode),
         allowQuickOpeningFloatEdit: false,
+        staffLoginDestination: 'pos',
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
         currency: 'TND',
         taxRate: 0,

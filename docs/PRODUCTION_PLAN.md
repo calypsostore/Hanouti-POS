@@ -56,6 +56,14 @@ document.
   owner-configurable; the owner can override them. Quick settlements record
   staff/shift attribution. The v41 migration normalizes the added permissions
   and limits without deleting existing data.
+- Quick staff can open `/staff` from desktop and mobile navigation, see only
+  their own order activity and shift status, and use shift and customer-tab
+  links only when their permissions allow them. Staff sign-in defaults to POS;
+  Admin → Settings → Register & checkout can instead choose the Staff
+  dashboard. The dashboard remains directly accessible in either case.
+- Payroll capability flags are available in both modes for protected staff
+  detail salary, payment, and attendance tabs. Quick Expenses stays an
+  expenses-only view; payroll management remains a Cashier-mode workflow.
 - Sidebar/settings, route access, tab permissions/limits, mode-switch retention
   and the Sarra/Sami declared-cash example have automated coverage. Phone/tablet
   flows, multi-device Hub synchronization, real kitchen tickets and physical

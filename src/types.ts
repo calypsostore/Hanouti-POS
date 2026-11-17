@@ -294,6 +294,7 @@ export interface StoreSettings {
   staffPickSectionsOnShift: boolean
   requireShiftForOrders: boolean
   allowQuickOpeningFloatEdit: boolean
+  staffLoginDestination: 'pos' | 'dashboard'
   shiftAccess: ShiftAccessSettings
   accent: string
   colorMode: 'system' | 'light' | 'dark'
