@@ -12,7 +12,7 @@ export interface BusinessTemplate {
 
 const templates: Record<BusinessType, BusinessTemplate> = {
   cafe: {
-    posMode: 'cashier',
+    posMode: 'quick',
     features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you for your visit!'),
     categories: [
@@ -25,7 +25,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
     ],
   },
   restaurant: {
-    posMode: 'cashier',
+    posMode: 'quick',
     features: { tables: true, delivery: false, kitchenScreen: true, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you for dining with us!'),
     categories: [
@@ -37,7 +37,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
     ],
   },
   bakery: {
-    posMode: 'cashier',
+    posMode: 'quick',
     features: { tables: false, delivery: false, kitchenScreen: false, barcode: true, weightItems: true },
     receiptFooter: receiptFooter('Freshly baked for you!'),
     categories: [
@@ -61,7 +61,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
     ],
   },
   retail: {
-    posMode: 'cashier',
+    posMode: 'quick',
     features: { tables: false, delivery: false, kitchenScreen: false, barcode: true, weightItems: true },
     receiptFooter: receiptFooter('Thank you for shopping with us!'),
     categories: [
@@ -72,7 +72,7 @@ const templates: Record<BusinessType, BusinessTemplate> = {
     ],
   },
   salon: {
-    posMode: 'cashier',
+    posMode: 'quick',
     features: { tables: false, delivery: false, kitchenScreen: false, barcode: false, weightItems: false },
     receiptFooter: receiptFooter('Thank you — we look forward to seeing you again!'),
     categories: [

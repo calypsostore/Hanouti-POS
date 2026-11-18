@@ -3,7 +3,7 @@ import { ArrowUpRight, Plus, Search, Store as StoreIcon, Users, Wallet } from 'l
 import { useApp } from '../../store/AppStore'
 import { PLAN_INFO } from '../../data/seed'
 import type { Plan, StoreStatus } from '../../types'
-import { Badge, Card, EmptyState, Input, Select, Button } from '../../components/ui'
+import { Badge, Card, EmptyState, Input, Select, Button, Toggle } from '../../components/ui'
 import { StoreProfileDrawer } from './StoreProfile'
 import { balanceFor } from '../../lib/selectors'
 import { cn, money, sum } from '../../lib/utils'
@@ -13,13 +13,15 @@ import { AppIcon } from '../../components/AppIcon'
 import { isQuick } from '../../lib/posMode'
 
 export default function SuperStores() {
-  const { db, createStore } = useApp()
+  const { db, createStore, setCashierModeAvailability } = useApp()
   const { push } = useToast()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<'all' | StoreStatus>('all')
   const [plan, setPlan] = useState<'all' | Plan>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [newStoreOpen, setNewStoreOpen] = useState(false)
+  const cashierModeEnabled = db.stores.length > 0 &&
+    db.stores.every((store) => store.settings.cashierModeEnabled)
 
   const since30 = new Date()
   since30.setDate(since30.getDate() - 30)
@@ -83,6 +85,24 @@ export default function SuperStores() {
           </div>
         </div>
       </div>
+
+      <Card className="p-4">
+        <Toggle
+          checked={cashierModeEnabled}
+          onChange={(enabled) => {
+            const result = setCashierModeAvailability(enabled)
+            if (!result.ok) {
+              push(result.error, 'error')
+              return
+            }
+            push(enabled
+              ? 'Cashier is available to stores; each store can select it in Settings.'
+              : 'Cashier is closed globally; all stores now use Quick order.')
+          }}
+          label="Cashier mode availability"
+          description="When off, Cashier is shown as Coming soon and all stores use Quick order."
+        />
+      </Card>
 
       <Card className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
         <div className="relative flex-1">

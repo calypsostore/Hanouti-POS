@@ -15,6 +15,7 @@ dist
 dist-ssr
 *.local
 hub/data/
+plugins/tcp-printer/android/build/
 
 # Editor directories and files
 .vscode/*

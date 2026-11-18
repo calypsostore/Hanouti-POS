@@ -339,7 +339,7 @@ test('Z breakdown includes admin, manager, and every staff session with per-pers
   const source = {
     stores: [{
       id: 'store-1', name: 'Cafe', address: '', city: '', phone: '',
-      settings: { posMode: 'standard', printer: { width: 80 } },
+      settings: { posMode: 'standard', cashierModeEnabled: true, printer: { width: 80 } },
     }],
     users: [
       { id: 'admin-1', storeId: 'store-1', name: 'Owner', role: 'admin' },

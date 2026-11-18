@@ -97,12 +97,13 @@ export const createPOSActions = (props: Props) => {
       return message
     }
     checkoutInFlight = true
+    const channel = props.quick ? 'takeaway' : props.channel
     const fail = (message: string) => {
       props.push(message, 'error')
       return message
     }
     try {
-      if (!props.openOrder && props.channel === 'dine-in' &&
+      if (!props.openOrder && channel === 'dine-in' &&
         props.store.settings.features.tables &&
         (props.store.settings.tableMode === 'manual'
           ? !props.tableName?.trim()
@@ -177,10 +178,10 @@ export const createPOSActions = (props: Props) => {
       checkoutKey ??= uid('checkout')
       const result = props.createOrder({
         items: props.cart,
-        channel: props.channel,
-        tableId: props.tableId,
-        tableName: props.tableName,
-        guests: props.guests,
+        channel,
+        tableId: props.quick ? undefined : props.tableId,
+        tableName: props.quick ? undefined : props.tableName,
+        guests: props.quick ? undefined : props.guests,
         paymentMethod: method,
         customerId: props.customerId,
         discount: props.discount,
@@ -209,7 +210,8 @@ export const createPOSActions = (props: Props) => {
 
   const checkout = () => {
     if (!props.count) return
-    if (!props.openOrder && props.channel === 'dine-in' &&
+    const channel = props.quick ? 'takeaway' : props.channel
+    if (!props.openOrder && channel === 'dine-in' &&
       props.store.settings.features.tables &&
       (props.store.settings.tableMode === 'manual'
         ? !props.tableName?.trim()

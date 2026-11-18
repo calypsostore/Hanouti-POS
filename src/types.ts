@@ -281,6 +281,7 @@ export interface StaffConsumptionSettings {
 
 export interface StoreSettings {
   posMode: PosMode
+  cashierModeEnabled: boolean
   currency: string
   taxRate: number
   taxInclusive: boolean

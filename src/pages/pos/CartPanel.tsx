@@ -174,7 +174,7 @@ export function CartPanel({
         )}
       </div>
 
-      {!isOpenOrder && <div className={cn('shrink-0 border-b border-line/70 px-3', embedded ? 'py-1' : 'py-1.5')}>
+      {!quick && !isOpenOrder && <div className={cn('shrink-0 border-b border-line/70 px-3', embedded ? 'py-1' : 'py-1.5')}>
         <ChannelSwitch
           channel={channel}
           setChannel={setChannel}
@@ -182,7 +182,7 @@ export function CartPanel({
           allowDelivery={deliveryEnabled}
         />
       </div>}
-      {(isOpenOrder || channel === 'dine-in') && (
+      {!quick && (isOpenOrder || channel === 'dine-in') && (
         <div className={cn('shrink-0 border-b border-line/70 px-3 text-[10.5px] text-muted', embedded ? 'py-1' : 'py-2')}>
           <span className="font-semibold text-ink">{tableName || tableNameInput || 'Dine-in'}</span>
           {guests !== undefined && <> · {guests} guests</>}
@@ -195,7 +195,7 @@ export function CartPanel({
         'min-h-0 flex-1 overflow-y-auto thin-scrollbar',
         embedded ? 'max-h-[44vh] px-2 py-1' : 'px-3 py-2',
       )}>
-        {!isOpenOrder && channel === 'dine-in' && tablesEnabled && (
+        {!quick && !isOpenOrder && channel === 'dine-in' && tablesEnabled && (
           <TablePicker
             tables={tables}
             sections={sections}

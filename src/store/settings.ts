@@ -11,7 +11,7 @@ import { defaultStationsForStore } from '../lib/stations'
 import { ensureShiftForActor } from '../lib/registerShifts'
 import { validAutomationSettings } from '../lib/automation'
 import { validShiftAccessSettings } from '../lib/shiftAccess'
-import { isCashier } from '../lib/posMode'
+import { isCashier, isQuick } from '../lib/posMode'
 import { can } from '../lib/permissions'
 import type { Capability } from '../types'
 import { replaceStore } from '../lib/storeSettings'
@@ -31,6 +31,7 @@ const expenseSnapshot = (expense: Expense): Record<string, AuditJsonValue> => ({
 
 const settingsSnapshot = (settings: StoreSettings): Record<string, AuditJsonValue> => ({
   posMode: settings.posMode,
+  cashierModeEnabled: settings.cashierModeEnabled,
   currency: settings.currency,
   taxRate: settings.taxRate,
   taxInclusive: settings.taxInclusive,
@@ -117,10 +118,10 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const result = requireActor(storeId)
     if (!result.ok) return result
     const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
-    if (store?.settings.posMode === 'quick' && can(result.actor, capability)) {
+    if (store && isQuick(store) && can(result.actor, capability)) {
       return result
     }
-    if (store?.settings.posMode !== 'quick' && result.actor.role === 'admin') return result
+    if (store && !isQuick(store) && result.actor.role === 'admin') return result
     return { ok: false, error: `Permission denied: ${capability} is required.` }
   }, [dbRef, requireActor])
   const addExpense = useCallback<AppContextValue['addExpense']>((storeId, data) => {
@@ -310,6 +311,13 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     }
     const store = dbRef.current.stores.find((candidate) => candidate.id === storeId)
     if (!store) return { ok: false, error: 'Store not found.' }
+    if (patch.cashierModeEnabled !== undefined &&
+      patch.cashierModeEnabled !== store.settings.cashierModeEnabled) {
+      return { ok: false, error: 'Only the platform owner can change Cashier availability.' }
+    }
+    if (patch.posMode === 'cashier' && !store.settings.cashierModeEnabled) {
+      return { ok: false, error: 'Cashier mode is currently unavailable.' }
+    }
     const coffeeTracking = patch.coffeeTracking
       ? normalizeCoffeeTracking(patch.coffeeTracking)
       : store.settings.coffeeTracking
@@ -420,8 +428,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
         setupComplete: true,
         settings: {
           ...currentStore.settings,
-          posMode: template.posMode,
-          requireShiftForOrders: isCashier(template.posMode),
+          posMode: currentStore.settings.cashierModeEnabled ? template.posMode : 'quick',
+          requireShiftForOrders: currentStore.settings.cashierModeEnabled && isCashier(template.posMode),
           shiftAccess: { ...currentStore.settings.shiftAccess },
           receiptFooter: template.receiptFooter,
           features: template.features,
@@ -509,6 +517,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       return { ok: false, error: 'That administrator email is already in use.' }
     }
     const template = businessTemplate('cafe')
+    const cashierModeEnabled = latest.stores.length > 0 &&
+      latest.stores.every((store) => store.settings.cashierModeEnabled)
     const storeId = uid('st')
     const admin: User = {
       id: uid('usr'),
@@ -542,7 +552,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       createdAt: new Date().toISOString(),
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       settings: {
-        posMode: template.posMode,
+        posMode: 'quick',
+        cashierModeEnabled,
         requireShiftForOrders: isCashier(template.posMode),
         allowQuickOpeningFloatEdit: false,
         staffLoginDestination: 'pos',
@@ -656,6 +667,50 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     return { ok: true as const }
   }, [commitDb, dbRef, requireActor])
 
+  const setCashierModeAvailability = useCallback<AppContextValue['setCashierModeAvailability']>((enabled) => {
+    if (typeof enabled !== 'boolean') return { ok: false, error: 'Choose whether Cashier should be available.' }
+    const actorResult = requireActor()
+    if (!actorResult.ok) return actorResult
+    if (actorResult.actor.role !== 'super') {
+      return { ok: false, error: 'Only the platform owner can change Cashier availability.' }
+    }
+    const stores = dbRef.current.stores
+    if (!stores.length) return { ok: false, error: 'Create a store before changing Cashier availability.' }
+    const changedStores = stores.filter((store) =>
+      store.settings.cashierModeEnabled !== enabled || (!enabled && store.settings.posMode !== 'quick'),
+    )
+    if (!changedStores.length) return { ok: true }
+    commitDb((prev) => {
+      let next: Database = {
+        ...prev,
+        stores: prev.stores.map((store) => ({
+          ...store,
+          settings: {
+            ...store.settings,
+            cashierModeEnabled: enabled,
+            posMode: enabled ? store.settings.posMode : 'quick',
+          },
+        })),
+      }
+      for (const store of changedStores) {
+        next = addLog(next, actorResult.actor, {
+          storeId: store.id,
+          action: 'settings_updated',
+          entity: 'settings',
+          entityId: store.id,
+          summary: `${enabled ? 'Enabled' : 'Disabled'} Cashier mode globally`,
+          before: { cashierModeEnabled: store.settings.cashierModeEnabled, posMode: store.settings.posMode },
+          after: {
+            cashierModeEnabled: enabled,
+            posMode: enabled ? store.settings.posMode : 'quick',
+          },
+        })
+      }
+      return next
+    })
+    return { ok: true }
+  }, [commitDb, dbRef, requireActor])
+
   const changePlan = useCallback<AppContextValue['changePlan']>((storeId, plan) => {
     const actorResult = requireActor()
     if (!actorResult.ok) return actorResult
@@ -729,6 +784,7 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     createStore,
     updateStore,
     setStoreStatus,
+    setCashierModeAvailability,
     changePlan,
     resetDemo,
   }

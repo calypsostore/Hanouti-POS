@@ -19,12 +19,12 @@ import { round } from '../lib/pricing-utils'
 import { defaultStationNameForCategory, defaultStationsForStore, resolveProductStationId } from '../lib/stations'
 import { normalizeShiftAccessSettings } from '../lib/shiftAccess'
 import { parseLoginFailures, serializeLoginFailures, type LoginFailureState } from '../lib/localAuthLockouts'
-import { isQuick } from '../lib/posMode'
+import { normalizeCashierModeSettings } from '../lib/posMode'
 
-export const DB_KEY = '7anouti.db.v43'
-const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v42', '7anouti.db.v41', '7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
+export const DB_KEY = '7anouti.db.v44'
+const INDEXED_DB_MIGRATION_KEYS = ['7anouti.db.v43', '7anouti.db.v42', '7anouti.db.v41', '7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10']
 const LEGACY_DB_KEYS = [
-  '7anouti.db.v42', '7anouti.db.v41', '7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
+  '7anouti.db.v43', '7anouti.db.v42', '7anouti.db.v41', '7anouti.db.v40', '7anouti.db.v39', '7anouti.db.v38', '7anouti.db.v37', '7anouti.db.v36', '7anouti.db.v35', '7anouti.db.v34', '7anouti.db.v33', '7anouti.db.v32', '7anouti.db.v31', '7anouti.db.v30', '7anouti.db.v29', '7anouti.db.v28', '7anouti.db.v27', '7anouti.db.v26', '7anouti.db.v25', '7anouti.db.v24', '7anouti.db.v23', '7anouti.db.v22', '7anouti.db.v21', '7anouti.db.v20', '7anouti.db.v19', '7anouti.db.v18', '7anouti.db.v17', '7anouti.db.v16', '7anouti.db.v15', '7anouti.db.v14', '7anouti.db.v13', '7anouti.db.v12', '7anouti.db.v11', '7anouti.db.v10', '7anouti.db.v9', '7anouti.db.v8',
   'cafepos.db.v8', 'cafepos.db.v7', 'cafepos.db.v6',
 ]
 export const SESSION_KEY = '7anouti.session.v2'
@@ -494,6 +494,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
               s.settings.inventoryYieldTracking as Partial<StoreSettings['inventoryYieldTracking']>,
             )
           : migrateLegacyCoffeeTracking(legacyCoffeeTracking, value.products, s.id)
+        const cashierMode = normalizeCashierModeSettings(s.settings.posMode, s.settings.cashierModeEnabled)
         return ({
         ...seed.stores[0],
         ...withoutLegacyEmoji(s),
@@ -523,7 +524,7 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
             weightItems: isRecord(s.settings.features) && typeof s.settings.features.weightItems === 'boolean'
               ? s.settings.features.weightItems : template.features.weightItems,
           },
-          posMode: isQuick(s) ? 'quick' as const : 'cashier' as const,
+          posMode: cashierMode.posMode,
           currency: typeof s.settings.currency === 'string' ? s.settings.currency : 'TND',
           taxRate: isFiniteNumber(s.settings.taxRate) ? s.settings.taxRate : 0,
           taxInclusive: typeof s.settings.taxInclusive === 'boolean' ? s.settings.taxInclusive : true,
@@ -545,8 +546,9 @@ export const normalizeDb = (value: unknown, seed: Database): Database | null => 
           staffPickSectionsOnShift: s.settings.staffPickSectionsOnShift === true,
           requireShiftForOrders: typeof s.settings.requireShiftForOrders === 'boolean'
             ? s.settings.requireShiftForOrders
-            : !isQuick(s),
+            : cashierMode.posMode === 'cashier',
           allowQuickOpeningFloatEdit: s.settings.allowQuickOpeningFloatEdit === true,
+          cashierModeEnabled: cashierMode.cashierModeEnabled,
           staffLoginDestination: s.settings.staffLoginDestination === 'dashboard' ? 'dashboard' as const : 'pos' as const,
           shiftAccess: normalizeShiftAccessSettings(s.settings.shiftAccess),
           accent: isAccentPalette(s.settings.accent) ? s.settings.accent : '7anouti',

@@ -49,3 +49,13 @@ Follow these repository rules for all future work.
 - Update `docs/PRODUCTION_PLAN.md` after each task to distinguish implemented
   behavior from what is still demo-only.
 Every new behaviour must be controlled from Admin > Settings: add a typed setting with a safe default in store.settings, normalize it in the database migration and the hub, show it in the Settings UI (grouped, with a one-line help text), enforce it in the store and hub (not only in the UI), and add a permission if staff can use it. No hard-coded behaviour that an owner might want to change.
+
+## Release rule
+Never change the app version, create tags, or publish a release unless I write the word "release". Normal work and pushes to main must not touch the version.
+
+When I write "release", do this:
+1. Read appVersionCode and appVersionName in android/app/build.gradle. Raise appVersionCode by 1 and appVersionName by one minor step (for example 1.3 becomes 1.4).
+2. Run git tag to see the existing tags. Pick a new tag in the form v<versionName>.0 that does not exist yet.
+3. Commit all my current work and the version change with the message "Release <versionName>", and push to main.
+4. Create and push the new tag.
+5. Don't build anything locally. Tell me the new version code, version name and tag, and remind me to wait for the green check on GitHub Actions.

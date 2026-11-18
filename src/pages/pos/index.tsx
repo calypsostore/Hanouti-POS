@@ -118,7 +118,12 @@ export default function POS() {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
-    if (store && !openOrder && !modeFeatures(store).tablesFloor && channel === 'dine-in') {
+    if (store && !openOrder && isQuick(store) && channel !== 'takeaway') {
+      setChannel('takeaway')
+      setTableId(undefined)
+      setTableName('')
+      setGuests(undefined)
+    } else if (store && !openOrder && !modeFeatures(store).tablesFloor && channel === 'dine-in') {
       setChannel('takeaway')
       setTableId(undefined)
       setTableName('')
@@ -519,7 +524,7 @@ export default function POS() {
 
   const actions = createPOSActions({
     store,
-    channel,
+    channel: quick ? 'takeaway' : channel,
     tableId,
     tableName: activeTableName,
     guests,
@@ -562,7 +567,7 @@ export default function POS() {
   } = actions
 
   const changeChannel = (next: OrderChannel) => {
-    if (openOrder) return
+    if (openOrder || quick) return
     setChannel(next)
     if (next !== 'dine-in') {
       setTableId(undefined)
@@ -579,7 +584,8 @@ export default function POS() {
     setCategoryId,
     search,
     setSearch,
-    channel,
+    quick,
+    channel: quick ? 'takeaway' : channel,
     setChannel: changeChannel,
     store,
     qtyInCart,
@@ -604,7 +610,7 @@ export default function POS() {
   }
   const cartProps = {
     cart: displayCart,
-    channel,
+    channel: quick ? 'takeaway' : channel,
     setChannel: changeChannel,
     deliveryEnabled: store.settings.features.delivery,
     tablesEnabled: features.tablesFloor,

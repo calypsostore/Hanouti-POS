@@ -21,9 +21,9 @@ export function POSWorkspace({
   const subtitle = `${cart.count} item${cart.count === 1 ? '' : 's'} · ${storeName}`
   return (
     <>
-      <div className="glass mx-3 mb-3 flex min-h-0 flex-1 overflow-hidden rounded-3xl">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <ProductCatalog {...catalog} />
-        <aside className="glass-strong hidden w-[380px] shrink-0 border-l border-line/70 lg:flex lg:flex-col">
+        <aside className="hidden w-[380px] shrink-0 border-l border-line/70 bg-white dark:bg-espresso-900 lg:flex lg:flex-col">
           <CartPanel {...cart} />
         </aside>
       </div>

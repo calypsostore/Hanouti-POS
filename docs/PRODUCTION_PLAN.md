@@ -42,13 +42,23 @@ document.
 - `settings.posMode` remains `quick` or `cashier`. Shared capability decisions
   now drive Quick POS, dashboard/report views, navigation, settings tabs and
   direct-route guards. Cashier payment and checkout behavior is unchanged.
-- Quick checkout has no payment modal, receipt printing, cash/card tender or
-  change calculation. It records orders as finished; station tickets remain
-  available only when the store enables kitchen stations. Quick navigation
+- New stores and migrated existing stores default to Quick with Cashier closed.
+  The platform owner can open or close Cashier globally from Super Admin →
+  Stores; closed Cashier is disabled and labeled “Coming soon” in Register
+  settings. Store mutations and Hub mode checks honor the availability setting.
+  Hub-connected stores remain closed until a platform-owner authentication path
+  is added to the Hub.
+- Quick checkout has no order-channel selector, payment modal, receipt printing,
+  cash/card tender or change calculation. Orders use the existing internal
+  default channel for compatibility and are recorded as finished; station
+  tickets remain available only when the store enables kitchen stations.
+  Quick navigation
   exposes Overview and Products only with their matching capabilities; the
   product editor hides cost, margin, recipe and stock fields. Quick Settings
-  retains shift/cash-difference automation while hiding receipt, table,
-  station and service tabs. Quick
+  retains shift/cash-difference automation, hides receipt, table, station and
+  general Service tabs, and exposes the shared Availability (86) controls in
+  a dedicated tab so owners can configure 86 behavior without unrelated
+  service settings. Quick
   administrative pages and actions require their matching staff capability;
   admins always retain full access. Expenses uses separate view, add, and edit
   permissions (all off by default for staff and managers); view-only users see
@@ -73,6 +83,11 @@ document.
   links only when their permissions allow them. Staff sign-in defaults to POS;
   Admin → Settings → Register & checkout can instead choose the Staff
   dashboard. The dashboard remains directly accessible in either case.
+- The mobile POS header is a compact, flat, sticky full-width bar with labeled
+  Orders and permission-enabled Regulars shortcuts; other allowed destinations
+  are grouped under More. Phone-width behavior was verified in the local browser.
+- The POS catalog and cart workspace fills the available viewport beneath the
+  header instead of sitting inside a rounded, margined card.
 - Payroll capability flags are available in both modes for protected staff
   detail salary, payment, and attendance tabs. Quick Expenses stays an
   expenses-only view; payroll management remains a Cashier-mode workflow.
@@ -172,8 +187,11 @@ document.
   list, product-linked inventory, audited manual 86/return actions, and
   `manage86` permissions. Restock is now the default return mode: receiving
   stock through Purchases persists the return for linked products and variants.
-  Owners can still choose Manual or At a time in Settings or for an individual
-  86. The Products page supports filtering, row toggles and bulk return/86.
+  Owners can choose Manual or At a time in Settings or for an individual 86.
+  The Products page supports filtering, row toggles and bulk return/86. Quick
+  Settings exposes the same Availability controls in a dedicated tab, while
+  Cashier Settings keeps them under Service; admins can manage 86 items from
+  the Quick POS.
 - Still demo-only or incomplete: 86s explicitly set to Manual still require a
   manual return; bell and station-board count notifications, day/first-shift
   reset behavior, and live multi-phone notification verification are absent.

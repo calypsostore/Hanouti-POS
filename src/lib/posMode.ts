@@ -2,6 +2,17 @@ import type { PosMode, Store, StoreSettings } from '../types.ts'
 
 type PosModeStore = Pick<Store, 'settings'> | StoreSettings
 
+export function normalizeCashierModeSettings(
+  posMode: unknown,
+  cashierModeEnabled: unknown,
+): { posMode: PosMode; cashierModeEnabled: boolean } {
+  const enabled = cashierModeEnabled === true
+  return {
+    posMode: enabled && posMode === 'cashier' ? 'cashier' : 'quick',
+    cashierModeEnabled: enabled,
+  }
+}
+
 export interface PosModeFeatures {
   payments: boolean
   cashDrawer: boolean
@@ -24,8 +35,9 @@ function settingsFor(source: PosModeStore): StoreSettings {
 }
 
 export function isQuick(store: PosModeStore | PosMode): boolean {
-  const posMode = typeof store === 'string' ? store : settingsFor(store).posMode
-  return posMode === 'quick'
+  if (typeof store === 'string') return store === 'quick'
+  const settings = settingsFor(store)
+  return settings.posMode === 'quick' || settings.cashierModeEnabled !== true
 }
 
 export function isCashier(store: PosModeStore | PosMode): boolean {

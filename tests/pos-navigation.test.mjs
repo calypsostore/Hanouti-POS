@@ -9,6 +9,7 @@ const userFor = (role, permissions = {}) => ({ role, permissions })
 const storeFor = (posMode) => ({
   settings: {
     posMode,
+    cashierModeEnabled: posMode === 'cashier',
     allowCredit: false,
     features: {
       tables: true,

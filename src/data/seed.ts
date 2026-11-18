@@ -44,6 +44,7 @@ const defaultSettings = (
   businessType: BusinessType = 'cafe',
 ): StoreSettings => ({
   posMode: businessTemplate(businessType).posMode,
+  cashierModeEnabled: false,
   currency: 'TND',
   taxRate: 0,
   taxInclusive: true,
@@ -168,7 +169,7 @@ const stores: Store[] = [
     businessType: 'cafe',
     setupComplete: true,
     createdAt: '2024-06-12T09:00:00.000Z',
-    settings: defaultSettings({ taxRate: 19, posMode: 'cashier' }, 'cafe'),
+    settings: defaultSettings({ taxRate: 19 }, 'cafe'),
   },
   {
     id: 'st_petitcoin',
@@ -205,7 +206,7 @@ const stores: Store[] = [
     setupComplete: true,
     createdAt: '2026-10-20T09:00:00.000Z',
     trialEndsAt: '2026-12-20T09:00:00.000Z',
-    settings: defaultSettings({ posMode: 'cashier', allowCredit: true, taxRate: 19 }, 'restaurant'),
+    settings: defaultSettings({ allowCredit: true, taxRate: 19 }, 'restaurant'),
   },
   {
     id: 'st_nour',

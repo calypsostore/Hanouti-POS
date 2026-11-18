@@ -18,6 +18,7 @@ import TablesTab from './TablesTab'
 import DataTab from './DataTab'
 import StationsTab from './StationsTab'
 import ServiceTab from './ServiceTab'
+import AvailabilitySettingsSection from './AvailabilitySettingsSection'
 import DevicesTab from './DevicesTab'
 import AutomationTab from './AutomationTab'
 import ConnectivityTab from './ConnectivityTab'
@@ -38,7 +39,7 @@ export default function SettingsPage() {
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'branding' || requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
+    return requested === 'branding' || requested === 'availability' || requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
       ? requested
       : 'profile'
   })
@@ -63,7 +64,8 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<StoreSettings>(
     () =>
       store?.settings ?? {
-        posMode: 'cashier',
+        posMode: 'quick',
+        cashierModeEnabled: false,
         currency: 'TND',
         taxRate: 0,
         taxInclusive: true,
@@ -75,7 +77,7 @@ export default function SettingsPage() {
         tableMode: 'sections_tables',
         guestRequirement: 'required',
         staffPickSectionsOnShift: false,
-        requireShiftForOrders: true,
+        requireShiftForOrders: false,
         allowQuickOpeningFloatEdit: false,
         staffLoginDestination: 'pos',
         shiftAccess: { ...DEFAULT_SHIFT_ACCESS_SETTINGS },
@@ -214,6 +216,7 @@ export default function SettingsPage() {
               profile: 'Store profile',
               branding: 'Branding',
               register: 'Register & checkout',
+              availability: 'Availability (86)',
               permissions: 'Staff permissions',
               receipt: 'Receipt',
               tables: 'Tables',
@@ -251,6 +254,10 @@ export default function SettingsPage() {
           onEnableTables={enableExistingTables}
         />
       )}
+      {activeTab === 'availability' && <AvailabilitySettingsSection
+        settings={settings.availability}
+        onChange={(value) => set('availability', value)}
+      />}
       {activeTab === 'permissions' && quick && user && can(user, 'manageStaff') && <StaffPermissionsTab />}
       {activeTab === 'receipt' && (
         <ReceiptTab

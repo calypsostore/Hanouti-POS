@@ -28,9 +28,9 @@ import { isUnavailable } from '../../src/shared/availability.ts'
 import { balanceFor } from '../../src/lib/selectors.ts'
 import type { InventoryItem, LedgerEntry, OrderItem, Product, Shift, Store, StoreSettings } from '../../src/types.ts'
 import { shiftOpenScheduleError, normalizeShiftAccessSettings } from '../../src/lib/shiftAccess.ts'
-import { isQuick } from '../../src/lib/posMode.ts'
 import { PIN_MAX_LENGTH } from '../../src/shared/pin.ts'
 import { round } from '../../src/lib/pricing-utils.ts'
+import { isQuick, normalizeCashierModeSettings } from '../../src/lib/posMode.ts'
 
 const RATE_WINDOW = 60_000
 const RATE_LIMIT = 120
@@ -57,7 +57,8 @@ const localDateKey = (value: string): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 const isQuickStoreDocument = (value: unknown): boolean =>
-  record(value) && record(value.settings) && value.settings.posMode === 'quick'
+  record(value) && record(value.settings) &&
+  normalizeCashierModeSettings(value.settings.posMode, value.settings.cashierModeEnabled).posMode === 'quick'
 
 function isAvailabilityOnlyProductChange(
   previous: unknown,
@@ -1084,10 +1085,15 @@ export async function createHubServer(): Promise<HubRuntime> {
             throw new Error('Store document must belong to the authenticated store.')
           }
           const settings = record(operation.document.settings) ? operation.document.settings : {}
+          const incomingCashierMode = normalizeCashierModeSettings(
+            settings.posMode,
+            settings.cashierModeEnabled,
+          )
           document = {
             ...operation.document,
             settings: {
             ...settings,
+            ...incomingCashierMode,
             availability: normalizeHubAvailability(settings.availability),
             orderRules: normalizeHubOrderRules(settings.orderRules),
             shiftAccess: normalizeShiftAccessSettings(settings.shiftAccess),

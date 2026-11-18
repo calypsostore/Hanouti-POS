@@ -181,6 +181,8 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
           ...initialData.collections.stores[0],
           settings: {
             ...initialData.collections.stores[0].settings,
+            posMode: 'cashier',
+            cashierModeEnabled: true,
             requireShiftForOrders: true,
             tableMode: 'tables_only',
             features: { ...initialData.collections.stores[0].settings.features, tables: true },

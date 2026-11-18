@@ -60,17 +60,27 @@ export default function RegisterTab({
             />
             <ModeCard
               active={features.payments}
+              disabled={!settings.cashierModeEnabled}
               onClick={() => set('posMode', 'cashier')}
               icon={<CreditCard className="h-5 w-5" />}
               title="Cashier"
-              badge="Full POS"
+              badge={settings.cashierModeEnabled ? 'Full POS' : 'Coming soon'}
+              note={!settings.cashierModeEnabled
+                ? 'Payments and receipts are unavailable while Cashier is closed.'
+                : undefined}
               points={[
-                ...(features.payments
-                  ? ['Cash, card or on-tab payment', 'Change calculation', 'Receipt printing', 'Daily cash reconciliation']
-                  : []),
+                'Cash, card or on-tab payment',
+                'Change calculation',
+                'Receipt printing',
+                'Daily cash reconciliation',
               ]}
             />
           </div>
+          {!settings.cashierModeEnabled && (
+            <p className="mt-3 text-[11px] text-muted">
+              Cashier is disabled by the platform owner; Quick order is available now.
+            </p>
+          )}
         </Card>
 
         <Card className="p-5">
@@ -302,25 +312,32 @@ export default function RegisterTab({
 
 function ModeCard({
   active,
+  disabled = false,
   onClick,
   icon,
   title,
   badge,
+  note,
   points,
 }: {
   active: boolean
+  disabled?: boolean
   onClick: () => void
   icon: React.ReactNode
   title: string
   badge: string
+  note?: string
   points: string[]
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        'relative rounded-2xl border p-4 text-left transition',
-        active
+        'relative rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed',
+        disabled
+          ? 'border-accent-foreground/20 bg-accent-50/40'
+          : active
           ? 'border-accent-foreground/50 bg-accent-50/50 ring-2 ring-accent-foreground/20'
           : 'border-line bg-white hover:border-accent-foreground/30 hover:bg-cream-50',
       )}
@@ -329,7 +346,9 @@ function ModeCard({
         <div
           className={cn(
             'flex h-10 w-10 items-center justify-center rounded-xl',
-            active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-100 text-muted',
+            disabled
+              ? 'bg-accent-100 text-accent-foreground'
+              : active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-100 text-muted',
           )}
         >
           {icon}
@@ -337,17 +356,20 @@ function ModeCard({
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide',
-            active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-200 text-muted',
+            disabled
+              ? 'bg-accent-100 text-accent-foreground'
+              : active ? 'bg-brand-amber text-brand-navy' : 'bg-cream-200 text-muted',
           )}
         >
           {badge}
         </span>
       </div>
       <div className="mt-3 text-[13.5px] font-bold text-ink">{title}</div>
+      {note && <p className="mt-1 text-[11px] text-muted">{note}</p>}
       <ul className="mt-2 space-y-1">
         {points.map((point) => (
           <li key={point} className="flex items-start gap-1.5 text-[11px] text-muted">
-            <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+            <Check className={cn('mt-0.5 h-3 w-3 shrink-0', disabled ? 'text-muted/60' : 'text-emerald-600')} />
             {point}
           </li>
         ))}

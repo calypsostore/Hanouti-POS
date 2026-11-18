@@ -8,6 +8,7 @@ import { replaceStore } from '../src/lib/storeSettings.ts'
 
 const settingsFor = (posMode, allowCredit = true, features = {}) => ({
   posMode,
+  cashierModeEnabled: posMode === 'cashier',
   allowCredit,
   features: { tables: true, kitchenScreen: false, ...features },
 })
@@ -31,9 +32,10 @@ test('settings tabs expose only the Quick set and retain Cashier settings', () =
   const admin = userFor('admin')
   const quick = visibleSettingsTabs(settingsFor('quick'), admin)
   assert.deepEqual(quick, [
-    'profile', 'branding', 'register', 'permissions', 'devices', 'automation', 'connectivity', 'data',
+    'profile', 'branding', 'register', 'permissions', 'availability', 'devices', 'automation', 'connectivity', 'data',
   ])
   const cashier = visibleSettingsTabs(settingsFor('cashier'), admin)
+  assert.equal(cashier.includes('availability'), false)
   assert.ok(cashier.includes('receipt'))
   assert.ok(cashier.includes('tables'))
   assert.ok(cashier.includes('stations'))

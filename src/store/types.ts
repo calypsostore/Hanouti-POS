@@ -314,6 +314,7 @@ export interface AppContextValue {
   updateShift: (id: string, patch: Partial<ShiftInput>) => Result
   deleteShift: (id: string) => Result
   updateSettings: (storeId: string, patch: Partial<StoreSettings>) => Result
+  setCashierModeAvailability: (enabled: boolean) => Result
   completeBusinessSetup: (storeId: string, businessType: BusinessType) => Result
   createStore: (data: CreateStoreInput) => Promise<Result>
   updateStore: (storeId: string, patch: Partial<Store>) => Result
