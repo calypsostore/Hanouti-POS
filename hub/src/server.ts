@@ -1000,8 +1000,8 @@ export async function createHubServer(): Promise<HubRuntime> {
           const sourceShifts = Object.values(validationState.collections.registerSessions ?? {})
             .filter((session) => session.storeId === actor.storeId &&
               (localDateKey(String(session.openedAt)) === report.date ||
-                (session.status === 'closed' && session.closedById === actor.userId &&
-                  session.closedAt === report.closedAt)))
+                (session.status === 'closed' && typeof session.closedAt === 'string' &&
+                  localDateKey(session.closedAt) === report.date)))
           if (summary.shifts.length !== sourceShifts.length) {
             throw new Error('Quick Z must include every shift for the store day.')
           }

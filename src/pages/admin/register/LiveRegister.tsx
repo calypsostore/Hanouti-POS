@@ -2,6 +2,7 @@ import {
   Banknote,
   Calculator,
   CircleDollarSign,
+  Clock3,
   CreditCard,
   FileText,
   HandCoins,
@@ -9,6 +10,7 @@ import {
   Info,
   Lock,
   Play,
+  Printer,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -23,26 +25,89 @@ import { Tile } from './RegisterParts'
 type Snapshot = NonNullable<ReturnType<typeof sessionSnapshot>>
 type Breakdown = ReturnType<typeof registerBreakdown>
 
+function ActiveShiftList({
+  sessions,
+  onPrintX,
+}: {
+  sessions: RegisterSession[]
+  onPrintX: (session: RegisterSession) => void
+}) {
+  if (!sessions.length) return null
+  return (
+    <Card className="p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="text-[13px] font-bold text-ink">Active team shifts</div>
+        <Badge tone="success">{sessions.length} open</Badge>
+      </div>
+      <div className="divide-y divide-line/60">
+        {sessions.map((session) => (
+          <div key={session.id} className="flex flex-wrap items-center gap-2 py-2.5">
+            <Clock3 className="h-4 w-4 shrink-0 text-muted" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] font-semibold text-ink">{session.openedByName}</div>
+              <div className="text-[10px] text-muted">Started {fmtDateTime(session.openedAt)}</div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => onPrintX(session)}>
+              <Printer className="h-3.5 w-3.5" /> Print X
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
 export function LiveRegister({
   open,
   anyOpen,
+  activeSessions,
   quick,
   canSeeAll,
+  isOwner,
   liveSnapshot,
   liveBreakdown,
   liveItems,
   onOpen,
+  onPrintX,
 }: {
   open: RegisterSession | null
   anyOpen: RegisterSession | null
+  activeSessions: RegisterSession[]
   quick: boolean
   canSeeAll: boolean
+  isOwner: boolean
   liveSnapshot: Snapshot | null
   liveBreakdown: Breakdown | null
   liveItems: RegisterItemsReport | null
   onOpen: () => void
+  onPrintX: (session: RegisterSession) => void
 }) {
+  const teamSessions = activeSessions.filter((session) => session.id !== open?.id)
   if (!open || !liveSnapshot) {
+    if (isOwner) {
+      return (
+        <>
+          <Card className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                <CircleDollarSign className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[13.5px] font-bold text-ink">Owner POS access</div>
+                <p className="text-[11.5px] text-muted">You do not need to open a personal shift or enter opening cash.</p>
+              </div>
+            </div>
+          </Card>
+          {teamSessions.length ? (
+            <ActiveShiftList sessions={teamSessions} onPrintX={onPrintX} />
+          ) : (
+            <Card className="px-3 py-2.5 text-[11px] text-muted">
+              No team shifts are open. Your POS is still available.
+            </Card>
+          )}
+        </>
+      )
+    }
     return (
       <>
         {!canSeeAll && !open && anyOpen && (
@@ -83,7 +148,9 @@ export function LiveRegister({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[13.5px] font-bold text-ink">Shift open</span>
+              <span className="text-[13.5px] font-bold text-ink">
+                {isOwner && open.autoOpened ? 'Owner POS activity' : 'Shift open'}
+              </span>
               <Badge tone="success">Live</Badge>
             </div>
             <div className="text-[11.5px] text-muted">
@@ -101,6 +168,8 @@ export function LiveRegister({
         </div>
         </div>
       </Card>
+
+      {isOwner && <ActiveShiftList sessions={teamSessions} onPrintX={onPrintX} />}
 
       {quick ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -63,10 +63,22 @@ export default function AdminDashboard() {
         now,
       ))
     : []
+  const activeTeamShifts = db.registerSessions.filter((session) => {
+    if (session.storeId !== store.id || session.status !== 'open') return false
+    const ownerId = session.staffId ?? session.openedById
+    const owner = db.users.find((candidate) => candidate.id === ownerId && candidate.storeId === store.id)
+    return owner?.role !== 'admin'
+  })
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      <AdminHeader store={store} user={user} registerOpen={!!data.registerSession} now={now} />
+      <AdminHeader
+        store={store}
+        user={user}
+        registerOpen={user.role === 'admin' ? activeTeamShifts.length > 0 : !!data.registerSession}
+        ownerMode={user.role === 'admin'}
+        now={now}
+      />
       {(backupNeedsAttention || backupHealthError || offlinePrinters.length > 0) && (
         <div className="space-y-2" aria-live="polite">
           {backupNeedsAttention && (
@@ -89,7 +101,7 @@ export default function AdminDashboard() {
         </div>
       )}
       {quick ? (
-        <QuickModeDashboard data={data} store={store} />
+        <QuickModeDashboard data={data} db={db} store={store} user={user} now={now} />
       ) : isTracking ? (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <GradientKpiCard icon={ClipboardList} tone="blue" label="Tracked orders" value={data.trackedOrders} caption="Recorded without payment" />

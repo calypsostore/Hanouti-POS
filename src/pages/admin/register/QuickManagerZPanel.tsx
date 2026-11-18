@@ -7,6 +7,7 @@ export function QuickManagerZPanel({
   date,
   summary,
   canClose,
+  blockedByOpenShifts,
   countedInput,
   openShiftCounts,
   onCountedChange,
@@ -16,6 +17,7 @@ export function QuickManagerZPanel({
   date: string
   summary: QuickShiftDaySummary
   canClose: boolean
+  blockedByOpenShifts: boolean
   countedInput: string
   openShiftCounts: Record<string, string>
   onCountedChange: (value: string) => void
@@ -38,6 +40,11 @@ export function QuickManagerZPanel({
           <Square className="h-4 w-4" /> Close day and lock shifts
         </Button>
       </div>
+      {blockedByOpenShifts && (
+        <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          Close or force-close every active staff shift before closing Z.
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-xs">
           <thead className="border-b border-line text-muted">

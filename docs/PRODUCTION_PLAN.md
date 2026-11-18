@@ -15,10 +15,13 @@ daily staff-working-float input and full-store cashier attribution, live
 branding previews and palette-driven primary brand colors, standalone app/hub
 detection, and mobile-safe dashboard, product, purchase, expense, and report
 layouts, privileged-user auto-shifts, atomic/idempotent table payment, and
-kitchen-ticket feedback and note corrections**. Staff close their own shifts
-into frozen X snapshots; admin/manager auto-shifts are closed automatically
-before the owner closes one immutable daily Z. The owner enters that day's
-variable staff float and counted cash; the frozen Z includes every register
+kitchen-ticket feedback and note corrections**. The owner dashboard and
+register page show active team shifts and per-shift X reports; owners can use
+POS without opening a personal shift or entering opening cash. Staff close
+their own shifts into frozen X snapshots; owners must close or force-close
+staff shifts before closing one immutable daily Z. Admin/manager auto-shifts
+close automatically. The owner enters that day's variable staff float and
+counted cash; the frozen Z includes every register
 session's sales, table orders, tab settlements and cash movements and identifies
 the administrator closing the day. Staff analytics and cash differences are
 implemented in the client store.
@@ -117,8 +120,11 @@ document.
   store-specific time zones are not configured.
 - Admins and managers are not subject to shift or schedule gates. POS actions
   lazily open and reuse their zero-opening-cash session; staff shift rules
-  remain unchanged. Z close auto-closes these auto-opened privileged sessions
-  and still requires real staff sessions to be closed first.
+  remain unchanged. The owner dashboard shows active team shifts instead of
+  presenting a personal open-shift prompt; the register page includes X reports
+  for those shifts. Z close auto-closes privileged auto-shifts, but staff or
+  manually opened shifts must be closed or explicitly force-closed first in
+  both Quick and Cashier modes.
 - Still unverified in a live browser: the complete pre-shift / open-shift route
   transition, owner alert rendering, and schedule controls on phone/tablet
   layouts.
@@ -762,9 +768,10 @@ The frontend's `AppStore` seam maps 1:1 onto REST endpoints.
   available on each matching profile.
 - **X report**: a read-only interim snapshot; closing a staff shift saves its
   final X snapshot and ends only that shift. **Store-day Z**: only the owner
-  can close it, and only after every real staff session is closed. Open admin
-  and manager auto-shifts are closed with expected cash and a saved X snapshot
-  as part of Z close. Z aggregates every session and role, freezes the daily
+  can close it, and only after every non-automatic shift is closed or
+  force-closed. Open admin and manager auto-shifts are closed with expected cash
+  and a saved X snapshot as part of Z close in either POS mode. Z aggregates
+  every session and role, freezes the daily
   totals once, rejects duplicate closes, and can be reprinted from its
   immutable day report record.
 - Shift X uses the session window; day Z uses the local calendar-day

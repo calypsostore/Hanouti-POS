@@ -10,7 +10,7 @@ import { buildReportLines, linesToEscpos, type ReportData } from '../../../lib/e
 import type { RegisterDayReport, RegisterItemsReport, RegisterSession } from '../../../types'
 import { dateKey, money } from '../../../lib/utils'
 import { can } from '../../../lib/permissions'
-import { openShiftForStaff } from '../../../lib/registerShifts'
+import { hasOpenShiftsRequiringManualClose, openShiftForStaff } from '../../../lib/registerShifts'
 import { shiftCashDifference } from '../../../lib/shiftCash'
 import { shiftOpenScheduleError } from '../../../lib/shiftAccess'
 import { isQuick } from '../../../lib/posMode'
@@ -103,6 +103,7 @@ export default function RegisterPage() {
     .filter((session) => session.storeId === store.id)
     .sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))
   const canSeeAll = user.role !== 'staff' || !!user.permissions.supervisor
+  const isOwner = user.role === 'admin'
   const sessions = canSeeAll ? allSessions : allSessions.filter((session) => (session.staffId ?? session.openedById) === user.id)
   const open = openShiftForStaff(db, store.id, user.id) ?? null
   const ownedOpenTables = db.openOrders.filter((order) =>
@@ -123,7 +124,11 @@ export default function RegisterPage() {
   const todayStart = new Date(`${today}T00:00:00`).toISOString()
   const todaySessions = allSessions.filter((session) => dateKey(session.openedAt) === today)
   const quickDaySessions = isQuick(store)
-    ? allSessions.filter((session) => dateKey(session.openedAt) === today || session.status === 'open')
+    ? allSessions.filter((session) =>
+        dateKey(session.openedAt) === today ||
+        (!!session.closedAt && dateKey(session.closedAt) === today) ||
+        session.status === 'open',
+      )
     : todaySessions
   const dayReports = db.registerDayReports
     .filter((report) => report.storeId === store.id)
@@ -145,16 +150,10 @@ export default function RegisterPage() {
   const canManageDayZ = user.role === 'admin' ||
     (user.role === 'manager' && can(user, 'forceCloseShift'))
   const canSeeDayZ = isQuick(store) ? canManageDayZ : user.role === 'admin'
+  const shiftsNeedManualClose = hasOpenShiftsRequiringManualClose(db, store.id)
   const canCloseDay = isQuick(store)
-    ? canManageDayZ && !todayDayReport && quickDaySessions.length > 0
-    : user.role === 'admin' && !todayDayReport && todaySessions.length > 0 &&
-      allSessions.filter((session) => session.status === 'open').every((session) => {
-        if (!session.autoOpened) return false
-        const owner = db.users.find((candidate) =>
-          candidate.id === (session.staffId ?? session.openedById) && candidate.storeId === store.id,
-        )
-        return owner?.role === 'admin' || owner?.role === 'manager'
-      })
+    ? canManageDayZ && !todayDayReport && quickDaySessions.length > 0 && !shiftsNeedManualClose
+    : user.role === 'admin' && !todayDayReport && todaySessions.length > 0 && !shiftsNeedManualClose
   const itemScope = canSeeAll ? undefined : user.id
   const liveSnapshot = open ? sessionSnapshot(db, open, nowISO) : null
   const liveBreakdown = open ? registerBreakdown(db, open, nowISO, itemScope) : null
@@ -492,7 +491,9 @@ export default function RegisterPage() {
         <div>
           <h2 className="text-[20px] font-extrabold tracking-tight">Cash register</h2>
           <p className="mt-1 text-[13px] text-muted">
-            {isQuick(store)
+            {isOwner
+              ? 'Owner access does not require a personal shift or opening cash. Review active team shifts, print X reports, and close Z after shifts are closed or force-closed.'
+              : isQuick(store)
               ? 'Staff declare cash at shift close. The manager Z totals declarations, differences, corrections, and the retained float.'
               : canSeeAll
               ? 'Staff can open and close shifts independently. The owner closes one frozen Z after the day’s work is finished.'
@@ -504,13 +505,15 @@ export default function RegisterPage() {
             <Button variant="secondary" onClick={() => printReport('X', open)}>
               <Printer className="h-4 w-4" /> Print X report
             </Button>
-            <Button
-              onClick={() => {
-                beginClose()
-              }}
-            >
-              <Square className="h-4 w-4" /> Close shift
-            </Button>
+            {!(isOwner && open.autoOpened) && (
+              <Button
+                onClick={() => {
+                  beginClose()
+                }}
+              >
+                <Square className="h-4 w-4" /> Close shift
+              </Button>
+            )}
             {canSeeDayZ && (
               <Button
                 variant="secondary"
@@ -523,9 +526,11 @@ export default function RegisterPage() {
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button onClick={beginOpen}>
-              <Play className="h-4 w-4" /> Open shift
-            </Button>
+            {!isOwner && (
+              <Button onClick={beginOpen}>
+                <Play className="h-4 w-4" /> Open shift
+              </Button>
+            )}
             {canSeeDayZ && (
               <Button
                 variant="secondary"
@@ -542,12 +547,15 @@ export default function RegisterPage() {
       <LiveRegister
         open={open}
         anyOpen={anyOpen}
+        activeSessions={allSessions.filter((session) => session.status === 'open')}
         quick={isQuick(store)}
         canSeeAll={canSeeAll}
+        isOwner={isOwner}
         liveSnapshot={liveSnapshot}
         liveBreakdown={liveBreakdown}
         liveItems={liveItems}
         onOpen={beginOpen}
+        onPrintX={(session) => printReport('X', session)}
       />
 
       {isQuick(store) && canManageDayZ && quickDaySummary && (
@@ -555,6 +563,7 @@ export default function RegisterPage() {
           date={today}
           summary={quickDaySummary}
           canClose={canCloseDay && quickOpenCountsValid}
+          blockedByOpenShifts={shiftsNeedManualClose}
           countedInput={todayDayReport?.countedCash.toFixed(3) ?? dayCountedInput}
           openShiftCounts={dayOpenShiftCounts}
           onCountedChange={setDayCountedInput}

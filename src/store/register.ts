@@ -5,7 +5,13 @@ import { dateKey, uid } from '../lib/utils'
 import { balanceFor } from '../lib/selectors'
 import { autoCloseRegisterSessionForZ, computeRegisterTotals, registerReportDetails } from '../lib/reports'
 import { can } from '../lib/permissions'
-import { ensureShiftForActor, nextShiftNumber, openShiftForStaff } from '../lib/registerShifts'
+import {
+  ensureShiftForActor,
+  hasOpenShiftsRequiringManualClose,
+  isPrivilegedAutoShift,
+  nextShiftNumber,
+  openShiftForStaff,
+} from '../lib/registerShifts'
 import { addLog } from './audit'
 import { withEnsuredShift } from './registerShiftHelpers'
 import { isCashDifferenceWithinTolerance, shiftCashDifference } from '../lib/shiftCash'
@@ -248,20 +254,16 @@ export function useRegisterSlice(dependencies: StoreSliceDependencies) {
     const openSessions = current.registerSessions.filter((session) =>
       session.storeId === storeId && session.status === 'open',
     )
-    const autoCloseable = quick ? [] : openSessions.filter((session) => {
-      if (!session.autoOpened) return false
-      const ownerId = session.staffId ?? session.openedById
-      return current.users.some((user) =>
-        user.id === ownerId && user.storeId === storeId &&
-        (user.role === 'admin' || user.role === 'manager'),
-      )
-    })
-    if (!quick && autoCloseable.length !== openSessions.length) {
-      return { ok: false, error: 'Close or hand over every register shift before closing the day.' }
+    const autoCloseable = openSessions.filter((session) =>
+      isPrivilegedAutoShift(current, storeId, session),
+    )
+    if (hasOpenShiftsRequiringManualClose(current, storeId)) {
+      return { ok: false, error: 'Close or force-close every staff shift before closing the day.' }
     }
     const daySessions = current.registerSessions.filter((session) =>
       session.storeId === storeId &&
-      (dateKey(session.openedAt) === day || (quick && session.status === 'open')),
+      (dateKey(session.openedAt) === day ||
+        (quick && ((session.closedAt && dateKey(session.closedAt) === day) || session.status === 'open'))),
     )
     if (!daySessions.length) return { ok: false, error: 'There are no register shifts to close for today.' }
 

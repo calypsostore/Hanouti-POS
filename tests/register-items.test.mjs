@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { registerSessionItems, summarizeRegisterItems } from '../src/lib/registerItems.ts'
 import { autoCloseRegisterSessionForZ, computeRegisterTotals, registerReportDetails } from '../src/lib/reports.ts'
-import { ensureShiftForActor, openShiftForStaff } from '../src/lib/registerShifts.ts'
+import {
+  ensureShiftForActor,
+  hasOpenShiftsRequiringManualClose,
+  openShiftForStaff,
+} from '../src/lib/registerShifts.ts'
 import { completeOpenOrderPayment } from '../src/lib/openOrderPayment.ts'
 import { buildReportLines } from '../src/lib/escpos.ts'
 import { withEnsuredShift } from '../src/store/registerShiftHelpers.ts'
@@ -514,6 +518,32 @@ test('admin and manager auto-shifts are created once while staff shifts remain r
   })
   assert.equal(staff.shift, undefined)
   assert.equal(staff.autoOpened, false)
+})
+
+test('store-day Z requires staff shifts to close or be force-closed first', () => {
+  const source = {
+    users: [
+      { id: 'admin-1', storeId: 'store-1', role: 'admin' },
+      { id: 'manager-1', storeId: 'store-1', role: 'manager' },
+      { id: 'staff-1', storeId: 'store-1', role: 'staff' },
+    ],
+    registerSessions: [
+      { id: 'owner-shift', storeId: 'store-1', status: 'open', staffId: 'admin-1', autoOpened: true },
+      { id: 'manager-shift', storeId: 'store-1', status: 'open', staffId: 'manager-1', autoOpened: true },
+      { id: 'staff-shift', storeId: 'store-1', status: 'open', staffId: 'staff-1' },
+    ],
+  }
+
+  assert.equal(hasOpenShiftsRequiringManualClose(source, 'store-1'), true)
+  source.registerSessions = source.registerSessions.filter((session) => session.id !== 'staff-shift')
+  assert.equal(hasOpenShiftsRequiringManualClose(source, 'store-1'), false)
+  source.registerSessions.push({
+    id: 'manual-owner-shift',
+    storeId: 'store-1',
+    status: 'open',
+    staffId: 'admin-1',
+  })
+  assert.equal(hasOpenShiftsRequiringManualClose(source, 'store-1'), true)
 })
 
 test('persisting an auto-shift adds its session and audit record to the same database update', () => {

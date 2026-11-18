@@ -26,7 +26,7 @@ export function DashboardRail({ now }: { now: Date }) {
         now={now}
         onUpgrade={() => push('Plan changes are managed by the platform owner in this demo.', 'info')}
       />
-      {canRegister && <RegisterCard db={db} store={store} now={now} />}
+      {canRegister && <RegisterCard db={db} store={store} user={user} now={now} />}
       <OnDutyCard db={db} storeId={store.id} />
       <SectionCard icon={Plus} tone="amber" title="Quick actions" subtitle="Shortcuts for your workspace" bodyClassName="grid grid-cols-2 gap-2 px-4 pb-4 sm:px-5">
         <QuickActionTile icon={Plus} tone="amber" label="New sale" href="/pos" />

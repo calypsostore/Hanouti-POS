@@ -5,10 +5,11 @@ import { fmtDate } from '../../../lib/utils'
 import { AppIcon } from '../../../components/AppIcon'
 import { isCashier, isQuick } from '../../../lib/posMode'
 
-export function AdminHeader({ store, user, registerOpen, now }: {
+export function AdminHeader({ store, user, registerOpen, ownerMode = false, now }: {
   store: Store
   user: User
   registerOpen: boolean
+  ownerMode?: boolean
   now: Date
 }) {
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
@@ -29,7 +30,10 @@ export function AdminHeader({ store, user, registerOpen, now }: {
         </Badge>
         {isCashier(store) && (
           <Badge tone={registerOpen ? 'success' : 'warning'}>
-            <Clock3 className="h-3 w-3" /> Register {registerOpen ? 'open' : 'closed'}
+            <Clock3 className="h-3 w-3" />
+            {ownerMode
+              ? registerOpen ? 'Staff shift active' : 'No staff shift'
+              : `Register ${registerOpen ? 'open' : 'closed'}`}
           </Badge>
         )}
       </div>

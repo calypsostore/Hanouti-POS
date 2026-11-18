@@ -12,6 +12,25 @@ export const openShiftForStaff = (
     (session.staffId ?? session.openedById) === staffId,
   )
 
+export const isPrivilegedAutoShift = (
+  db: Pick<Database, 'users'>,
+  storeId: string,
+  session: RegisterSession,
+): boolean => {
+  if (!session.autoOpened) return false
+  const ownerId = session.staffId ?? session.openedById
+  const owner = db.users.find((user) => user.id === ownerId && user.storeId === storeId)
+  return owner?.role === 'admin' || owner?.role === 'manager'
+}
+
+export const hasOpenShiftsRequiringManualClose = (
+  db: Pick<Database, 'registerSessions' | 'users'>,
+  storeId: string,
+): boolean => db.registerSessions.some((session) =>
+  session.storeId === storeId && session.status === 'open' &&
+  !isPrivilegedAutoShift(db, storeId, session),
+)
+
 export const ensureShiftForActor = (
   db: Pick<Database, 'registerSessions'>,
   storeId: string,
