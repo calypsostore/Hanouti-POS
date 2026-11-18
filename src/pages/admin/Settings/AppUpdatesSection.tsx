@@ -71,7 +71,15 @@ export default function AppUpdatesSection() {
     : checkResult?.status === 'update-available'
       ? `New version ${checkResult.update.versionName} available`
       : checkResult?.status === 'error'
-        ? 'Could not check for updates. Check your internet connection and try again.'
+        ? checkResult.reason === 'network'
+          ? 'Could not reach GitHub. Check your internet connection and try again.'
+          : checkResult.reason === 'timeout'
+            ? 'The check timed out. Try again.'
+            : checkResult.reason === 'http'
+              ? `GitHub answered with error ${checkResult.statusCode ?? 'unknown'}.`
+              : checkResult.reason === 'invalid-response'
+                ? 'The update file is invalid.'
+                : 'Could not read the installed app version.'
         : ''
 
   return (

@@ -1,5 +1,5 @@
 import { App } from '@capacitor/app'
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 
 export interface AppUpdate {
@@ -12,7 +12,8 @@ export interface AppUpdate {
 export type ManualAppUpdateCheckResult =
   | { status: 'update-available'; update: AppUpdate }
   | { status: 'up-to-date' }
-  | { status: 'error' }
+  | { status: 'error'; reason: 'network' | 'timeout' | 'invalid-response' | 'installed-version' }
+  | { status: 'error'; reason: 'http'; statusCode: number }
   | { status: 'not-supported' }
 
 interface ApkInstallerPlugin {
@@ -22,9 +23,14 @@ interface ApkInstallerPlugin {
 const VERSION_URL = 'https://github.com/calypsostore/Hanouti-POS/releases/latest/download/version.json'
 const APK_URL_PREFIX = 'https://github.com/calypsostore/Hanouti-POS/releases/download/'
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+const AUTOMATIC_CHECK_TIMEOUT_MS = 5_000
+const MANUAL_CHECK_TIMEOUT_MS = 15_000
 const LAST_CHECK_KEY = '7anouti.appUpdate.lastCheck'
 const UPDATE_CACHE_KEY = '7anouti.appUpdate.available'
 const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller')
+
+type UpdateCheckFailure = Extract<ManualAppUpdateCheckResult, { status: 'error' }>
+type UpdateRequestResult = { update: AppUpdate } | { error: UpdateCheckFailure }
 
 let lastCheckAt = 0
 let checkInFlight: Promise<AppUpdate | null> | null = null
@@ -67,6 +73,68 @@ function readLastCheckAt(): number {
   }
 }
 
+class UpdateCheckTimeoutError extends Error {}
+
+function nativeErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object' && 'message' in error &&
+    typeof error.message === 'string') {
+    return error.message
+  }
+  return ''
+}
+
+async function requestUpdate(timeoutMs: number): Promise<UpdateRequestResult> {
+  let timeoutId: number | undefined
+  try {
+    const response = await Promise.race([
+      CapacitorHttp.get({
+        url: VERSION_URL,
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        connectTimeout: timeoutMs,
+        readTimeout: timeoutMs,
+        disableRedirects: false,
+        responseType: 'text',
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new UpdateCheckTimeoutError()), timeoutMs)
+      }),
+    ])
+    if (!Number.isInteger(response.status)) {
+      return { error: { status: 'error', reason: 'invalid-response' } }
+    }
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        error: { status: 'error', reason: 'http', statusCode: response.status },
+      }
+    }
+
+    let responseData: unknown = response.data
+    if (typeof responseData === 'string') {
+      try {
+        responseData = JSON.parse(responseData) as unknown
+      } catch {
+        return { error: { status: 'error', reason: 'invalid-response' } }
+      }
+    }
+
+    const update = parseUpdate(responseData)
+    return update
+      ? { update }
+      : { error: { status: 'error', reason: 'invalid-response' } }
+  } catch (error: unknown) {
+    const message = nativeErrorMessage(error)
+    const reason = error instanceof UpdateCheckTimeoutError ||
+      /timeout|timed out|sockettimeoutexception/i.test(message)
+      ? 'timeout'
+      : 'network'
+    return { error: { status: 'error', reason } }
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+  }
+}
+
 export function checkForAppUpdate(options: { force?: boolean } = {}): Promise<AppUpdate | null> {
   if (!isAndroidNative()) return Promise.resolve(null)
   if (options.force) {
@@ -95,46 +163,28 @@ export function checkForAppUpdate(options: { force?: boolean } = {}): Promise<Ap
         // Keep the in-memory throttle if browser storage is unavailable.
       }
 
-      const controller = new AbortController()
-      const timeout = window.setTimeout(() => controller.abort(), 5_000)
-      try {
-        const response = await fetch(VERSION_URL, {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-          signal: controller.signal,
-        })
-        if (!response.ok) {
-          const cached = readCachedUpdate()
-          return cached && cached.versionCode > installedVersionCode ? cached : null
-        }
-
-        const update = parseUpdate(await response.json())
-        if (!update) {
-          const cached = readCachedUpdate()
-          return cached && cached.versionCode > installedVersionCode ? cached : null
-        }
-        if (update.versionCode <= installedVersionCode) {
-          cachedUpdate = null
-          try {
-            localStorage.removeItem(UPDATE_CACHE_KEY)
-          } catch {
-            // The in-memory update cache remains usable without browser storage.
-          }
-          return null
-        }
-        cachedUpdate = update
-        try {
-          localStorage.setItem(UPDATE_CACHE_KEY, JSON.stringify(update))
-        } catch {
-          // Keep the update available for this app session.
-        }
-        return update
-      } catch {
+      const result = await requestUpdate(AUTOMATIC_CHECK_TIMEOUT_MS)
+      if ('error' in result) {
         const cached = readCachedUpdate()
         return cached && cached.versionCode > installedVersionCode ? cached : null
-      } finally {
-        window.clearTimeout(timeout)
       }
+      const { update } = result
+      if (update.versionCode <= installedVersionCode) {
+        cachedUpdate = null
+        try {
+          localStorage.removeItem(UPDATE_CACHE_KEY)
+        } catch {
+          // The in-memory update cache remains usable without browser storage.
+        }
+        return null
+      }
+      cachedUpdate = update
+      try {
+        localStorage.setItem(UPDATE_CACHE_KEY, JSON.stringify(update))
+      } catch {
+        // Keep the update available for this app session.
+      }
+      return update
     } catch {
       return null
     } finally {
@@ -150,14 +200,19 @@ export function checkForAppUpdateManually(): Promise<ManualAppUpdateCheckResult>
   if (manualCheckInFlight) return manualCheckInFlight
 
   manualCheckInFlight = (async () => {
-    let timeout: number | undefined
     try {
-      const installed = await App.getInfo()
-      const installedVersionCode = Number.parseInt(installed.build, 10)
-      if (!Number.isSafeInteger(installedVersionCode)) return { status: 'error' }
+      let installedVersionCode: number
+      try {
+        const installed = await App.getInfo()
+        installedVersionCode = Number.parseInt(installed.build, 10)
+      } catch {
+        return { status: 'error', reason: 'installed-version' }
+      }
 
-      const controller = new AbortController()
-      timeout = window.setTimeout(() => controller.abort(), 5_000)
+      if (!Number.isSafeInteger(installedVersionCode)) {
+        return { status: 'error', reason: 'installed-version' }
+      }
+
       lastCheckAt = Date.now()
       try {
         localStorage.setItem(LAST_CHECK_KEY, String(lastCheckAt))
@@ -165,15 +220,10 @@ export function checkForAppUpdateManually(): Promise<ManualAppUpdateCheckResult>
         // Keep the in-memory throttle if browser storage is unavailable.
       }
 
-      const response = await fetch(VERSION_URL, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-        signal: controller.signal,
-      })
-      if (!response.ok) return { status: 'error' }
+      const result = await requestUpdate(MANUAL_CHECK_TIMEOUT_MS)
+      if ('error' in result) return result.error
 
-      const update = parseUpdate(await response.json())
-      if (!update) return { status: 'error' }
+      const { update } = result
       if (update.versionCode <= installedVersionCode) {
         cachedUpdate = null
         try {
@@ -191,10 +241,7 @@ export function checkForAppUpdateManually(): Promise<ManualAppUpdateCheckResult>
         // Keep the update available for this app session.
       }
       return { status: 'update-available', update }
-    } catch {
-      return { status: 'error' }
     } finally {
-      if (timeout !== undefined) window.clearTimeout(timeout)
       manualCheckInFlight = null
     }
   })()

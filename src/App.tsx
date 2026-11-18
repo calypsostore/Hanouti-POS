@@ -36,6 +36,7 @@ import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
 import { SessionAutomationGuard } from './components/SessionAutomationGuard'
+import { AppUpdateButton } from './components/AppUpdateButton'
 import { staffLandingPath } from './lib/posNavigation'
 import { checkForAppUpdate } from './lib/appUpdate'
 
@@ -229,6 +230,7 @@ export default function App() {
       <AppProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <AppUpdateButton />
           <DeviceKioskGate>
           <StationOnlyGate>
           <SessionAutomationGuard>

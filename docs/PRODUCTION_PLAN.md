@@ -34,9 +34,13 @@ document.
 - Pushing a `v*` tag builds a signed Android APK and publishes it as
   `7anouti-pos.apk` alongside `version.json` on a GitHub Release. The app checks
   the latest release on Android automatically no more than once every six hours.
-  Android Settings also exposes a manual check and install flow without the
-  automatic-check throttle. APK downloads use the app cache and Android's
-  package installer; users must allow installs from this app when prompted.
+  Every signed-in role can open the manual check and install flow from the
+  persistent Android app launcher; Admin → Settings retains the same update
+  section. Both update checks use Capacitor's native HTTP client and follow
+  redirects; manual checks have a 15-second timeout and distinguish network,
+  timeout, HTTP, and invalid-metadata failures without using the automatic-check
+  throttle. APK downloads use the app cache and Android's package installer;
+  users must allow installs from this app when prompted.
   GitHub release URLs require a publicly accessible repository.
 - Still unverified on devices: a signed tag release, downloading and installing
   over an existing install with the same signing key, and Android's unknown-app
