@@ -58,7 +58,11 @@ document.
   retains shift/cash-difference automation, hides receipt, table, station and
   general Service tabs, and exposes the shared Availability (86) controls in
   a dedicated tab so owners can configure 86 behavior without unrelated
-  service settings. Quick
+  service settings. Quick also has an opt-in Staff items tab; when enabled,
+  staff can record allowed items within owner-set shift limits using the
+  separate staff-item cash/card confirmation flow. Quick staff permissions hide
+  cashier-only discounts, inventory/purchasing/cost and table controls; station
+  access is shown only when Quick kitchen stations are enabled. Quick
   administrative pages and actions require their matching staff capability;
   admins always retain full access. Expenses uses separate view, add, and edit
   permissions (all off by default for staff and managers); view-only users see
@@ -130,8 +134,10 @@ document.
   Inventory and Purchases workflows. Exact recipe deductions remain controlled
   by Order rules → Deduct ingredients on sale.
 - Admins configure staff-item pricing, permitted products, and per-shift
-  quantity limits with searchable product selection. Staff can search and record
-  their own items during an open shift. Checkouts use configured prices, force
+  quantity limits with searchable product selection under Admin → Settings →
+  Staff items in Quick or Service in Cashier. Quick staff-item checkout is
+  opt-in through that setting. Staff can search and record their own items
+  during an open shift. Checkouts use configured prices, force
   recipe stock deductions, and are attributed to the staff member in inventory
   movements, Z reports, and staff profiles. Access also requires the staff
   member's **Use staff items** permission.
@@ -167,9 +173,10 @@ document.
 
 ### Admin authorization PINs — implemented; browser verification pending
 
-- Implemented: store admins can set/reset their own 4–12 digit PIN from Admin →
+- Implemented: store admins can set/reset their own 4–6 character PIN from Admin →
   Team. The value is hashed and audited; it is not shown again. This updates
-  the admin account's existing PIN sign-in credential as well.
+  the admin account's authorization credential; owners sign in with email and
+  password. PINs accept letters and numbers and compare case-insensitively.
 - Active admin and permitted active manager PINs are validated locally in
   standalone mode and server-side by the hub in connected mode. Hub responses
   expose only the authorizer ID/name, never credential hashes; deactivated
@@ -283,8 +290,9 @@ document.
   with atomic periodic snapshots, 14 retained backups, restore/import,
   authentication, rate limiting, private-LAN binding and configurable local
   HTTPS. Legacy full-state records and torn final lines recover safely.
-- Hub admin sign-in is password-only; staff/manager username sign-in accepts
-  4–12 digit PINs. Device tokens use SHA-256 with legacy PBKDF2 upgrade. Empty
+- Hub owner sign-in uses email/password without a store code; staff/manager
+  sign-in uses globally searched usernames and 4–6 character alphanumeric PINs.
+  Device tokens use SHA-256 with legacy PBKDF2 upgrade. Empty
   hubs require a one-time console setup token for owner creation or backup
   import; no frontend bootstrap form currently calls those endpoints.
 - Order item prices and totals are rebuilt from store catalog/settings;
@@ -442,8 +450,16 @@ stored; no demo values are presented as production data.
   block login or in-memory work. A toast warns when changes cannot be persisted.
 - Store owners can manage store branding (logo, accent palette, default theme),
   upload their profile photo, and edit team photos alongside existing name,
-  username, PIN, permission, and active-status controls. Staff sign in with a
-  unique username and PIN; admin accounts retain email/password login.
+  username, PIN, permission, and active-status controls. Username generation
+  includes the store code and checks platform data for conflicts. The login
+  page exposes only owner email/password and staff username/PIN sign-in; there
+  are no signup links or demo-account shortcuts. Super-admin store creation
+  issues a one-time temporary owner password, requires a password change on
+  first sign-in, and displays the credential for secure manual delivery (email
+  delivery is not configured). This provisioning flow is standalone/local only:
+  the Hub has no platform-super-admin account or cross-store provisioning API,
+  and its first-run setup still creates a single store directly. Hub-wide
+  username availability is therefore not guaranteed by the client generator.
 - Store admins have an append-only, per-store activity log for sign-ins,
   orders, catalog, customers, staff, expenses, registers, settings, payroll,
   shifts, and tables. The admin page supports filters, readable before/after change tables, optional
@@ -666,7 +682,7 @@ wage or timekeeping system.
 | Offline | None (browser-local demo DB) | Hub sync/outbox and PWA shell; cloud sync is unavailable |
 | Multi-tenant | Frontend-only isolation by `storeId` filters | Unchanged (Phase 2 = real backend) |
 
-Standalone data lives in IndexedDB under `7anouti.db.v41`, migrated from prior
+Standalone data lives in IndexedDB under `7anouti.db.v45`, migrated from prior
 IndexedDB/localStorage keys and legacy `cafepos.db.*` keys. Hub mode persists
 store data in local JSONL files and uses IndexedDB as the client cache/outbox.
 Standalone persistence and authorization remain demo-grade; the hub is a
@@ -831,7 +847,7 @@ records locally on the hub machine.
 ### Phase 6 — Staff management hardening ⏳ partially blocked
 
 Store-scoped access, granular permissions, PBKDF2 credential hashing,
-username-based staff PIN login, 4–12 digit PIN validation, and 30-second locks
+username-based staff PIN login, 4–6 character alphanumeric PIN validation, and 30-second locks
 after five failed local PIN or email/password attempts are implemented in the
 demo. Local lockouts persist across reloads but remain browser-controlled. Hub
 login/pairing lockouts are separately rate-limited and persisted where

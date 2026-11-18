@@ -4,6 +4,7 @@ import { readIndexedValue, writeIndexedValue } from '../../lib/storage.ts'
 import { verifySecret } from '../../lib/hash.ts'
 import type { Result } from '../types'
 import type { AuthorizationPinPurpose, AuthorizationPinResult } from '../../lib/authorizationPin'
+import { normalizePin } from '../../shared/pin.ts'
 
 export type ProviderMode = 'local' | 'hub'
 export type HubConnectionState = 'connected' | 'offline' | 'internet-offline'
@@ -50,6 +51,7 @@ export interface DataProvider {
   login(storeCode: string, username: string, secret: string): Promise<
     { ok: true; userId: string } | { ok: false; error: string; offline?: boolean }
   >
+  changePassword(password: string): Promise<Result>
   verifyPin(pin: string, storedHash?: string): Promise<boolean>
   verifyAuthorizationPin(
     pin: string,
@@ -139,8 +141,11 @@ export class LocalProvider implements DataProvider {
   async login(): Promise<{ ok: false; error: string }> {
     return { ok: false, error: 'Hub login is unavailable in local mode.' }
   }
+  async changePassword(): Promise<Result> {
+    return { ok: true }
+  }
   async verifyPin(pin: string, storedHash?: string): Promise<boolean> {
-    return typeof storedHash === 'string' && verifySecret(pin, storedHash)
+    return typeof storedHash === 'string' && verifySecret(normalizePin(pin), storedHash)
   }
   async verifyAuthorizationPin(): Promise<AuthorizationPinResult> {
     return { ok: false, error: 'Authorization PIN verification is unavailable.' }
@@ -371,12 +376,11 @@ export class HubProvider implements DataProvider {
     secret: string,
   ): Promise<{ ok: true; userId: string } | { ok: false; error: string; offline?: boolean }> {
     const code = storeCode.trim().toLowerCase()
-    if (!code) return { ok: false, error: 'Enter your store code to sign in to the hub.' }
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeCode: code, username: username.trim(), secret }),
+        body: JSON.stringify({ ...(code ? { storeCode: code } : {}), username: username.trim(), secret }),
       })
       const body = await this.readResponse(response)
       if (!response.ok) return { ok: false, error: typeof body.error === 'string' ? body.error : 'Hub sign-in failed.' }
@@ -406,8 +410,15 @@ export class HubProvider implements DataProvider {
   }
 
   async verifyPin(pin: string): Promise<boolean> {
-    const result = await this.request('/api/auth/verify-pin', { pin })
+    const result = await this.request('/api/auth/verify-pin', { pin: normalizePin(pin) })
     return result.verified === true
+  }
+
+  async changePassword(password: string): Promise<Result> {
+    const result = await this.request('/api/auth/change-password', { password })
+    return result.ok === true
+      ? { ok: true }
+      : { ok: false, error: typeof result.error === 'string' ? result.error : 'Could not change the password.' }
   }
 
   async verifyAuthorizationPin(
@@ -415,7 +426,7 @@ export class HubProvider implements DataProvider {
     storeId: string,
     purpose: AuthorizationPinPurpose,
   ): Promise<AuthorizationPinResult> {
-    const result = await this.request('/api/auth/verify-authorization-pin', { pin, storeId, purpose })
+    const result = await this.request('/api/auth/verify-authorization-pin', { pin: normalizePin(pin), storeId, purpose })
     if (result.verified !== true || !isRecord(result.confirmer) ||
         typeof result.confirmer.id !== 'string' || typeof result.confirmer.name !== 'string') {
       return { ok: false, error: 'That PIN does not belong to an active authorized manager.' }

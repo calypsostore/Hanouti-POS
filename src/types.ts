@@ -344,6 +344,7 @@ export interface User {
   name: string
   email?: string
   username?: string
+  mustChangePassword?: boolean
   password: string
   pin: string
   role: Role

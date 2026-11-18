@@ -6,7 +6,7 @@ import type { AuthenticatedActor, HubStoreState, HubUser } from './types.ts'
 import type { HubStorage } from './storage.ts'
 import type { AuditLog, Shift, StoreSettings } from '../../src/types.ts'
 import type { ChangeSet } from '../../src/shared/sync.ts'
-import { isValidPin } from '../../src/shared/pin.ts'
+import { isValidPin, normalizePin } from '../../src/shared/pin.ts'
 import {
   DEFAULT_SHIFT_ACCESS_SETTINGS,
   loginScheduleError,
@@ -169,20 +169,32 @@ export class HubAuth {
   }
 
   async login(storeCode: string, username: string, secret: string, ip: string): Promise<{ token: string; expiresAt: string; actor: AuthenticatedActor }> {
-    const throttleKey = `${storeCode.toLowerCase()}:${username.toLowerCase()}:${ip}`
+    const code = storeCode.trim().toLowerCase()
+    const throttleKey = `${code || 'platform'}:${username.toLowerCase()}:${ip}`
     const failure = this.failures[throttleKey]
     if ((failure?.lockedUntil ?? 0) > Date.now()) throw Object.assign(new Error('Too many failed sign-in attempts. Try again later.'), { status: 429 })
-    const storeId = await this.findStoreId(storeCode)
-    const state = storeId ? await this.storage.readStore(storeId) : undefined
-    const users = (state?.collections.users ? Object.values(state.collections.users) : []) as unknown as HubUser[]
-    const user = users.find((candidate) =>
-      candidate.active && candidate.storeId === storeId &&
-      [candidate.username, candidate.email].some((value) => typeof value === 'string' && value.toLowerCase() === username.toLowerCase()),
-    )
+    const storeIds = code
+      ? [await this.findStoreId(code)].filter((storeId): storeId is string => storeId !== null)
+      : await this.storage.listStoreIds()
+    const matches: Array<{ storeId: string; state: HubStoreState; user: HubUser }> = []
+    for (const storeId of storeIds) {
+      const state = await this.storage.readStore(storeId)
+      const users = Object.values(state.collections.users ?? {}) as unknown as HubUser[]
+      for (const candidate of users) {
+        if (candidate.active && candidate.storeId === storeId &&
+          [candidate.username, candidate.email].some((value) =>
+            typeof value === 'string' && value.toLowerCase() === username.trim().toLowerCase(),
+          )) matches.push({ storeId, state, user: candidate })
+      }
+    }
+    const match = matches.length === 1 ? matches[0] : undefined
+    const storeId = match?.storeId
+    const state = match?.state
+    const user = match?.user
     const pinLogin = !!user && !username.includes('@') &&
       (user.role === 'staff' || user.role === 'manager') && isValidPin(secret)
     const valid = !!user && !!storeId &&
-      await verifySecret(secret, pinLogin ? user.pin : user.password)
+      await verifySecret(pinLogin ? normalizePin(secret) : secret, pinLogin ? user.pin : user.password)
     if (!valid || !user || !storeId) {
       const next = (failure?.count ?? 0) + 1
       this.failures[throttleKey] = {
@@ -260,8 +272,9 @@ export class HubAuth {
     }
     const state = await this.storage.readStore(actor.storeId)
     const user = state.collections.users?.[actor.userId] as HubUser | undefined
+    const normalizedPin = normalizePin(pin)
     const valid = !!user && user.active && user.storeId === actor.storeId &&
-      isValidPin(pin) && await verifySecret(pin, user.pin)
+      isValidPin(normalizedPin) && await verifySecret(normalizedPin, user.pin)
     if (!valid) {
       const next = (failure?.count ?? 0) + 1
       this.failures[throttleKey] = {
@@ -307,9 +320,10 @@ export class HubAuth {
       return roleAllowed && (user.role === 'admin' || user.permissions?.overrideStock === true)
     })
     let confirmer: HubUser | undefined
-    if (isValidPin(pin)) {
+    const normalizedPin = normalizePin(pin)
+    if (isValidPin(normalizedPin)) {
       for (const user of eligible) {
-        if (await verifySecret(pin, user.pin)) {
+        if (await verifySecret(normalizedPin, user.pin)) {
           confirmer = user
           break
         }
@@ -331,6 +345,29 @@ export class HubAuth {
     return { id: confirmer.id, name: confirmer.name }
   }
 
+  async changeOwnPassword(actor: AuthenticatedActor, password: string): Promise<void> {
+    if (actor.role !== 'admin' || password.length < 10) {
+      throw Object.assign(new Error('Only the store owner can set a password with at least 10 characters.'), { status: 400 })
+    }
+    const state = await this.storage.readStore(actor.storeId)
+    const user = state.collections.users?.[actor.userId] as HubUser | undefined
+    if (!user || !user.active || user.role !== 'admin' || user.storeId !== actor.storeId) {
+      throw Object.assign(new Error('The active store owner could not be verified.'), { status: 403 })
+    }
+    const updatedUser: HubUser = {
+      ...user,
+      password: hashSecret(password),
+      mustChangePassword: false,
+    }
+    await this.storage.transact(actor.storeId, {
+      opId: `password${randomBytes(12).toString('hex')}`,
+      deviceId: 'hub-auth',
+      storeId: actor.storeId,
+      baseSeq: state.seq,
+      ops: [{ kind: 'put', collection: 'users', id: user.id, document: updatedUser }],
+    })
+  }
+
   async setupOwner(
     body: Record<string, unknown>,
     setupToken: unknown,
@@ -344,7 +381,7 @@ export class HubAuth {
     const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
     const pin = typeof body.pin === 'string' ? body.pin : ''
-    if (!isValidPin(pin)) throw new Error('PIN must contain 4 to 12 digits.')
+    if (!isValidPin(pin)) throw new Error('PIN must contain 4 to 6 letters or numbers.')
     if (!storeName || !/^[a-z0-9][a-z0-9-]{1,39}$/.test(storeCode) || !/^[a-z0-9._-]{3,64}$/.test(username) || password.length < 10) {
       throw new Error('Provide a store name/code, username, and password (10+ characters).')
     }
@@ -371,7 +408,7 @@ export class HubAuth {
     const owner: HubUser = {
       id: randomBytes(12).toString('hex'), storeId, username, email: username.includes('@') ? username : `${username}@local.invalid`,
       name: username, role: 'admin', active: true, createdAt: now, salaryType: 'none', salaryAmount: 0,
-      password: hashSecret(password), pin: hashSecret(pin),
+      password: hashSecret(password), pin: hashSecret(normalizePin(pin)),
       permissions: { manageCustomers: true, viewTabs: true, settleTabs: true, addToTabs: true },
     }
     await this.storage.replaceStore(storeId, {
@@ -413,6 +450,13 @@ export class HubAuth {
     if (actor.deviceToken) return null
     const state = await this.storage.readStore(actor.storeId)
     return actorFromState(state, actor.userId)
+  }
+
+  async passwordChangeRequired(actor: AuthenticatedActor): Promise<boolean> {
+    if (actor.deviceToken) return false
+    const state = await this.storage.readStore(actor.storeId)
+    const user = state.collections.users?.[actor.userId] as HubUser | undefined
+    return user?.active === true && user.mustChangePassword === true
   }
 
   revoke(token: string): void {

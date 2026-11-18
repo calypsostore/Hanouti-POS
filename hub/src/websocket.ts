@@ -140,6 +140,9 @@ export class HubWebSocket {
           actor = await this.auth.authenticateDevice(candidate.deviceId, candidate.token)
         }
         if (!actor) throw new Error('WebSocket authentication failed.')
+        if (await this.auth.passwordChangeRequired(actor)) {
+          throw new Error('Change your password before continuing.')
+        }
         client.actor = actor
         client.token = typeof candidate.token === 'string' ? candidate.token : undefined
         client.socket.write(frame({ type: 'connected', storeId: actor.storeId, stationIds: actor.stationIds ?? [] }))
@@ -151,6 +154,9 @@ export class HubWebSocket {
         : this.auth.authenticate(client.token)
       const refreshed = current?.deviceToken ? current : current ? await this.auth.refreshActor(current) : null
       if (!refreshed) throw new Error('WebSocket session has expired or been revoked.')
+      if (await this.auth.passwordChangeRequired(refreshed)) {
+        throw new Error('Change your password before continuing.')
+      }
       client.actor = refreshed
       await this.onMessage(client.actor, candidate)
     } catch (error) {
@@ -167,7 +173,7 @@ export class HubWebSocket {
           ? await this.auth.authenticateDevice(client.actor.deviceId ?? '', client.token ?? '')
           : this.auth.authenticate(client.token)
         const actor = current?.deviceToken ? current : current ? await this.auth.refreshActor(current) : null
-        if (!actor || actor.storeId !== storeId) {
+        if (!actor || actor.storeId !== storeId || await this.auth.passwordChangeRequired(actor)) {
           this.clients.delete(client)
           client.socket.destroy()
           return

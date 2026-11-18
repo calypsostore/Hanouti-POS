@@ -19,6 +19,7 @@ import DataTab from './DataTab'
 import StationsTab from './StationsTab'
 import ServiceTab from './ServiceTab'
 import AvailabilitySettingsSection from './AvailabilitySettingsSection'
+import StaffItemsSettingsSection from './StaffItemsSettingsSection'
 import DevicesTab from './DevicesTab'
 import AutomationTab from './AutomationTab'
 import ConnectivityTab from './ConnectivityTab'
@@ -39,7 +40,7 @@ export default function SettingsPage() {
   const { push } = useToast()
   const [tab, setTab] = useState<Tab>(() => {
     const requested = searchParams.get('tab')
-    return requested === 'branding' || requested === 'availability' || requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
+    return requested === 'branding' || requested === 'availability' || requested === 'staff-items' || requested === 'tables' || requested === 'stations' || requested === 'service' || requested === 'devices' || requested === 'automation' || requested === 'connectivity'
       ? requested
       : 'profile'
   })
@@ -188,6 +189,7 @@ export default function SettingsPage() {
   }
   const hasTablesHidden =
     !!store &&
+    !quick &&
     !settings.features.tables &&
     db.tables.some((table) => table.storeId === store.id)
 
@@ -217,6 +219,7 @@ export default function SettingsPage() {
               branding: 'Branding',
               register: 'Register & checkout',
               availability: 'Availability (86)',
+              'staff-items': 'Staff items',
               permissions: 'Staff permissions',
               receipt: 'Receipt',
               tables: 'Tables',
@@ -257,6 +260,11 @@ export default function SettingsPage() {
       {activeTab === 'availability' && <AvailabilitySettingsSection
         settings={settings.availability}
         onChange={(value) => set('availability', value)}
+      />}
+      {activeTab === 'staff-items' && <StaffItemsSettingsSection
+        settings={settings.staffConsumption}
+        products={db.products.filter((product) => product.storeId === store.id)}
+        onChange={(value) => set('staffConsumption', value)}
       />}
       {activeTab === 'permissions' && quick && user && can(user, 'manageStaff') && <StaffPermissionsTab />}
       {activeTab === 'receipt' && (

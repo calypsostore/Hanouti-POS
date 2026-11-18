@@ -3,7 +3,7 @@ import type { AuditJsonValue, Category, Database, Expense, Store, StoreSettings,
 import { round } from '../lib/pricing-utils'
 import { dateKey, uid } from '../lib/utils'
 import { buildSeed } from '../data/seed'
-import { hashSecret } from '../lib/hash'
+import { hashRandomSecret, hashSecret } from '../lib/hash'
 import { DEFAULT_AUTOMATION_SETTINGS, DEFAULT_AVAILABILITY_SETTINGS, DEFAULT_COFFEE_TRACKING, DEFAULT_INVENTORY_YIELD_TRACKING, DEFAULT_ORDER_RULES, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PRINTER, DEFAULT_STAFF_CONSUMPTION, defaultPermissions, normalizeCoffeeTracking, normalizeInventoryYieldTracking, normalizeStaffConsumption } from '../lib/defaults'
 import { DEFAULT_SHIFT_ACCESS_SETTINGS } from '../lib/shiftAccess'
 import { businessTemplate } from '../lib/businessTemplates'
@@ -15,7 +15,6 @@ import { isCashier, isQuick } from '../lib/posMode'
 import { can } from '../lib/permissions'
 import type { Capability } from '../types'
 import { replaceStore } from '../lib/storeSettings'
-import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
 import { addLog, changedAuditFields } from './audit'
 import { withEnsuredShift } from './registerShiftHelpers'
 import type { AppContextValue } from './types'
@@ -485,25 +484,32 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (actorResult.actor.role !== 'super') return { ok: false, error: 'Only the platform owner can create a store.' }
     const name = data.name.trim()
     const slug = data.slug.trim().toLowerCase()
-    const adminEmail = data.adminEmail.trim().toLowerCase()
-    if (!name || !slug || !data.adminName.trim() || !adminEmail || !data.adminPassword) {
-      return { ok: false, error: 'Complete the store and administrator details.' }
+    const ownerName = data.ownerName.trim()
+    const ownerEmail = data.ownerEmail.trim().toLowerCase()
+    if (!name || !slug || !ownerName || !ownerEmail || data.temporaryPassword.length < 10) {
+      return { ok: false, error: 'Complete the store and owner details.' }
     }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-      return { ok: false, error: 'Store code can use lowercase letters, numbers and hyphens.' }
+    if (slug.length > 40 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return { ok: false, error: 'Store code must be at most 40 lowercase letters, numbers and hyphens.' }
     }
-    if (!isValidPin(data.adminPin)) return { ok: false, error: `PIN must contain ${PIN_RANGE_HINT}.` }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+      return { ok: false, error: 'Enter a valid owner email address.' }
+    }
     const latest = dbRef.current
     if (latest.stores.some((store) => store.slug.toLowerCase() === slug)) {
       return { ok: false, error: 'That store code is already in use.' }
     }
-    if (latest.users.some((user) => user.email?.toLowerCase() === adminEmail)) {
-      return { ok: false, error: 'That administrator email is already in use.' }
+    if (latest.users.some((user) => user.email?.toLowerCase() === ownerEmail) ||
+        latest.stores.some((store) => store.ownerEmail.toLowerCase() === ownerEmail)) {
+      return { ok: false, error: 'That owner email is already in use.' }
     }
     let password: string
     let pin: string
     try {
-      ;[password, pin] = await Promise.all([hashSecret(data.adminPassword), hashSecret(data.adminPin)])
+      ;[password, pin] = await Promise.all([
+        hashSecret(data.temporaryPassword),
+        hashRandomSecret(),
+      ])
     } catch {
       return { ok: false, error: 'Could not securely create the administrator credentials.' }
     }
@@ -513,8 +519,9 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     if (dbRef.current.stores.some((store) => store.slug.toLowerCase() === slug)) {
       return { ok: false, error: 'That store code is already in use.' }
     }
-    if (dbRef.current.users.some((user) => user.email?.toLowerCase() === adminEmail)) {
-      return { ok: false, error: 'That administrator email is already in use.' }
+    if (dbRef.current.users.some((user) => user.email?.toLowerCase() === ownerEmail) ||
+        dbRef.current.stores.some((store) => store.ownerEmail.toLowerCase() === ownerEmail)) {
+      return { ok: false, error: 'That owner email is already in use.' }
     }
     const template = businessTemplate('cafe')
     const cashierModeEnabled = latest.stores.length > 0 &&
@@ -523,12 +530,13 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
     const admin: User = {
       id: uid('usr'),
       storeId,
-      name: data.adminName.trim(),
-      email: adminEmail,
+      name: ownerName,
+      email: ownerEmail,
       password,
       pin,
       role: 'admin',
       active: true,
+      mustChangePassword: true,
       salaryType: 'none',
       salaryAmount: 0,
       createdAt: new Date().toISOString(),
@@ -538,8 +546,8 @@ export function useSettingsSlice(dependencies: SettingsSliceDependencies) {
       id: storeId,
       name,
       slug,
-      ownerName: data.ownerName.trim(),
-      ownerEmail: data.ownerEmail.trim().toLowerCase(),
+      ownerName,
+      ownerEmail,
       phone: data.phone.trim(),
       address: data.address.trim(),
       city: data.city.trim(),

@@ -313,6 +313,7 @@ export const normalizeUser = (u: User): User => {
     ...u,
     email: u.role === 'staff' || u.role === 'manager' ? '' : u.email ?? '',
     username,
+    mustChangePassword: u.role === 'admin' && u.mustChangePassword === true,
     salaryType: u.salaryType === 'daily' || u.salaryType === 'monthly' ? u.salaryType : 'none',
     salaryAmount: typeof u.salaryAmount === 'number' && Number.isFinite(u.salaryAmount)
       ? round(Math.max(0, u.salaryAmount))

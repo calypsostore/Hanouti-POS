@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../../store/AppStore'
 import type { User } from '../../types'
-import { isValidPin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../../shared/pin'
+import { isValidPin, normalizePin, PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../../shared/pin'
 import { can, MANAGER_DEFAULT_PERMISSIONS } from '../../lib/permissions'
 import { defaultPermissions } from '../../lib/defaults'
 import {
@@ -34,9 +34,9 @@ import {
 import { ImageUpload } from '../../components/ImageUpload'
 import { useToast } from '../../components/toast'
 import { money } from '../../lib/utils'
-import { isValidUsername, normalizeUsername, suggestStaffUsername } from '../../lib/staff'
+import { isUsernameForStore, isValidUsername, normalizeUsername, suggestStaffUsername } from '../../lib/staff'
 import { getStaffSalesThisMonth } from '../../lib/staffDetails'
-import { isQuick } from '../../lib/posMode'
+import { isQuick, modeFeatures } from '../../lib/posMode'
 import StaffPermissionsEditor from './staff/StaffPermissionsEditor'
 import type { Result } from '../../store/types'
 
@@ -105,6 +105,7 @@ export default function Staff() {
   const canChangeRoles = user.role === 'admin'
   const canManageTabLimits = user.role === 'admin'
   const quick = store ? isQuick(store) : false
+  const stationsEnabled = store ? modeFeatures(store).kitchenStations : false
   const canOpenStaffDetails = canManageStaff || (user.role === 'staff' && user.permissions.supervisor)
   if (!canOpenStaffDetails) return <Navigate to="/staff" replace />
   if (!store) return null
@@ -171,26 +172,30 @@ export default function Staff() {
           <div>
             <h3 className="text-[14px] font-bold text-ink">Admin authorization PIN</h3>
             <p className="mt-1 text-[12px] text-muted">
-              Used for restricted order and table actions. This also updates the PIN sign-in credential for your admin account.
+              Used to authorize restricted actions. Store owners sign in with email and password.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="New PIN" hint="4–12 digits; stored as a secure hash">
+            <Field label="New PIN" hint={`${PIN_RANGE_HINT}; stored as a secure hash`}>
               <Input
-                type="password"
-                inputMode="numeric"
+                type="text"
+                maxLength={PIN_MAX_LENGTH}
+                autoCapitalize="characters"
+                autoCorrect="off"
                 autoComplete="new-password"
                 value={adminPin}
-                onChange={(event) => setAdminPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                onChange={(event) => setAdminPin(event.target.value.slice(0, PIN_MAX_LENGTH))}
               />
             </Field>
             <Field label="Confirm PIN">
               <Input
-                type="password"
-                inputMode="numeric"
+                type="text"
+                maxLength={PIN_MAX_LENGTH}
+                autoCapitalize="characters"
+                autoCorrect="off"
                 autoComplete="new-password"
                 value={adminPinConfirmation}
-                onChange={(event) => setAdminPinConfirmation(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                onChange={(event) => setAdminPinConfirmation(event.target.value.slice(0, PIN_MAX_LENGTH))}
               />
             </Field>
           </div>
@@ -199,7 +204,7 @@ export default function Staff() {
               Active accounts with the required permission are the only accounts that can authorize an action.
             </p>
             <Button
-              disabled={savingAdminPin || !isValidPin(adminPin) || adminPin !== adminPinConfirmation}
+              disabled={savingAdminPin || !isValidPin(adminPin) || normalizePin(adminPin) !== normalizePin(adminPinConfirmation)}
               onClick={async () => {
                 setSavingAdminPin(true)
                 try {
@@ -405,7 +410,7 @@ export default function Staff() {
       <Card className="flex items-start gap-3 border-accent-foreground/20 bg-accent-50/60 p-4">
         <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-foreground" />
         <div className="text-[12px] leading-relaxed text-accent-foreground">
-          <span className="font-semibold">Staff sign in with a unique username and 4–6 digit PIN.</span>
+          <span className="font-semibold">Staff sign in with a unique username and 4–6 character PIN.</span>
           {' '}Usernames are unique across all stores, so no store code, email, or password is needed.
           PINs can be reused and are stored hashed; share the login details securely when they are
           shown after creation or reset. Staff only see this store’s data.
@@ -423,6 +428,7 @@ export default function Staff() {
           canManagePayroll={canManagePayroll}
           canManageTabLimits={canManageTabLimits}
           quick={quick}
+          stationsEnabled={stationsEnabled}
           onClose={() => setEditor({ open: false })}
           onSave={async (data) => {
             if (editor.member) {
@@ -526,6 +532,7 @@ function StaffEditor({
   canManagePayroll,
   canManageTabLimits,
   quick,
+  stationsEnabled,
   onClose,
   onSave,
 }: {
@@ -537,6 +544,7 @@ function StaffEditor({
   canManagePayroll: boolean
   canManageTabLimits: boolean
   quick: boolean
+  stationsEnabled: boolean
   onClose: () => void
   onSave: (data: StaffForm) => Promise<Result>
 }) {
@@ -563,7 +571,9 @@ function StaffEditor({
     user.id !== member?.id && normalizeUsername(user.username ?? '') === normalizedUsername,
   )
   const usernameError = !isValidUsername(username)
-    ? 'Use 3–24 lowercase letters, digits, dots, underscores or hyphens.'
+    ? 'Use 3–64 lowercase letters, digits, dots, underscores or hyphens.'
+    : username !== normalizeUsername(member?.username ?? '') && !isUsernameForStore(username, storeSlug)
+      ? `Generate a username ending in .${storeSlug}.`
     : duplicateUsername ? 'That username is already in use.' : ''
   const pinError = member
     ? pin && !isValidPin(pin) ? `PIN must contain ${PIN_RANGE_HINT}.` : ''
@@ -666,17 +676,19 @@ function StaffEditor({
               </Select>
             </Field>
           )}
-          <Field label="Username" hint="3–24 lowercase letters, digits, dots, underscores or hyphens">
+          <Field label="Username" hint={`Generate a unique username ending in .${storeSlug} for this store.`}>
             <div className="flex gap-2">
               <Input
                 value={username}
+                maxLength={64}
                 onChange={(e) => { setUsername(e.target.value.toLowerCase()); setSaveError('') }}
-                placeholder="amine.yasmine"
+                placeholder={`name.${storeSlug}`}
                 autoComplete="username"
                 aria-invalid={Boolean(usernameError || usernameSaveError)}
               />
               <Button
                 variant="secondary"
+                disabled={!name.trim()}
                 onClick={() => setUsername(suggestStaffUsername(name, storeSlug, users, member?.id))}
               >
                 <Sparkles className="h-4 w-4" /> Generate
@@ -686,11 +698,13 @@ function StaffEditor({
           </Field>
           <Field label={member ? 'Set/reset PIN' : 'PIN'} hint={member ? `Leave blank to keep the current PIN · ${PIN_RANGE_HINT}` : `${PIN_RANGE_HINT} · PINs can be reused`}>
             <Input
+              type="text"
               value={pin}
               maxLength={PIN_MAX_LENGTH}
-              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH)); setSaveError('') }}
-              placeholder={member ? 'Leave unchanged' : '1234'}
-              inputMode="numeric"
+              onChange={(e) => { setPin(e.target.value.slice(0, PIN_MAX_LENGTH)); setSaveError('') }}
+              placeholder={member ? 'Leave unchanged' : '4–6 characters'}
+              autoCapitalize="characters"
+              autoCorrect="off"
               className="font-mono tracking-[0.3em]"
               aria-invalid={Boolean(pinError || pinSaveError)}
             />
@@ -761,6 +775,7 @@ function StaffEditor({
           role={role}
           stationOnly={stationOnly}
           quick={quick}
+          stationsEnabled={stationsEnabled}
           permissions={permissions}
           onChange={(nextPermissions) => { setPermissions(nextPermissions); setSaveError('') }}
         />

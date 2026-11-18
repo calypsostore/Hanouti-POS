@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './store/AppStore'
 import { ToastProvider } from './components/toast'
 import { AppShell } from './components/Layout'
 import Login from './pages/Login'
+import ChangePassword from './pages/ChangePassword'
 import POS from './pages/POS'
 import TableFloor from './pages/pos/TableFloor'
 import StationBoard from './pages/pos/StationBoard'
@@ -55,10 +56,23 @@ function ScrollToTop() {
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, databaseReady, databaseError } = useApp()
+  const { pathname } = useLocation()
   if (!databaseReady && !databaseError) {
     return <div className="grid min-h-screen place-items-center text-sm text-muted">Loading your workspace…</div>
   }
   if (!user) return <Navigate to="/login" replace />
+  if (user.mustChangePassword && pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />
+  }
+  return <>{children}</>
+}
+
+function FirstLoginPasswordGate({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  const { user } = useApp()
+  if (user?.mustChangePassword && pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />
+  }
   return <>{children}</>
 }
 
@@ -152,8 +166,17 @@ function StaffShiftAccessGate({ children }: { children: React.ReactNode }) {
 
 function LoginRoute() {
   const { user, store } = useApp()
-  if (user) return <Navigate to={homeFor(user, store)} replace />
+  if (user) return <Navigate to={user.mustChangePassword ? '/change-password' : homeFor(user, store)} replace />
   return <Login />
+}
+
+function ChangePasswordRoute() {
+  const { user, store } = useApp()
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin' || !user.mustChangePassword) {
+    return <Navigate to={homeFor(user, store)} replace />
+  }
+  return <ChangePassword />
 }
 
 function AdminShell() {
@@ -179,7 +202,7 @@ function StoreSetupGate({ children }: { children: React.ReactNode }) {
 function HomeRoute() {
   const { user, store } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={homeFor(user, store)} replace />
+  return <Navigate to={user.mustChangePassword ? '/change-password' : homeFor(user, store)} replace />
 }
 
 export default function App() {
@@ -210,10 +233,12 @@ export default function App() {
           <StationOnlyGate>
           <SessionAutomationGuard>
           <StaffShiftAccessGate>
+          <FirstLoginPasswordGate>
           <Routes>
             <Route path="/pair" element={<PairStationDevice />} />
             <Route path="/kiosk" element={<StationDeviceKiosk />} />
             <Route path="/login" element={<LoginRoute />} />
+            <Route path="/change-password" element={<ChangePasswordRoute />} />
             <Route path="/" element={<HomeRoute />} />
 
             <Route
@@ -403,6 +428,7 @@ export default function App() {
 
             <Route path="*" element={<HomeRoute />} />
           </Routes>
+          </FirstLoginPasswordGate>
           </StaffShiftAccessGate>
           </SessionAutomationGuard>
           </StationOnlyGate>

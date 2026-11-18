@@ -70,10 +70,12 @@ export default function VoidOrderModal({
         ) : (
           <Field label="Manager PIN" hint={`Ask a manager to authorize this void · ${PIN_RANGE_HINT}`}>
             <Input
+              type="password"
               value={pin}
               maxLength={PIN_MAX_LENGTH}
-              onChange={(event) => onPinChange(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
-              inputMode="numeric"
+              onChange={(event) => onPinChange(event.target.value.slice(0, PIN_MAX_LENGTH))}
+              autoCapitalize="characters"
+              autoCorrect="off"
               placeholder="••••"
               className="font-mono text-center text-lg tracking-[0.4em]"
               autoFocus

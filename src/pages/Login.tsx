@@ -3,21 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   BarChart3,
-  Check,
   CreditCard,
   Eye,
   EyeOff,
   KeyRound,
   Mail,
   ShieldCheck,
-  Store as StoreIcon,
   Users,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { staffLandingPath } from '../lib/posNavigation'
 import { Button, Field, Input, Segmented } from '../components/ui'
-import { cn, money } from '../lib/utils'
+import { money } from '../lib/utils'
 import { BRAND_NAME } from '../lib/brand'
 import { BrandLogo } from '../components/BrandLogo'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -27,56 +24,24 @@ import { DB_KEY } from '../store/database'
 import type { User } from '../types'
 import { PIN_MAX_LENGTH, PIN_RANGE_HINT } from '../shared/pin'
 
-type DemoAccount = {
-  role: 'Super admin' | 'Store admin' | 'Staff'
-  name: string
-  email?: string
-  username?: string
-  pin?: string
-  icon: LucideIcon
-  desc: string
-}
-
-const demoAccounts: DemoAccount[] = [
-  {
-    role: 'Super admin',
-    name: 'Platform Owner',
-    email: 'owner@cafepos.tn',
-    icon: ShieldCheck,
-    desc: 'Every store, every number',
-  },
-  {
-    role: 'Store admin',
-    name: 'Sami · Café Yasmine',
-    email: 'sami@cafeyasmine.tn',
-    icon: StoreIcon,
-    desc: 'Full control of one café',
-  },
-  {
-    role: 'Staff',
-    name: 'Amine · Café Yasmine',
-    username: 'amine.yasmine',
-    pin: '1234',
-    icon: Users,
-    desc: 'amine.yasmine · PIN 1234',
-  },
-]
-
 export default function Login() {
   const { db, login, loginPin, databaseReady, databaseError, providerMode } = useApp()
   const navigate = useNavigate()
   const [method, setMethod] = useState<'email' | 'pin'>('email')
-  const [email, setEmail] = useState('sami@cafeyasmine.tn')
-  const [password, setPassword] = useState('password')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [username, setUsername] = useState('amine.yasmine')
-  const [pin, setPin] = useState('1234')
-  const [storeCode, setStoreCode] = useState('')
+  const [username, setUsername] = useState('')
+  const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const canSubmit = databaseReady && !databaseError && !isSubmitting
 
   const go = (role: string, account?: User) => {
+    if (account?.mustChangePassword) {
+      navigate('/change-password', { replace: true })
+      return
+    }
     const accountStore = account?.storeId
       ? db.stores.find((candidate) => candidate.id === account.storeId)
       : undefined
@@ -95,7 +60,7 @@ export default function Login() {
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await login(email, password, storeCode)
+      const res = await login(email, password)
       if (!res.ok) {
         setError(res.error)
         return
@@ -116,36 +81,13 @@ export default function Login() {
     setError('')
     setIsSubmitting(true)
     try {
-      const res = await loginPin(username, pin, storeCode)
+      const res = await loginPin(username, pin)
       if (!res.ok) {
         setError(res.error)
         return
       }
       const account = res.user ?? db.users.find((candidate) => candidate.username?.toLowerCase() === username.trim().toLowerCase())
       go(account?.role ?? 'staff', account)
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const quickLogin = async (account: DemoAccount) => {
-    if (!canSubmit) return
-    setError('')
-    setIsSubmitting(true)
-    try {
-      const res = account.role === 'Staff'
-        ? await loginPin(account.username ?? '', account.pin ?? '')
-        : await login(account.email ?? '', 'password')
-      if (!res.ok) {
-        setError(res.error)
-        return
-      }
-      const user = res.user ?? (account.role === 'Staff'
-        ? db.users.find((candidate) => candidate.username === account.username)
-        : db.users.find((candidate) => candidate.email === account.email))
-      go(user?.role ?? (account.role === 'Super admin' ? 'super' : account.role === 'Staff' ? 'staff' : 'admin'), user)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Sign in failed.')
     } finally {
@@ -281,8 +223,8 @@ export default function Login() {
                 setError('')
               }}
               options={[
-                { value: 'email', label: 'Email sign in' },
-                { value: 'pin', label: 'Staff PIN' },
+                { value: 'email', label: 'Owner sign in' },
+                { value: 'pin', label: 'Staff sign in' },
               ]}
               className="w-full [&>button]:flex-1"
             />
@@ -304,11 +246,6 @@ export default function Login() {
 
           {method === 'email' ? (
             <form onSubmit={submitEmail} className="mt-5 space-y-4">
-              {providerMode === 'hub' && (
-                <Field label="Store code">
-                  <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toLowerCase())} placeholder="your-store-code" autoComplete="organization" required />
-                </Field>
-              )}
               <Field label="Email address">
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
@@ -323,7 +260,7 @@ export default function Login() {
                   />
                 </div>
               </Field>
-              <Field label="Password" hint={providerMode === 'local' ? 'Demo: password' : undefined}>
+              <Field label="Password">
                 <div className="relative">
                   <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/70" />
                   <Input
@@ -350,12 +287,7 @@ export default function Login() {
             </form>
           ) : (
             <form onSubmit={submitPin} className="mt-5 space-y-4">
-              {providerMode === 'hub' && (
-                <Field label="Store code">
-                  <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value.toLowerCase())} placeholder="your-store-code" autoComplete="organization" required />
-                </Field>
-              )}
-              <Field label="Username" hint={providerMode === 'local' ? 'Demo: amine.yasmine' : undefined}>
+              <Field label="Username">
                 <Input
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase())}
@@ -364,68 +296,28 @@ export default function Login() {
                   required
                 />
               </Field>
-              <Field label="PIN" hint={providerMode === 'local' ? `${PIN_RANGE_HINT} · Demo: 1234` : PIN_RANGE_HINT}>
+              <Field label="PIN" hint={PIN_RANGE_HINT}>
                 <Input
                   value={pin}
                   maxLength={PIN_MAX_LENGTH}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
+                  onChange={(e) => setPin(e.target.value.slice(0, PIN_MAX_LENGTH))}
                   placeholder="••••"
-                  inputMode="numeric"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
                   className="text-center text-lg font-bold tracking-[0.5em]"
                   required
                 />
               </Field>
               <Button type="submit" size="lg" className="w-full" disabled={!canSubmit} loading={!databaseReady || isSubmitting}>
-                {databaseReady ? 'Open register' : 'Preparing demo…'} {!isSubmitting && databaseReady && <ArrowRight className="h-4 w-4" />}
+                {databaseReady ? 'Sign in' : 'Preparing…'} {!isSubmitting && databaseReady && <ArrowRight className="h-4 w-4" />}
               </Button>
-              <p className="text-center text-[11.5px] text-muted">
-                Staff PINs are created by your store admin.
-              </p>
             </form>
           )}
-
-          {providerMode === 'local' && <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-line" />
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted/70">
-              Explore the demo
-            </span>
-            <div className="h-px flex-1 bg-line" />
-          </div>}
-
-          {providerMode === 'local' && <div className="space-y-2">
-            {demoAccounts.map((a) => (
-              <button
-                key={a.role}
-                onClick={() => quickLogin(a)}
-                disabled={!canSubmit}
-                className={cn(
-                  'glass-subtle group flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-transparent px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50',
-                  'hover:border-accent-foreground/40 hover:shadow-sm',
-                )}
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cream-200 text-muted transition group-hover:bg-accent-50 group-hover:text-accent-foreground">
-                  <a.icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12.5px] font-semibold text-ink">{a.name}</span>
-                    <span className="rounded-full bg-cream-200 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-muted">
-                      {a.role}
-                    </span>
-                  </div>
-                  <div className="truncate text-[11px] text-muted">{a.desc}</div>
-                </div>
-                <Check className="h-4 w-4 text-line opacity-0 transition group-hover:text-accent-foreground group-hover:opacity-100" />
-              </button>
-            ))}
-          </div>}
 
           <p className="mt-5 text-center text-[10.5px] leading-relaxed text-muted/80">
             {providerMode === 'hub'
               ? 'The shop hub is the sync authority. This device keeps an encrypted-session local data cache for offline work.'
               : 'Data is stored in this browser/device. Staff must use the same device or import the store backup.'}
-            <br />
-            {providerMode === 'local' && <>Owner/admin demo password: <span className="font-semibold text-muted">password</span>.</>}
           </p>
           <p className="mt-3 break-all text-center text-[9.5px] leading-relaxed text-muted/70">
             App {APP_VERSION} · Database {DB_KEY} · Built {APP_BUILD_TIMESTAMP}

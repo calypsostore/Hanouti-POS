@@ -153,8 +153,8 @@
 - Order-rule browser flows and concurrent-phone payment races remain
   unverified; see `docs/AUDIT.md` and `docs/PRODUCTION_PLAN.md`.
 - Hub snapshots intentionally omit password and PIN hashes. Admins set/reset
-  their own 4–12 digit authorization PIN in Admin → Team; it reuses the existing
-  admin `User.pin` credential, so PIN-based sign-in changes at the same time.
+  their own 4–6 character authorization PIN in Admin → Team; it is separate
+  from owner email/password sign-in and is normalized case-insensitively.
 - Purpose-scoped hub PIN checks search only active, same-store users authorized
   for that action and return only the confirmer ID/name. Failed checks share a
   persistent five-failure/15-minute lockout; hashes remain server-side.

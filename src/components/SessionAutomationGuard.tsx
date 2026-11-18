@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { inactivityAction } from '../lib/automation'
-import { isValidPin } from '../shared/pin'
+import { isValidPin, PIN_MAX_LENGTH } from '../shared/pin'
 import { useApp } from '../store/AppStore'
 import { Button, Input } from './ui'
 import { useToast } from './toast'
@@ -51,7 +51,7 @@ export function SessionAutomationGuard({ children }: { children: ReactNode }) {
   const unlock = async (event: FormEvent) => {
     event.preventDefault()
     if (!user || !isValidPin(pin)) {
-      push('Enter your 4–12 digit staff PIN.', 'error')
+      push('Enter your 4–6 character staff PIN.', 'error')
       return
     }
     setChecking(true)
@@ -79,10 +79,10 @@ export function SessionAutomationGuard({ children }: { children: ReactNode }) {
             className="w-full max-w-sm space-y-4 rounded-3xl border border-white/15 bg-white p-6 text-center shadow-2xl">
             <div className="text-xl font-extrabold">Session locked</div>
             <p className="text-sm text-muted">Enter {user.name}&apos;s staff PIN to resume. Your cart and open tables are unchanged.</p>
-            <Input autoFocus type="password" inputMode="numeric" autoComplete="current-password"
-              maxLength={12} value={pin} onChange={(event) => setPinAttempt({
+            <Input autoFocus type="password" autoComplete="current-password"
+              maxLength={PIN_MAX_LENGTH} autoCapitalize="characters" autoCorrect="off" value={pin} onChange={(event) => setPinAttempt({
                 userId: user.id,
-                value: event.target.value.replace(/\D/g, ''),
+                value: event.target.value.slice(0, PIN_MAX_LENGTH),
               })}
               aria-label="Staff PIN" />
             <div className="flex gap-2">

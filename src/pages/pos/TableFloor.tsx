@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChefHat, Clock3, Merge, MoveRight, Plus, Utensils } from 'lucide-react'
 import { Badge, Button, Field, Input, Modal, Select } from '../../components/ui'
+import { PIN_MAX_LENGTH } from '../../shared/pin'
 import { AppIcon } from '../../components/AppIcon'
 import { useToast } from '../../components/toast'
 import { can } from '../../lib/permissions'
@@ -396,7 +397,7 @@ export default function TableFloor() {
           </div>
         }
       >
-        <Input type="password" inputMode="numeric" autoComplete="off" value={managerPin} onChange={(event) => setManagerPin(event.target.value)} placeholder="Manager PIN" aria-label="Manager PIN" />
+        <Input type="password" autoCapitalize="characters" autoCorrect="off" autoComplete="off" maxLength={PIN_MAX_LENGTH} value={managerPin} onChange={(event) => setManagerPin(event.target.value.slice(0, PIN_MAX_LENGTH))} placeholder="Manager PIN" aria-label="Manager PIN" />
       </Modal>
     </main>
   )

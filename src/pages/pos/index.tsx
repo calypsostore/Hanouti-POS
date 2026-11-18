@@ -27,6 +27,7 @@ import { isUnavailable } from '../../lib/availability'
 import { enabledStaffProducts } from '../../lib/staffConsumption'
 import { validateOrderLines, computeReservations, availableStock } from '../../shared/orderRules'
 import { Button, Field, Input, Modal, Select, Textarea } from '../../components/ui'
+import { PIN_MAX_LENGTH } from '../../shared/pin'
 import type { OpenOrder, Product, ProductVariant, Station, Store } from '../../types'
 import type { TicketKind } from '../../lib/tickets'
 
@@ -942,10 +943,12 @@ export default function POS() {
               <Field label="Manager PIN to confirm">
                 <Input
                   type="password"
-                  inputMode="numeric"
                   autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  maxLength={PIN_MAX_LENGTH}
                   value={overridePin}
-                  onChange={(event) => setOverridePin(event.target.value)}
+                  onChange={(event) => setOverridePin(event.target.value.slice(0, PIN_MAX_LENGTH))}
                   placeholder="Manager PIN"
                 />
               </Field>

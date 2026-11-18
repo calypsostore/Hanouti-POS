@@ -39,10 +39,7 @@ export interface CreateStoreInput {
   phone: string
   address: string
   city: string
-  adminName: string
-  adminEmail: string
-  adminPassword: string
-  adminPin: string
+  temporaryPassword: string
 }
 
 export interface AddStaffInput {
@@ -188,6 +185,7 @@ export interface AppContextValue {
   store: Store | null
   login: (email: string, password: string, storeCode?: string) => Promise<LoginResult>
   loginPin: (username: string, pin: string, storeCode?: string) => Promise<LoginResult>
+  changeOwnPassword: (password: string) => Promise<Result>
   verifyPin: (pin: string) => Promise<boolean>
   verifyAuthorizationPin: (pin: string, storeId: string, purpose: AuthorizationPinPurpose) => Promise<AuthorizationPinResult>
   logout: () => void

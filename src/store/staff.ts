@@ -2,11 +2,11 @@ import { useCallback } from 'react'
 import type { AuditJsonValue, User } from '../types'
 import { uid } from '../lib/utils'
 import { hashRandomSecret, hashSecret } from '../lib/hash'
-import { isValidUsername, normalizeUsername } from '../lib/staff'
+import { isUsernameForStore, isValidUsername, normalizeUsername } from '../lib/staff'
 import { round } from '../lib/pricing-utils'
 import { defaultPermissions } from '../lib/defaults'
 import type { Capability } from '../types'
-import { isValidPin, PIN_RANGE_HINT } from '../shared/pin'
+import { isValidPin, normalizePin, PIN_RANGE_HINT } from '../shared/pin'
 
 const CAPABILITIES: Capability[] = [
   'manageInventory', 'recordPurchases', 'viewCosts', 'manageStaffAllowances', 'useStaffAllowances',
@@ -94,10 +94,15 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       }
       if (!validPermissions(data.permissions)) return { ok: false, error: 'Choose valid team permissions.' }
       const current = dbRef.current
+      const store = current.stores.find((candidate) => candidate.id === storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
       const username = normalizeUsername(data.username)
       if (!data.name.trim()) return { ok: false, error: 'Enter the team member’s full name.' }
       if (!isValidUsername(username)) {
-        return { ok: false, error: 'Username must be 3–24 lowercase letters, digits, dots, underscores or hyphens.' }
+        return { ok: false, error: 'Username must be 3–64 lowercase letters, digits, dots, underscores or hyphens.' }
+      }
+      if (!isUsernameForStore(username, store.slug)) {
+        return { ok: false, error: `Generate a username ending in .${store.slug}.` }
       }
       if (current.users.some((user) => normalizeUsername(user.username ?? '') === username)) {
         return { ok: false, error: 'That username is already in use.' }
@@ -120,7 +125,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       let password: string
       let pin: string
       try {
-        ;[password, pin] = await Promise.all([hashRandomSecret(), hashSecret(data.pin)])
+        ;[password, pin] = await Promise.all([hashRandomSecret(), hashSecret(normalizePin(data.pin))])
       } catch {
         return { ok: false, error: 'Could not securely save the credentials. Please try again.' }
       }
@@ -202,9 +207,16 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
     const nextRole = patch.role ?? member.role
     const stationOnly = patch.stationOnly ?? member.stationOnly ?? false
     const username = patch.username === undefined ? undefined : normalizeUsername(patch.username)
+    const usernameChanged = username !== undefined &&
+      username !== normalizeUsername(member.username ?? '')
     if (username !== undefined) {
       if (!isValidUsername(username)) {
-        return { ok: false, error: 'Username must be 3–24 lowercase letters, digits, dots, underscores or hyphens.' }
+        return { ok: false, error: 'Username must be 3–64 lowercase letters, digits, dots, underscores or hyphens.' }
+      }
+      const store = current.stores.find((candidate) => candidate.id === storeId)
+      if (!store) return { ok: false, error: 'Store not found.' }
+      if (usernameChanged && !isUsernameForStore(username, store.slug)) {
+        return { ok: false, error: `Generate a username ending in .${store.slug}.` }
       }
       if (current.users.some((user) =>
         user.id !== id && normalizeUsername(user.username ?? '') === username,
@@ -279,7 +291,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
       delete safePatch.password
     }
     try {
-      if (patch.pin) safePatch.pin = await hashSecret(patch.pin)
+      if (patch.pin) safePatch.pin = await hashSecret(normalizePin(patch.pin))
       else delete safePatch.pin
       if (patch.password && member.role !== 'staff' && member.role !== 'manager') safePatch.password = await hashSecret(patch.password)
       else delete safePatch.password
@@ -381,7 +393,7 @@ export function useStaffSlice(dependencies: StoreSliceDependencies) {
 
     let hashedPin: string
     try {
-      hashedPin = await hashSecret(pin)
+      hashedPin = await hashSecret(normalizePin(pin))
     } catch {
       return { ok: false, error: 'Could not securely save the authorization PIN. Please try again.' }
     }

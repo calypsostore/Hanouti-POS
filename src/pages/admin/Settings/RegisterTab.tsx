@@ -41,7 +41,9 @@ export default function RegisterTab({
             <h3 className="text-[15px] font-semibold tracking-tight">How the register works</h3>
           </div>
           <p className="text-[12px] text-muted">
-            Pick how staff finish a sale. Table service is controlled separately below.
+            {features.payments
+              ? 'Pick how staff finish a sale. Table service is controlled separately below.'
+              : 'Quick order tracks completed orders without taking payment.'}
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">

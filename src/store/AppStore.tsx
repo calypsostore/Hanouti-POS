@@ -167,6 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     store,
     login: auth.login,
     loginPin: auth.loginPin,
+    changeOwnPassword: auth.changeOwnPassword,
     verifyPin: (pin: string) => database.provider.verifyPin(pin, user?.pin),
     verifyAuthorizationPin,
     logout: auth.logout,

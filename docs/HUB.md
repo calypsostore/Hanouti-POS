@@ -82,7 +82,7 @@ stations, and create a backup before using live transactions.
 
 The first owner is created with `POST /api/auth/setup`; there are no default
 credentials. Send `storeName`, a lowercase `storeCode`, `username`, a
-10-character-or-longer `password`, a 4–12 digit `pin`, and the one-time
+10-character-or-longer `password`, a 4–6 character alphanumeric `pin`, and the one-time
 `X-Setup-Token` header. The token is printed when an empty hub starts, expires
 after the first successful owner setup or backup import, and failed attempts
 are rate-limited. Setup is available only while the hub has no stores. The API
@@ -100,8 +100,13 @@ npm run hub -- import-backup C:\backups\7anouti-backup.json
 npm run hub -- import-backup /backups/7anouti-backup.json
 ```
 
-Imported credentials must already be app PBKDF2 hashes. Use the existing owner
-username and password/PIN to sign in.
+Imported credentials must already be app PBKDF2 hashes. Owners sign in with
+their email and password; staff sign in with their globally unique username
+and PIN. No store code is required. Owners provisioned with a temporary
+password must change it at first sign-in. The app's Super Admin store-creation
+flow is currently local-device only; Hub mode has no platform-super-admin
+account or cross-store provisioning API, so use first-run setup or backup import
+to provision Hub stores.
 
 ## HTTPS for shop devices
 

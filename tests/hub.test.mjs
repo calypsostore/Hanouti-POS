@@ -91,10 +91,10 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(missingImportToken.status, 401)
     const invalidSetupPin = await fetch(`${base}/api/auth/setup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Setup-Token': setupToken },
-      body: JSON.stringify({ storeName: 'Test Cafe', storeCode: 'test-cafe', username: 'owner', password: 'a-secure-password', pin: 'abcd' }),
+      body: JSON.stringify({ storeName: 'Test Cafe', storeCode: 'test-cafe', username: 'owner', password: 'a-secure-password', pin: 'abc' }),
     })
     assert.equal(invalidSetupPin.status, 400)
-    assert.match((await invalidSetupPin.json()).error, /PIN must contain 4 to 12 digits/i)
+    assert.match((await invalidSetupPin.json()).error, /PIN must contain 4 to 6 letters or numbers/i)
     const deniedOrigin = await fetch(`${base}/health`, { headers: { Origin: 'https://outside.example' } })
     assert.equal(deniedOrigin.status, 403)
     const oversized = await fetch(`${base}/api/auth/login`, {
@@ -123,6 +123,48 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
       body: JSON.stringify({ storeCode: 'test-cafe', username: 'owner@local.invalid', secret: 'a-secure-password' }),
     })
     assert.equal(adminPasswordLogin.status, 200)
+    const ownerLoginWithoutStoreCode = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'owner@local.invalid', secret: 'a-secure-password' }),
+    })
+    assert.equal(ownerLoginWithoutStoreCode.status, 200)
+    const ownerState = await runtime.storage.readStore(owner.actor.storeId)
+    const ownerRecord = ownerState.collections.users[owner.actor.userId]
+    await runtime.storage.replaceStore(owner.actor.storeId, {
+      ...ownerState,
+      collections: {
+        ...ownerState.collections,
+        users: {
+          ...ownerState.collections.users,
+          [owner.actor.userId]: { ...ownerRecord, mustChangePassword: true },
+        },
+      },
+    })
+    const blockedSnapshot = await fetch(`${base}/api/sync/snapshot`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    })
+    assert.equal(blockedSnapshot.status, 403)
+    assert.match((await blockedSnapshot.json()).error, /change your password/i)
+    const passwordChange = await fetch(`${base}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${owner.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'a-new-secure-password' }),
+    })
+    assert.equal(passwordChange.status, 200)
+    const accessibleSnapshot = await fetch(`${base}/api/sync/snapshot`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    })
+    assert.equal(accessibleSnapshot.status, 200)
+    const oldPasswordLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'owner@local.invalid', secret: 'a-secure-password' }),
+    })
+    assert.equal(oldPasswordLogin.status, 401)
+    const newPasswordLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'owner@local.invalid', secret: 'a-new-secure-password' }),
+    })
+    assert.equal(newPasswordLogin.status, 200)
     const auth = { Authorization: `Bearer ${owner.token}`, 'Content-Type': 'application/json' }
     const staleSync = await fetch(`${base}/api/sync`, {
       method: 'POST', headers: auth,
@@ -141,7 +183,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     assert.equal(initialData.collections.users[0].pin, undefined)
     const staffUser = {
       id: 'cashier', storeId: owner.actor.storeId, name: 'Cashier', username: 'cashier',
-      password: hashSecret('cashier-password'), pin: hashSecret('22661234'), role: 'staff',
+      password: hashSecret('cashier-password'), pin: hashSecret('A22612'), role: 'staff',
       active: true, permissions: { register: true, openShift: true, closeShift: false },
     }
     const activeManager = {
@@ -472,7 +514,7 @@ test('hub scopes and persists APIs, protects credentials, and prints to the mock
     const syncBaseSeq = (await (await fetch(`${base}/api/sync/snapshot`, { headers: auth })).json()).seq
     const staffLogin = await fetch(`${base}/api/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storeCode: 'test-cafe', username: 'cashier', secret: '22661234' }),
+      body: JSON.stringify({ username: 'cashier', secret: 'a22612' }),
     })
     const staff = await staffLogin.json()
     const scheduleNow = new Date()

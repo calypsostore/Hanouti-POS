@@ -470,7 +470,11 @@ export async function createHubServer(): Promise<HubRuntime> {
     return actor
   }
 
-  async function actorFor(request: IncomingMessage, storeId?: string): Promise<AuthenticatedActor> {
+  async function actorFor(
+    request: IncomingMessage,
+    storeId?: string,
+    allowPasswordChange = false,
+  ): Promise<AuthenticatedActor> {
     const deviceId = request.headers['x-device-id']
     const token = bearer(request)
     if (typeof deviceId === 'string' && token) {
@@ -479,6 +483,9 @@ export async function createHubServer(): Promise<HubRuntime> {
       return actor
     }
     const actor = authActor(request, storeId)
+    if (!allowPasswordChange && await auth.passwordChangeRequired(actor)) {
+      throw Object.assign(new Error('Change your password before continuing.'), { status: 403 })
+    }
     const refreshed = await auth.refreshActor(actor)
     if (!refreshed) throw Object.assign(new Error('Account is disabled or no longer available.'), { status: 401 })
     return refreshed
@@ -1426,10 +1433,18 @@ export async function createHubServer(): Promise<HubRuntime> {
       }
       if (path === '/api/auth/login' && request.method === 'POST') {
         const body = await readJson(request)
-        const storeCode = requireString(body.storeCode, 'store code', 40)
+        const storeCode = typeof body.storeCode === 'string'
+          ? requireString(body.storeCode, 'store code', 40)
+          : ''
         const username = requireString(body.username, 'username', 64)
         const secret = requireString(body.secret, 'password or PIN', 128)
         return sendJson(response, 200, await auth.login(storeCode, username, secret, ip))
+      }
+      if (path === '/api/auth/change-password' && request.method === 'POST') {
+        const actor = await actorFor(request, undefined, true)
+        const body = await readJson(request)
+        await auth.changeOwnPassword(actor, requireString(body.password, 'password', 128))
+        return sendJson(response, 200, { ok: true })
       }
       if (path === '/api/auth/verify-pin' && request.method === 'POST') {
         const actor = await actorFor(request)

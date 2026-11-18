@@ -158,10 +158,11 @@ export default function StationDeviceKiosk() {
                 <Input
                   autoFocus
                   type="password"
-                  inputMode="numeric"
                   maxLength={PIN_MAX_LENGTH}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
                   value={managerPin}
-                  onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
+                  onChange={(event) => setManagerPin(event.target.value.slice(0, PIN_MAX_LENGTH))}
                 />
               </Field>
               {exitError && <p role="alert" className="text-xs text-red-600">{exitError}</p>}
@@ -195,10 +196,11 @@ export default function StationDeviceKiosk() {
               <Input
                 autoFocus
                 type="password"
-                inputMode="numeric"
                 maxLength={PIN_MAX_LENGTH}
+                autoCapitalize="characters"
+                autoCorrect="off"
                 value={managerPin}
-                onChange={(event) => setManagerPin(event.target.value.replace(/\D/g, '').slice(0, PIN_MAX_LENGTH))}
+                onChange={(event) => setManagerPin(event.target.value.slice(0, PIN_MAX_LENGTH))}
               />
             </Field>
             {exitError && <p role="alert" className="text-xs text-red-600">{exitError}</p>}

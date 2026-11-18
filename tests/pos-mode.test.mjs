@@ -2,11 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isCashier, isQuick, modeFeatures, normalizeCashierModeSettings } from '../src/lib/posMode.ts'
 
-const storeFor = (posMode, features = {}, cashierModeEnabled = posMode === 'cashier') => ({
+const storeFor = (
+  posMode,
+  features = {},
+  cashierModeEnabled = posMode === 'cashier',
+  staffItemsEnabled = false,
+) => ({
   settings: {
     posMode,
     cashierModeEnabled,
     features: { tables: true, kitchenScreen: false, ...features },
+    staffConsumption: { enabled: staffItemsEnabled },
   },
 })
 
@@ -46,4 +52,10 @@ test('Quick capabilities omit cashier-only features and keep admin-enabled kitch
   assert.equal(quickFeatures.kitchenStations, true)
   assert.equal(modeFeatures(storeFor('cashier')).payments, true)
   assert.equal(modeFeatures(storeFor('cashier')).payroll, true)
+})
+
+test('Quick staff items are available only when the owner enables the existing setting', () => {
+  assert.equal(modeFeatures(storeFor('quick')).staffAllowances, false)
+  assert.equal(modeFeatures(storeFor('quick', {}, true, true)).staffAllowances, true)
+  assert.equal(modeFeatures(storeFor('cashier')).staffAllowances, true)
 })

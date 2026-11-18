@@ -14,6 +14,7 @@ export interface HubUser extends SyncDocument {
   active: boolean
   password: string
   pin: string
+  mustChangePassword?: boolean
   permissions: Record<string, boolean | undefined>
   stationOnly?: boolean
 }

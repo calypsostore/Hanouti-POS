@@ -3,7 +3,7 @@ import { Card } from '../../../components/ui'
 import StaffPermissionsEditor from '../staff/StaffPermissionsEditor'
 import { useToast } from '../../../components/toast'
 import type { User } from '../../../types'
-import { isQuick } from '../../../lib/posMode'
+import { isQuick, modeFeatures } from '../../../lib/posMode'
 
 export function StaffPermissionsTab() {
   const { db, store, updateStaff } = useApp()
@@ -36,6 +36,7 @@ export function StaffPermissionsTab() {
             role={member.role}
             stationOnly={member.stationOnly}
             quick={isQuick(store)}
+            stationsEnabled={modeFeatures(store).kitchenStations}
             permissions={member.permissions}
             onChange={(permissions) => { void savePermissions(member.id, permissions) }}
           />

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../types'
-import { verifySecret } from '../lib/hash'
+import { hashSecret, verifySecret } from '../lib/hash'
 import { clockInAttendance, clockOutAttendance } from '../lib/payroll'
 import { addLog } from './audit'
 import { loginScheduleError } from '../lib/shiftAccess'
-import { isValidPin } from '../shared/pin'
+import { isValidPin, normalizePin } from '../shared/pin'
 import { lockoutSeconds, recordLoginFailure } from '../lib/localAuthLockouts'
 import { openShiftForStaff } from '../lib/registerShifts'
 import type { LoginResult } from './types'
@@ -162,7 +162,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         const inferredStoreCode = storeCode ?? dbRef.current.stores.find((store) =>
           store.id === cachedUser?.storeId,
         )?.slug
-        const hubResult = await provider.login(inferredStoreCode ?? '', needle, pin.trim())
+        const hubResult = await provider.login(inferredStoreCode ?? '', needle, normalizePin(pin))
         if (hubResult.ok) {
           const snapshot = await provider.pullSnapshot()
           if (snapshot) applyProviderSnapshot(snapshot.database)
@@ -188,7 +188,7 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
         recordFailure(needle, found)
         return { ok: false, error: `Too many failed PIN attempts. Try again in ${seconds} seconds.` }
       }
-      const enteredPin = pin.trim()
+      const enteredPin = normalizePin(pin)
       const validPin = found && isValidPin(enteredPin)
         ? await verifySecret(enteredPin, found.pin)
         : false
@@ -277,6 +277,55 @@ export function useAuthSlice(dependencies: AuthSliceDependencies) {
     setSessionUserId(null)
   }, [commitDb, dbRef, setSessionUserId, provider])
 
+  const changeOwnPassword = useCallback(async (password: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (password.length < 10) return { ok: false, error: 'Use a password with at least 10 characters.' }
+    const userId = userIdRef.current
+    const actor = dbRef.current.users.find((candidate) =>
+      candidate.id === userId && candidate.active,
+    )
+    if (!actor || actor.role !== 'admin' || !actor.storeId) {
+      return { ok: false, error: 'Only the signed-in store owner can change this password.' }
+    }
+    const storeId = actor.storeId
 
-  return { userId, userIdRef, setUserId: setSessionUserId, login, loginPin, logout }
+    let hashedPassword: string
+    try {
+      hashedPassword = await hashSecret(password)
+    } catch {
+      return { ok: false, error: 'Could not securely save the new password. Please try again.' }
+    }
+
+    if (provider.mode === 'hub') {
+      try {
+        const result = await provider.changePassword(password)
+        if (!result.ok) return result
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Could not change the hub password.',
+        }
+      }
+    }
+
+    const currentActor = dbRef.current.users.find((candidate) =>
+      candidate.id === userId && candidate.storeId === storeId &&
+      candidate.role === 'admin' && candidate.active,
+    )
+    if (!currentActor) return { ok: false, error: 'Your owner session is no longer active.' }
+    commitDb((previous) => addLog({
+      ...previous,
+      users: previous.users.map((candidate) => candidate.id === userId
+        ? { ...candidate, password: hashedPassword, mustChangePassword: false }
+        : candidate),
+    }, currentActor, {
+      storeId,
+      action: 'edited',
+      entity: 'auth',
+      entityId: currentActor.id,
+      summary: 'Changed the owner sign-in password',
+    }))
+    return { ok: true }
+  }, [commitDb, dbRef, provider])
+
+  return { userId, userIdRef, setUserId: setSessionUserId, login, loginPin, changeOwnPassword, logout }
 }

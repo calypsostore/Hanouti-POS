@@ -221,7 +221,7 @@ export default function SuperStores() {
         onClose={() => setNewStoreOpen(false)}
         onSave={async (data) => {
           const result = await createStore(data)
-          if (result.ok) push('Store created; its administrator can sign in to complete setup.')
+          if (result.ok) push('Store created. Share the temporary owner password securely.')
           else push(result.error, 'error')
           return result
         }}

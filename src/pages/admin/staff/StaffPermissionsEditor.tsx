@@ -1,5 +1,6 @@
 import { Toggle } from '../../../components/ui'
 import type { Capability, User } from '../../../types'
+import { isQuickStaffPermissionVisible } from '../../../lib/staffPermissionVisibility'
 
 const managerCapabilities: Array<{ key: Capability; label: string; description: string }> = [
   { key: 'manageInventory', label: 'Manage inventory', description: 'Edit items, counts, waste, and stock adjustments.' },
@@ -37,12 +38,14 @@ export default function StaffPermissionsEditor({
   role,
   stationOnly = false,
   quick = false,
+  stationsEnabled,
   permissions,
   onChange,
 }: {
   role: 'staff' | 'manager'
   stationOnly?: boolean
   quick?: boolean
+  stationsEnabled: boolean
   permissions: User['permissions']
   onChange: (permissions: User['permissions']) => void
 }) {
@@ -61,7 +64,7 @@ export default function StaffPermissionsEditor({
         </p>
       ) : (
       <div className="space-y-3">
-        <Toggle checked={permissions.discount} onChange={(value) => toggle('discount', value)} label="Apply discounts" description="Can reduce the total at checkout." />
+        {!quick && <Toggle checked={permissions.discount} onChange={(value) => toggle('discount', value)} label="Apply discounts" description="Can reduce the total at checkout." />}
         {!quick && (
           <>
             <Toggle checked={permissions.credit} onChange={(value) => toggle('credit', value)} label="Charge orders to tabs" description="Can attach an order to a customer account." />
@@ -87,14 +90,14 @@ export default function StaffPermissionsEditor({
             <Toggle checked={permissions.useStaffAllowances === true} onChange={(value) => toggle('useStaffAllowances', value)} label="Use staff items" description="Record allowed staff items during an open shift." />
             <Toggle checked={permissions.openShift === true} onChange={(value) => toggle('openShift', value)} label="Open own shift" description="Start a personal shift before taking orders." />
             <Toggle checked={permissions.closeShift === true} onChange={(value) => toggle('closeShift', value)} label="Close own shift" description="End a personal shift and save its X report; the owner closes the store-day Z." />
-            <Toggle checked={permissions.takeOverTables === true} onChange={(value) => toggle('takeOverTables', value)} label="Take over tables" description="Accept unassigned tables from a staff handover." />
+            {!quick && <Toggle checked={permissions.takeOverTables === true} onChange={(value) => toggle('takeOverTables', value)} label="Take over tables" description="Accept unassigned tables from a staff handover." />}
           </>
         )}
         <Toggle checked={permissions.supervisor} onChange={(value) => toggle('supervisor', value)} label="Shift supervisor" description="Can view team sales and register sessions and close another user's session." />
-        {role === 'staff' && (
+        {role === 'staff' && (!quick || stationsEnabled) && (
           <Toggle checked={permissions.viewStation === true} onChange={(value) => toggle('viewStation', value)} label="View station screens" description="Access kitchen and bar station boards after PIN sign-in." />
         )}
-        {role === 'staff' && (
+        {role === 'staff' && !quick && (
           <Toggle
             checked={permissions.recordPurchases === true}
             onChange={(value) => toggle('recordPurchases', value)}
@@ -115,7 +118,7 @@ export default function StaffPermissionsEditor({
         )}
         {role === 'manager' && managerCapabilities
           .filter(({ key }) => quick
-            ? true
+            ? isQuickStaffPermissionVisible(key, stationsEnabled)
             : !['manageCustomers', 'viewTabs', 'settleTabs', 'addToTabs', 'viewOrders', 'viewExpenses', 'addExpenses', 'editExpenses'].includes(key))
           .map(({ key, label, description }) => (
           <Toggle

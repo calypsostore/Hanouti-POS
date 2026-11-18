@@ -48,7 +48,7 @@ Station pairing steps are in [docs/STATIONS.md](./docs/STATIONS.md).
 Staff sign in with their username and PIN; no store code, email, or password is
 required.
 
-The login screen has one-click demo buttons for the first three.
+Use the listed credentials on the corresponding Owner or Staff sign-in option.
 
 ## What is included
 
