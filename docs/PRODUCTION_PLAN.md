@@ -30,7 +30,7 @@ document.
 
 ### Android releases and in-app updates — implemented; device verification pending
 
-- Latest published Android release: `v1.6.0` (version 1.6, build 7).
+- Latest published Android release: `v1.7.0` (version 1.7, build 8).
 - Pushing a `v*` tag builds a signed Android APK and publishes it as
   `7anouti-pos.apk` alongside `version.json` on a GitHub Release. The app checks
   the latest release on Android automatically no more than once every six hours.
