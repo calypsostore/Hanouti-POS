@@ -9,13 +9,14 @@ import {
   type AppUpdate,
   type ManualAppUpdateCheckResult,
 } from '../../../lib/appUpdate'
+import { ensureUpdateNotificationPermission } from '../../../lib/updateNotification'
 
 interface InstalledAppInfo {
   version: string
   build: string
 }
 
-export default function AppUpdatesSection() {
+export default function AppUpdatesSection({ embedded = false }: { embedded?: boolean }) {
   const isAndroidNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
   const [installedInfo, setInstalledInfo] = useState<InstalledAppInfo | null>(null)
   const [installedInfoError, setInstalledInfoError] = useState(false)
@@ -27,6 +28,7 @@ export default function AppUpdatesSection() {
 
   useEffect(() => {
     if (!isAndroidNative) return
+    void ensureUpdateNotificationPermission()
     let active = true
     void App.getInfo().then((info) => {
       if (active) setInstalledInfo({ version: info.version, build: info.build })
@@ -82,8 +84,8 @@ export default function AppUpdatesSection() {
                 : 'Could not read the installed app version.'
         : ''
 
-  return (
-    <Card className="space-y-4 p-4 sm:p-5">
+  const content = (
+    <>
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cream-100 text-ink dark:bg-espresso-700">
           <Download className="h-5 w-5" />
@@ -136,6 +138,9 @@ export default function AppUpdatesSection() {
         </p>
       )}
       {downloadMessage && <p role="status" className="text-[12px] text-muted">{downloadMessage}</p>}
-    </Card>
+    </>
   )
+
+  if (embedded) return <div className="space-y-4 px-4 pb-4 sm:px-5">{content}</div>
+  return <Card className="space-y-4 p-4 sm:p-5">{content}</Card>
 }

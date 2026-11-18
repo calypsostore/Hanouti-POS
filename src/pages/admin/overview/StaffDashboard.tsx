@@ -14,6 +14,7 @@ import { can } from '../../../lib/permissions'
 import { canAddOrdersToTabs, canSettleCustomerTabs, canViewCustomerTabs } from '../../../lib/customerTabs'
 import { useToast } from '../../../components/toast'
 import { modeFeatures } from '../../../lib/posMode'
+import { ApplicationUpdatesCard } from '../../../components/ApplicationUpdatesCard'
 
 export default function StaffDashboard() {
   const { db, store, user, updateStationLanding } = useApp()
@@ -127,6 +128,7 @@ export default function StaffDashboard() {
           </div>
         )}
       </SectionCard>
+      <ApplicationUpdatesCard />
     </div>
   )
 }

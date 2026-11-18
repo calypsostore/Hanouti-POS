@@ -35,13 +35,22 @@ document.
   `7anouti-pos.apk` alongside `version.json` on a GitHub Release. The app checks
   the latest release on Android automatically no more than once every six hours.
   Every signed-in role can open the manual check and install flow from the
-  persistent Android app launcher; Admin → Settings retains the same update
-  section. Both update checks use Capacitor's native HTTP client and follow
+  Android-only "Application updates" card at the bottom of the staff, admin,
+  manager, quick-mode and super-admin dashboards; Admin → Settings retains the
+  same update section. POS, floor and kitchen users reach their dashboard card
+  through the Dashboard link in the POS/top navigation. Web views hide the card
+  and manual update flow. Both update checks use Capacitor's native HTTP client and follow
   redirects; manual checks have a 15-second timeout and distinguish network,
   timeout, HTTP, and invalid-metadata failures without using the automatic-check
   throttle. APK downloads use the app cache and Android's package installer;
   users must allow installs from this app when prompted.
   GitHub release URLs require a publicly accessible repository.
+- Android update checks can show one local notification per newer version code
+  through the "App updates" channel. Notification permission is requested only
+  when the update card opens or an update is discovered, and a refusal is
+  remembered so it is not prompted again. Tapping the notification returns the
+  signed-in user to their appropriate dashboard, where the existing update
+  banner and application-update card expose the install flow.
 - Still unverified on devices: a signed tag release, downloading and installing
   over an existing install with the same signing key, and Android's unknown-app
   install permission prompt.

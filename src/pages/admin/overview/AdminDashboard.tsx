@@ -27,6 +27,7 @@ import { backupHealthIsStale, printerOfflineAlertDue } from '../../../lib/automa
 import { Link } from 'react-router-dom'
 import { modeFeatures } from '../../../lib/posMode'
 import { QuickModeDashboard } from './QuickModeDashboard'
+import { ApplicationUpdatesCard } from '../../../components/ApplicationUpdatesCard'
 
 function trend(current: number, previous: number) {
   const value = percentChange(current, previous)
@@ -138,6 +139,7 @@ export default function AdminDashboard() {
         </div>
         <DashboardRail now={now} />
       </div>
+      <ApplicationUpdatesCard />
     </div>
   )
 }

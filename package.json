@@ -23,6 +23,7 @@
     "@capacitor/core": "^8.6.2",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/ios": "^8.6.2",
+    "@capacitor/local-notifications": "^8.3.1",
     "@tailwindcss/vite": "^4.3.5",
     "clsx": "^2.1.1",
     "lucide-react": "^1.72.0",

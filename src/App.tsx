@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppProvider, useApp } from './store/AppStore'
 import { ToastProvider } from './components/toast'
 import { AppShell } from './components/Layout'
@@ -36,9 +36,9 @@ import { hasStationDeviceSession } from './lib/stationDeviceSession'
 import PairStationDevice from './pages/PairStationDevice'
 import StationDeviceKiosk from './pages/StationDeviceKiosk'
 import { SessionAutomationGuard } from './components/SessionAutomationGuard'
-import { AppUpdateButton } from './components/AppUpdateButton'
 import { staffLandingPath } from './lib/posNavigation'
 import { checkForAppUpdate } from './lib/appUpdate'
+import { setupUpdateNotificationTap } from './lib/updateNotification'
 
 function homeFor(user: User, store?: Store | null) {
   if (user.stationOnly) return user.stationId ? `/station/${encodeURIComponent(user.stationId)}` : '/kitchen'
@@ -206,6 +206,29 @@ function HomeRoute() {
   return <Navigate to={user.mustChangePassword ? '/change-password' : homeFor(user, store)} replace />
 }
 
+function UpdateNotificationNavigation() {
+  const navigate = useNavigate()
+  const { user } = useApp()
+  useEffect(() => {
+    let active = true
+    let removeListener: (() => void) | undefined
+    void setupUpdateNotificationTap(() => {
+      if (!active) return
+      if (user?.role === 'staff') navigate('/staff')
+      else if (user?.role === 'super') navigate('/super')
+      else navigate('/admin')
+    }).then((remove) => {
+      if (active) removeListener = remove
+      else remove()
+    })
+    return () => {
+      active = false
+      removeListener?.()
+    }
+  }, [navigate, user?.role])
+  return null
+}
+
 export default function App() {
   useEffect(() => {
     void checkForAppUpdate()
@@ -230,7 +253,7 @@ export default function App() {
       <AppProvider>
         <BrowserRouter>
           <ScrollToTop />
-          <AppUpdateButton />
+          <UpdateNotificationNavigation />
           <DeviceKioskGate>
           <StationOnlyGate>
           <SessionAutomationGuard>

@@ -1,6 +1,7 @@
 import { App } from '@capacitor/app'
 import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
+import { notifyForAppUpdate } from './updateNotification'
 
 export interface AppUpdate {
   versionCode: number
@@ -184,6 +185,7 @@ export function checkForAppUpdate(options: { force?: boolean } = {}): Promise<Ap
       } catch {
         // Keep the update available for this app session.
       }
+      await notifyForAppUpdate(update)
       return update
     } catch {
       return null
@@ -240,6 +242,7 @@ export function checkForAppUpdateManually(): Promise<ManualAppUpdateCheckResult>
       } catch {
         // Keep the update available for this app session.
       }
+      await notifyForAppUpdate(update)
       return { status: 'update-available', update }
     } finally {
       manualCheckInFlight = null

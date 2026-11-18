@@ -35,6 +35,7 @@ import { csvDownload, fmtDate } from '../../lib/utils'
 import type { Store, StoreStatus } from '../../types'
 import { AppIcon } from '../../components/AppIcon'
 import { SEMANTIC_COLORS } from '../../lib/semanticColors'
+import { ApplicationUpdatesCard } from '../../components/ApplicationUpdatesCard'
 
 const statusTone: Record<StoreStatus, 'success' | 'warning' | 'danger'> = {
   active: 'success',
@@ -152,6 +153,7 @@ export default function SuperOverview() {
       <Card className="px-4 py-3 text-[11px] text-muted dark:bg-espresso-800">
         Store status changes update the local demo database. A server-backed platform is required for production controls.
       </Card>
+      <ApplicationUpdatesCard />
     </div>
   )
 }
