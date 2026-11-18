@@ -5,7 +5,7 @@ platform for Tunisian cafés, restaurants, snacks and salons de thé. It records
 the audit of the current build, what is implemented per phase, what is honestly
 **not** implemented yet, and the hardware/browser support matrix.
 
-Last updated: 2026-11-17 · shipped: **POS hardening, architecture refactor,
+Last updated: 2026-11-18 · shipped: **POS hardening, architecture refactor,
 business templates, visual/icon upgrade, section/manual table modes, persistent
 table rounds, table-aware orders, compact POS cart layout, automatic table
 orders and station tickets, station-device kiosk pairing, hub sync/offline
@@ -32,10 +32,11 @@ document.
 
 - Pushing a `v*` tag builds a signed Android APK and publishes it as
   `7anouti-pos.apk` alongside `version.json` on a GitHub Release. The app checks
-  the latest release on Android no more than once every six hours and offers
-  updates from dashboard screens only. APK downloads use the app cache and
-  Android's package installer; users must allow installs from this app when
-  prompted. GitHub release URLs require a publicly accessible repository.
+  the latest release on Android automatically no more than once every six hours.
+  Android Settings also exposes a manual check and install flow without the
+  automatic-check throttle. APK downloads use the app cache and Android's
+  package installer; users must allow installs from this app when prompted.
+  GitHub release URLs require a publicly accessible repository.
 - Still unverified on devices: a signed tag release, downloading and installing
   over an existing install with the same signing key, and Android's unknown-app
   install permission prompt.

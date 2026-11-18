@@ -9,6 +9,12 @@ export interface AppUpdate {
   notes: string
 }
 
+export type ManualAppUpdateCheckResult =
+  | { status: 'update-available'; update: AppUpdate }
+  | { status: 'up-to-date' }
+  | { status: 'error' }
+  | { status: 'not-supported' }
+
 interface ApkInstallerPlugin {
   installApk(options: { path: string }): Promise<void>
 }
@@ -22,6 +28,7 @@ const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller')
 
 let lastCheckAt = 0
 let checkInFlight: Promise<AppUpdate | null> | null = null
+let manualCheckInFlight: Promise<ManualAppUpdateCheckResult> | null = null
 let cachedUpdate: AppUpdate | null = null
 
 function isAndroidNative(): boolean {
@@ -60,8 +67,13 @@ function readLastCheckAt(): number {
   }
 }
 
-export function checkForAppUpdate(): Promise<AppUpdate | null> {
+export function checkForAppUpdate(options: { force?: boolean } = {}): Promise<AppUpdate | null> {
   if (!isAndroidNative()) return Promise.resolve(null)
+  if (options.force) {
+    return checkForAppUpdateManually().then((result) =>
+      result.status === 'update-available' ? result.update : null,
+    )
+  }
   if (checkInFlight) return checkInFlight
 
   checkInFlight = (async () => {
@@ -131,6 +143,63 @@ export function checkForAppUpdate(): Promise<AppUpdate | null> {
   })()
 
   return checkInFlight
+}
+
+export function checkForAppUpdateManually(): Promise<ManualAppUpdateCheckResult> {
+  if (!isAndroidNative()) return Promise.resolve({ status: 'not-supported' })
+  if (manualCheckInFlight) return manualCheckInFlight
+
+  manualCheckInFlight = (async () => {
+    let timeout: number | undefined
+    try {
+      const installed = await App.getInfo()
+      const installedVersionCode = Number.parseInt(installed.build, 10)
+      if (!Number.isSafeInteger(installedVersionCode)) return { status: 'error' }
+
+      const controller = new AbortController()
+      timeout = window.setTimeout(() => controller.abort(), 5_000)
+      lastCheckAt = Date.now()
+      try {
+        localStorage.setItem(LAST_CHECK_KEY, String(lastCheckAt))
+      } catch {
+        // Keep the in-memory throttle if browser storage is unavailable.
+      }
+
+      const response = await fetch(VERSION_URL, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        signal: controller.signal,
+      })
+      if (!response.ok) return { status: 'error' }
+
+      const update = parseUpdate(await response.json())
+      if (!update) return { status: 'error' }
+      if (update.versionCode <= installedVersionCode) {
+        cachedUpdate = null
+        try {
+          localStorage.removeItem(UPDATE_CACHE_KEY)
+        } catch {
+          // The in-memory update cache remains usable without browser storage.
+        }
+        return { status: 'up-to-date' }
+      }
+
+      cachedUpdate = update
+      try {
+        localStorage.setItem(UPDATE_CACHE_KEY, JSON.stringify(update))
+      } catch {
+        // Keep the update available for this app session.
+      }
+      return { status: 'update-available', update }
+    } catch {
+      return { status: 'error' }
+    } finally {
+      if (timeout !== undefined) window.clearTimeout(timeout)
+      manualCheckInFlight = null
+    }
+  })()
+
+  return manualCheckInFlight
 }
 
 export async function downloadAndInstallUpdate(

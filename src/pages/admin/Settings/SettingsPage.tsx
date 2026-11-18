@@ -29,6 +29,7 @@ import { modeFeatures } from '../../../lib/posMode'
 import { can } from '../../../lib/permissions'
 import { StaffPermissionsTab } from './StaffPermissionsTab'
 import { visibleSettingsTabs, type SettingsTab } from '../../../lib/settingsTabs'
+import AppUpdatesSection from './AppUpdatesSection'
 
 type Tab = SettingsTab
 type StoreProfile = Pick<Store, 'name' | 'icon' | 'iconColor' | 'logo' | 'phone' | 'address' | 'city' | 'ownerName'>
@@ -206,6 +207,8 @@ export default function SettingsPage() {
           <Save className="h-4 w-4" /> Save changes
         </Button>}
       </div>
+
+      <AppUpdatesSection />
 
       <div className="min-w-0 max-w-full overflow-x-auto">
         <Segmented
